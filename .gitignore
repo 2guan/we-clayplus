@@ -4,8 +4,9 @@ data/
 data-restored*/
 logs/
 bin/
-dist/
-plugins/
+plugins/*
+!plugins/dashboard/
+!plugins/ai/
 config.local.toml
 .env
 .env.*
