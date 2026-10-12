@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -42,6 +43,9 @@ func NewAuditor(dataDir string) (*Auditor, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "dashboard.db")
+	if fi, err := os.Stat(dbPath); err == nil && fi.IsDir() {
+		dbPath = filepath.Join(dbPath, "dashboard.db")
+	}
 	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, fmt.Errorf("打开 SQLite 数据库失败: %w", err)

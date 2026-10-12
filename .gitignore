@@ -18,6 +18,8 @@ config.local.toml
 *.session
 *.sqlite*
 *.db
+*.jpg
+*.png
 session*.json
 device*.json
 *secrets-report*.json

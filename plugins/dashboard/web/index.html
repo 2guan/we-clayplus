@@ -225,8 +225,9 @@
                 <h3 id="ov-bot-name" class="text-lg font-bold text-gray-900 dark:text-white mt-1">未连接</h3>
                 <p id="ov-bot-status" class="text-xs text-gray-400 mt-1">离线</p>
               </div>
-              <div class="w-12 h-12 bg-green-50 dark:bg-green-900/20 text-green-600 rounded-xl flex items-center justify-center">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <div class="w-12 h-12 bg-green-50 dark:bg-green-900/20 text-green-600 rounded-xl flex items-center justify-center overflow-hidden">
+                <img id="ov-bot-avatar" src="" class="w-12 h-12 rounded-xl object-cover hidden">
+                <svg id="ov-bot-avatar-fallback" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
               </div>
             </div>
 
@@ -801,7 +802,14 @@
           <!-- 朋友圈动态分析 -->
           <div id="panel-insights-moments" class="hidden space-y-4">
             <div class="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-              <p class="text-xs text-gray-400">提取好友朋友圈发布趋势、情绪走势与生活偏好画像。</p>
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-bold text-gray-900 dark:text-white">朋友圈动态浏览与分析</h4>
+                <button onclick="openMomentsModal('all', '全员好友')" class="btn-primary text-xs flex items-center gap-1.5">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  打开朋友圈全员时间线
+                </button>
+              </div>
+              <p class="text-xs text-gray-400">提取好友朋友圈发布趋势、情绪走势与生活偏好画像，点击上方按钮可浏览实时聚合动态与图文内容。</p>
             </div>
           </div>
 

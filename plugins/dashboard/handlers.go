@@ -6,14 +6,17 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/we-clay/we-clay/sdk/contact"
 	"github.com/we-clay/we-clay/sdk/message"
+	"github.com/we-clay/we-clay/sdk/moments"
 )
 
 // ----------------- 通用响应辅助函数 -----------------
@@ -403,8 +406,11 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := OverviewData{
-		WeChatOnline:  s.isWeChatOnline(),
-		UptimeSeconds: int64(time.Since(s.startTime).Seconds()),
+		WeChatOnline:   s.isWeChatOnline(),
+		UptimeSeconds:  int64(time.Since(s.startTime).Seconds()),
+		LoadedPlugins:  2,
+		PluginsCount:   2,
+		ActivePlugins:  2,
 	}
 
 	// 1. 获取微信自身资料
@@ -414,6 +420,8 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			data.SelfUsername = self.Username
 			data.SelfNickname = self.Nickname
 			data.SelfAvatar = self.Avatar
+			data.BotNickname = self.Nickname
+			data.BotAvatar = self.Avatar
 		}
 
 		contacts := s.plugin.contact.List()
@@ -427,7 +435,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		data.FriendCount = friendCount
+		data.ContactsCount = friendCount
 		data.ChatroomCount = chatroomCount
+		data.ChatroomsCount = chatroomCount
 	}
 
 	// 2. Owner 微信信息
@@ -481,15 +491,38 @@ func (s *Server) handleChatSessions(w http.ResponseWriter, r *http.Request) {
 	// 从 contacts 与 chat_audit 中构建会话清单
 	type SessionItem struct {
 		ID          string    `json:"id"`
+		SessionID   string    `json:"session_id"`
 		Name        string    `json:"name"`
 		Avatar      string    `json:"avatar"`
 		IsChatroom  bool      `json:"is_chatroom"`
+		IsGroup     bool      `json:"is_group"`
 		LastMessage string    `json:"last_message"`
+		LastSnippet string    `json:"last_snippet"`
 		LastTime    time.Time `json:"last_time"`
 		UnreadCount int       `json:"unread_count"`
 	}
 
-	var sessions []SessionItem
+	sessionMap := make(map[string]*SessionItem)
+
+	// 1. 先从 SQLite 审计表中拉取所有历史与近期活跃会话
+	recentMsgs, _ := s.store.GetRecentChatSessions()
+	for sid, info := range recentMsgs {
+		isChat := strings.HasSuffix(sid, "@chatroom")
+		sessionMap[sid] = &SessionItem{
+			ID:          sid,
+			SessionID:   sid,
+			Name:        sid,
+			Avatar:      "",
+			IsChatroom:  isChat,
+			IsGroup:     isChat,
+			LastMessage: info.LastMessage,
+			LastSnippet: info.LastMessage,
+			LastTime:    info.LastTime,
+			UnreadCount: 0,
+		}
+	}
+
+	// 2. 融合通讯录 contact.List() 中的好友与微信群
 	if s.plugin.contact != nil {
 		contacts := s.plugin.contact.List()
 		for _, c := range contacts {
@@ -505,25 +538,52 @@ func (s *Server) handleChatSessions(w http.ResponseWriter, r *http.Request) {
 				name = c.Username
 			}
 
-			// 获取最近一条审计消息
-			msgs, _ := s.store.GetSessionMessages(c.Username, 1)
-			lastMsg := "暂无新消息"
-			lastTime := time.Now()
-			if len(msgs) > 0 {
-				lastMsg = msgs[0].Content
-				lastTime = msgs[0].CreatedAt
+			if item, exists := sessionMap[c.Username]; exists {
+				item.Name = name
+				item.Avatar = c.Avatar
+				item.IsChatroom = isChat
+				item.IsGroup = isChat
+			} else {
+				sessionMap[c.Username] = &SessionItem{
+					ID:          c.Username,
+					SessionID:   c.Username,
+					Name:        name,
+					Avatar:      c.Avatar,
+					IsChatroom:  isChat,
+					IsGroup:     isChat,
+					LastMessage: "暂无新消息",
+					LastSnippet: "暂无新消息",
+					LastTime:    time.Time{}, // 零值排在活跃会话之后
+					UnreadCount: 0,
+				}
 			}
-
-			sessions = append(sessions, SessionItem{
-				ID:          c.Username,
-				Name:        name,
-				Avatar:      c.Avatar,
-				IsChatroom:  isChat,
-				LastMessage: lastMsg,
-				LastTime:    lastTime,
-			})
 		}
 	}
+
+	// 3. 补充无备注名称的会话信息
+	for sid, item := range sessionMap {
+		if item.Name == sid && s.plugin.contact != nil {
+			if c := s.plugin.contact.Get(sid); c != nil {
+				if c.Remark != "" {
+					item.Name = c.Remark
+				} else if c.Nickname != "" {
+					item.Name = c.Nickname
+				}
+				if item.Avatar == "" {
+					item.Avatar = c.Avatar
+				}
+			}
+		}
+	}
+
+	var sessions []SessionItem
+	for _, item := range sessionMap {
+		sessions = append(sessions, *item)
+	}
+
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].LastTime.After(sessions[j].LastTime)
+	})
 
 	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Data: sessions})
 }
@@ -628,26 +688,167 @@ func (s *Server) handleChatRevoke(w http.ResponseWriter, r *http.Request) {
 
 // ----------------- 好友朋友圈 (Moments) -----------------
 
-// handleMomentsUser 获取指定好友的朋友圈时间线
+// timelineXML 解析微信朋友圈 XML 描述对象
+type timelineXML struct {
+	XMLName       xml.Name `xml:"TimelineObject"`
+	ContentDesc   string   `xml:"contentDesc"`
+	ContentObject struct {
+		Title       string `xml:"title"`
+		Description string `xml:"description"`
+		MediaList   struct {
+			Media []struct {
+				URL   string `xml:"url"`
+				Thumb string `xml:"thumb"`
+			} `xml:"media"`
+		} `xml:"mediaList"`
+	} `xml:"ContentObject"`
+}
+
+// MomentCommentItem 朋友圈评论项模型
+type MomentCommentItem struct {
+	CommentID  int32  `json:"comment_id"`
+	Username   string `json:"username"`
+	Nickname   string `json:"nickname"`
+	Content    string `json:"content"`
+	CreateTime uint32 `json:"create_time"`
+}
+
+// FormattedMoment 朋友圈单条动态前端展示模型
+type FormattedMoment struct {
+	MomentID       string              `json:"moment_id"`
+	AuthorUsername string              `json:"author_username"`
+	AuthorNickname string              `json:"author_nickname"`
+	AuthorAvatar   string              `json:"author_avatar"`
+	Content        string              `json:"content"`
+	CreateTime     uint32              `json:"create_time"`
+	MediaURLs      []string            `json:"media_urls"`
+	Likes          []string            `json:"likes"`
+	Comments       []MomentCommentItem `json:"comments"`
+}
+
+// handleMomentsUser 获取指定好友或全员朋友圈时间线
 func (s *Server) handleMomentsUser(w http.ResponseWriter, r *http.Request) {
-	username := r.URL.Query().Get("username")
-	if username == "" {
-		s.writeJSON(w, http.StatusBadRequest, APIResponse{Code: 400, Message: "username 不能为空"})
-		return
-	}
+	username := strings.TrimSpace(r.URL.Query().Get("username"))
 
 	if s.plugin.moments == nil {
 		s.writeJSON(w, http.StatusServiceUnavailable, APIResponse{Code: 503, Message: "朋友圈能力尚未就绪"})
 		return
 	}
 
-	resp, err := s.plugin.moments.UserPage(username, "", 0)
-	if err != nil {
-		s.writeJSON(w, http.StatusInternalServerError, APIResponse{Code: 500, Message: "获取好友朋友圈失败: " + err.Error()})
-		return
+	var momentsList []*moments.Moment
+	if username == "" || username == "all" {
+		// 全员朋友圈时间线
+		resp, err := s.plugin.moments.Timeline("", 0)
+		if err != nil {
+			s.writeJSON(w, http.StatusInternalServerError, APIResponse{Code: 500, Message: "获取朋友圈时间线失败: " + err.Error()})
+			return
+		}
+		if resp != nil {
+			momentsList = resp.ObjectList
+		}
+	} else {
+		// 指定好友朋友圈
+		resp, err := s.plugin.moments.UserPage(username, "", 0)
+		if err != nil {
+			s.writeJSON(w, http.StatusInternalServerError, APIResponse{Code: 500, Message: "获取好友朋友圈失败: " + err.Error()})
+			return
+		}
+		if resp != nil {
+			momentsList = resp.ObjectList
+		}
 	}
 
-	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Data: resp})
+	var formatted []FormattedMoment
+	for _, m := range momentsList {
+		if m == nil {
+			continue
+		}
+
+		item := FormattedMoment{
+			MomentID:       fmt.Sprintf("%d", m.Id),
+			AuthorUsername: m.Username,
+			AuthorNickname: m.Nickname,
+			CreateTime:     m.CreateTime,
+			MediaURLs:      make([]string, 0),
+			Likes:          make([]string, 0),
+			Comments:       make([]MomentCommentItem, 0),
+		}
+
+		// 补充头像与昵称
+		if s.plugin.contact != nil {
+			c := s.plugin.contact.Get(m.Username)
+			if c != nil {
+				item.AuthorAvatar = c.Avatar
+				if item.AuthorNickname == "" {
+					item.AuthorNickname = c.Nickname
+				}
+			}
+		}
+		if item.AuthorNickname == "" {
+			item.AuthorNickname = m.Username
+		}
+
+		// 解析 XML 内容与图片
+		if m.ObjectDescription != "" {
+			var tx timelineXML
+			if err := xml.Unmarshal([]byte(m.ObjectDescription), &tx); err == nil {
+				content := strings.TrimSpace(tx.ContentDesc)
+				if content == "" {
+					content = strings.TrimSpace(tx.ContentObject.Title)
+				}
+				if content == "" {
+					content = strings.TrimSpace(tx.ContentObject.Description)
+				}
+				item.Content = content
+
+				for _, med := range tx.ContentObject.MediaList.Media {
+					u := strings.TrimSpace(med.Thumb)
+					if u == "" {
+						u = strings.TrimSpace(med.URL)
+					}
+					if u != "" {
+						item.MediaURLs = append(item.MediaURLs, u)
+					}
+				}
+			} else {
+				item.Content = m.ObjectDescription
+			}
+		}
+
+		// 点赞列表
+		for _, l := range m.LikeUserList {
+			name := l.Nickname
+			if name == "" {
+				name = l.Username
+			}
+			if name != "" {
+				item.Likes = append(item.Likes, name)
+			}
+		}
+
+		// 评论列表
+		for _, c := range m.CommentUserList {
+			name := c.Nickname
+			if name == "" {
+				name = c.Username
+			}
+			item.Comments = append(item.Comments, MomentCommentItem{
+				CommentID:  c.CommentId,
+				Username:   c.Username,
+				Nickname:   name,
+				Content:    c.Content,
+				CreateTime: c.CreateTime,
+			})
+		}
+
+		formatted = append(formatted, item)
+	}
+
+	if formatted == nil {
+		formatted = []FormattedMoment{}
+	}
+
+	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Data: formatted})
 }
 
 // handleMomentsLike 点赞或取消点赞朋友圈
@@ -709,14 +910,102 @@ func (s *Server) handleMomentsComment(w http.ResponseWriter, r *http.Request) {
 
 // ----------------- 通讯录与群聊 (Contacts & Chatrooms) -----------------
 
-// handleContactsList 获取全量通讯录联系人
+// handleContactsList 获取全量通讯录联系人（结构化区分好友列表与群聊列表）
 func (s *Server) handleContactsList(w http.ResponseWriter, r *http.Request) {
 	if s.plugin.contact == nil {
 		s.writeJSON(w, http.StatusServiceUnavailable, APIResponse{Code: 503, Message: "联系人能力尚未就绪"})
 		return
 	}
 	list := s.plugin.contact.List()
-	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Data: list})
+
+	type FriendItem struct {
+		Username  string `json:"username"`
+		Nickname  string `json:"nickname"`
+		Remark    string `json:"remark"`
+		Alias     string `json:"alias"`
+		Avatar    string `json:"avatar"`
+		Gender    int    `json:"gender"`
+		Region    string `json:"region"`
+		Signature string `json:"signature"`
+	}
+
+	type ChatroomItem struct {
+		ChatroomID  string `json:"chatroom_id"`
+		Nickname    string `json:"nickname"`
+		Avatar      string `json:"avatar"`
+		MemberCount int    `json:"member_count"`
+		Owner       string `json:"owner"`
+	}
+
+	friends := make([]FriendItem, 0)
+	chatrooms := make([]ChatroomItem, 0)
+
+	for _, c := range list {
+		if c == nil {
+			continue
+		}
+		if strings.HasSuffix(c.Username, "@chatroom") {
+			name := c.Nickname
+			if name == "" {
+				name = c.Username
+			}
+			memberCount := 0
+			if s.plugin.chatroom != nil {
+				members := s.plugin.chatroom.ListMembers(c.Username)
+				memberCount = len(members)
+			}
+			owner := ""
+			if cr, ok := c.Data.(*contact.Contact_Chatroom); ok && cr != nil && cr.Chatroom != nil {
+				owner = cr.Chatroom.Owner
+			}
+			chatrooms = append(chatrooms, ChatroomItem{
+				ChatroomID:  c.Username,
+				Nickname:    name,
+				Avatar:      c.Avatar,
+				MemberCount: memberCount,
+				Owner:       owner,
+			})
+		} else if !strings.HasPrefix(c.Username, "gh_") {
+			gender := 0
+			region := ""
+			signature := ""
+			if fr, ok := c.Data.(*contact.Contact_Friend); ok && fr != nil && fr.Friend != nil {
+				if fr.Friend.Gender == "男" || fr.Friend.Gender == "1" {
+					gender = 1
+				} else if fr.Friend.Gender == "女" || fr.Friend.Gender == "2" {
+					gender = 2
+				}
+				var parts []string
+				if fr.Friend.Province != "" {
+					parts = append(parts, fr.Friend.Province)
+				}
+				if fr.Friend.City != "" {
+					parts = append(parts, fr.Friend.City)
+				}
+				region = strings.Join(parts, " ")
+				signature = fr.Friend.Signature
+			}
+			friends = append(friends, FriendItem{
+				Username:  c.Username,
+				Nickname:  c.Nickname,
+				Remark:    c.Remark,
+				Alias:     c.Alias,
+				Avatar:    c.Avatar,
+				Gender:    gender,
+				Region:    region,
+				Signature: signature,
+			})
+		}
+	}
+
+	s.writeJSON(w, http.StatusOK, APIResponse{
+		Code: 0,
+		Data: map[string]any{
+			"friends":   friends,
+			"chatrooms": chatrooms,
+			"contacts":  list,
+		},
+	})
 }
 
 // handleContactSetRemark 修改好友备注名

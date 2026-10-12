@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,12 +24,20 @@ type Store struct {
 }
 
 // NewStore 初始化或打开本地 SQLite 数据库，并自动执行数据表结构初始化与迁移
-func NewStore(dataDir string) (*Store, error) {
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+func NewStore(pathOrDir string) (*Store, error) {
+	dbPath := pathOrDir
+	if fi, err := os.Stat(pathOrDir); err == nil && fi.IsDir() {
+		// 历史兼容：如果传入的是已经存在的目录，则数据库在该目录下
+		dbPath = filepath.Join(pathOrDir, "dashboard.db")
+	} else if !strings.HasSuffix(pathOrDir, ".db") {
+		dbPath = filepath.Join(pathOrDir, "dashboard.db")
+	}
+
+	dir := filepath.Dir(dbPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("创建数据目录失败: %w", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "dashboard.db")
 	db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		return nil, fmt.Errorf("打开 SQLite 数据库失败: %w", err)
@@ -424,6 +433,39 @@ func (s *Store) GetSessionMessages(sessionID string, limit int) ([]ChatMessage, 
 	}
 
 	return list, nil
+}
+
+// RecentSessionInfo 最近会话聚合信息
+type RecentSessionInfo struct {
+	SessionID   string
+	LastMessage string
+	LastTime    time.Time
+}
+
+// GetRecentChatSessions 从 chat_audit_messages 表分组获取所有会话的最新一条消息和最新时间戳
+func (s *Store) GetRecentChatSessions() (map[string]RecentSessionInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query(`
+		SELECT session_id, content, MAX(created_at) as last_time
+		FROM chat_audit_messages
+		GROUP BY session_id
+		ORDER BY last_time DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	res := make(map[string]RecentSessionInfo)
+	for rows.Next() {
+		var info RecentSessionInfo
+		if err := rows.Scan(&info.SessionID, &info.LastMessage, &info.LastTime); err != nil {
+			return nil, err
+		}
+		res[info.SessionID] = info
+	}
+	return res, nil
 }
 
 // CountTotalMessages 统计已记录入库的微信消息总数

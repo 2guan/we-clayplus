@@ -73,16 +73,21 @@ type OverviewData struct {
 	SelfUsername    string `json:"self_username"`
 	SelfNickname    string `json:"self_nickname"`
 	SelfAvatar      string `json:"self_avatar"`
+	BotNickname     string `json:"bot_nickname"`
+	BotAvatar       string `json:"bot_avatar"`
 	OwnerNickname   string `json:"owner_nickname"`
 	OwnerUsername   string `json:"owner_username"`
 	UptimeSeconds   int64  `json:"uptime_seconds"`
 	
 	// 资产规模统计
 	FriendCount     int    `json:"friend_count"`
+	ContactsCount   int    `json:"contacts_count"`
 	ChatroomCount   int    `json:"chatroom_count"`
+	ChatroomsCount  int    `json:"chatrooms_count"`
 	MemberCoverage  int    `json:"member_coverage"`
 	TotalMessages   int64  `json:"total_messages"`
 	LoadedPlugins   int    `json:"loaded_plugins"`
+	PluginsCount    int    `json:"plugins_count"`
 	ActivePlugins   int    `json:"active_plugins"`
 
 	// 大模型调用统计

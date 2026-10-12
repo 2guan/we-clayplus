@@ -420,17 +420,56 @@ async function refreshOverview() {
   if (!res || res.code !== 0) return;
 
   const d = res.data;
-  document.getElementById('ov-bot-name').textContent = d.bot_nickname || '未命名机器人';
+  const botName = d.bot_nickname || d.self_nickname || '未命名机器人';
+  const botAvatar = d.bot_avatar || d.self_avatar;
+
+  document.getElementById('ov-bot-name').textContent = botName;
   document.getElementById('ov-bot-status').textContent = d.wechat_online ? '运行中 (微信在线)' : '离线 (等待连接)';
   document.getElementById('ov-bot-status').className = d.wechat_online ? 'text-xs text-green-500 mt-1 font-semibold' : 'text-xs text-red-400 mt-1';
 
-  document.getElementById('ov-contacts-count').textContent = `${d.contacts_count} 位好友`;
-  document.getElementById('ov-chatrooms-count').textContent = `${d.chatrooms_count} 个微信群`;
+  // 微信机器人头像回显
+  const ovAvatar = document.getElementById('ov-bot-avatar');
+  const ovFallback = document.getElementById('ov-bot-avatar-fallback');
+  if (ovAvatar && botAvatar) {
+    ovAvatar.src = botAvatar;
+    ovAvatar.classList.remove('hidden');
+    if (ovFallback) ovFallback.classList.add('hidden');
+  }
+
+  // 同步左侧主导航微信状态指示
+  const dot = document.getElementById('wechat-status-dot');
+  const txt = document.getElementById('wechat-status-text');
+  if (dot && txt) {
+    if (d.wechat_online) {
+      dot.className = 'w-2 h-2 rounded-full bg-green-500 animate-pulse';
+      txt.textContent = `${botName} (在线)`;
+      txt.className = 'text-[11px] text-green-400 font-medium truncate max-w-[120px]';
+    } else {
+      dot.className = 'w-2 h-2 rounded-full bg-gray-500';
+      txt.textContent = '微信离线';
+      txt.className = 'text-[11px] text-gray-400';
+    }
+  }
+
+  // 同步微信工作台迷你栏头像
+  const railAvatar = document.getElementById('wx-rail-my-avatar');
+  if (railAvatar && botAvatar) {
+    railAvatar.src = botAvatar;
+    railAvatar.title = botName;
+  }
+  AppState.botAvatar = botAvatar;
+  AppState.botName = botName;
+
+  const contactsCount = d.contacts_count ?? d.friend_count ?? 0;
+  const chatroomsCount = d.chatrooms_count ?? d.chatroom_count ?? 0;
+  document.getElementById('ov-contacts-count').textContent = `${contactsCount} 位好友`;
+  document.getElementById('ov-chatrooms-count').textContent = `${chatroomsCount} 个微信群`;
 
   document.getElementById('ov-today-tokens').textContent = (d.today_tokens || 0).toLocaleString();
   document.getElementById('ov-today-chats').textContent = `今日对话 ${d.today_chats || 0} 次`;
 
-  document.getElementById('ov-plugins-count').textContent = `${d.plugins_count} 个已加载`;
+  const pluginsCount = d.plugins_count ?? d.loaded_plugins ?? 0;
+  document.getElementById('ov-plugins-count').textContent = `${pluginsCount} 个已加载`;
   document.getElementById('ov-uptime').textContent = `运行时长: ${formatUptime(d.uptime_seconds)}`;
 
   renderCharts(d.token_trends, d.msg_trends);
@@ -514,18 +553,22 @@ function renderSessionList(sessions) {
   }
 
   container.innerHTML = sessions.map((s) => {
-    const avatar = s.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(s.session_id)}`;
-    const isActive = s.session_id === AppState.activeSessionId ? 'active' : '';
+    const sId = s.session_id || s.id;
+    const isGroup = s.is_group ?? s.is_chatroom ?? false;
+    const sName = s.name || sId;
+    const snippet = s.last_snippet || s.last_message || '';
+    const avatar = s.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(sId)}`;
+    const isActive = sId === AppState.activeSessionId ? 'active' : '';
     const timeStr = formatMsgTime(s.last_time);
     return `
-      <div onclick="selectSession('${s.session_id}', '${escapeHtml(s.name)}', ${s.is_group})" class="wx-session-item ${isActive}">
+      <div onclick="selectSession('${sId}', '${escapeHtml(sName)}', ${isGroup})" class="wx-session-item ${isActive}">
         <img src="${avatar}" class="wx-session-avatar">
         <div class="wx-session-info">
           <div class="wx-session-name">
-            <span>${escapeHtml(s.name || s.session_id)}</span>
+            <span>${escapeHtml(sName)}</span>
             <span class="wx-session-time">${timeStr}</span>
           </div>
-          <div class="wx-session-snippet">${escapeHtml(s.last_snippet || '')}</div>
+          <div class="wx-session-snippet">${escapeHtml(snippet)}</div>
         </div>
       </div>
     `;
@@ -533,6 +576,7 @@ function renderSessionList(sessions) {
 }
 
 async function selectSession(sessionId, name, isGroup) {
+  if (!sessionId || sessionId === 'undefined') return;
   AppState.activeSessionId = sessionId;
   AppState.activeSessionTarget = { sessionId, name, isGroup };
 
@@ -544,10 +588,12 @@ async function selectSession(sessionId, name, isGroup) {
   document.getElementById('wx-active-chat-id').textContent = isGroup ? '(微信群)' : '(好友)';
   document.getElementById('btn-chat-override').classList.remove('hidden');
   const btnMoments = document.getElementById('btn-chat-moments');
-  if (isGroup) {
-    btnMoments.classList.add('hidden');
-  } else {
-    btnMoments.classList.remove('hidden');
+  if (btnMoments) {
+    if (isGroup) {
+      btnMoments.classList.add('hidden');
+    } else {
+      btnMoments.classList.remove('hidden');
+    }
   }
 
   // 载入历史消息
@@ -566,11 +612,14 @@ function renderMessageStream(messages) {
     return;
   }
 
-  stream.innerHTML = messages.map((m) => {
-    const isOutgoing = m.is_outgoing;
+  // 按时间升序排序
+  const sorted = [...messages].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  stream.innerHTML = sorted.map((m) => {
+    const isOutgoing = m.is_outgoing || m.is_self;
     const rowClass = isOutgoing ? 'outgoing' : 'incoming';
-    const avatar = m.sender_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(m.sender_id)}`;
-    const senderName = m.sender_name || m.sender_id;
+    const avatar = m.sender_avatar || (isOutgoing ? (AppState.botAvatar || `https://api.dicebear.com/7.x/identicon/svg?seed=self`) : (AppState.activeSessionTarget?.avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(m.sender_id)}`));
+    const senderName = m.sender_name || (isOutgoing ? (AppState.botName || '我') : m.sender_id);
 
     return `
       <div class="wx-msg-row ${rowClass}" id="msg-${m.msg_id}">
@@ -589,7 +638,9 @@ function renderMessageStream(messages) {
   }).join('');
 
   // 自动滚动到底部
-  stream.scrollTop = stream.scrollHeight;
+  setTimeout(() => {
+    stream.scrollTop = stream.scrollHeight;
+  }, 30);
 }
 
 function onIncomingChatMessage(msg) {
@@ -724,15 +775,29 @@ async function openMomentsModal(username, nickname) {
   const title = document.getElementById('moments-modal-title');
   const body = document.getElementById('moments-timeline-body');
 
-  title.textContent = `${nickname || username} 的朋友圈动态`;
+  const displayName = nickname || (username === 'all' || !username ? '全员' : username);
+  title.textContent = `${displayName} 的朋友圈动态`;
   body.innerHTML = '<div class="text-center p-8 text-xs text-gray-400">正在拉取朋友圈动态...</div>';
   modal.classList.remove('hidden');
 
-  const res = await apiRequest(`/api/moments/user?username=${encodeURIComponent(username)}`);
-  if (!res || res.code !== 0 || !res.data || res.data.length === 0) {
+  const qUser = (username && username !== 'all') ? encodeURIComponent(username) : 'all';
+  const res = await apiRequest(`/api/moments/user?username=${qUser}`);
+
+  let list = [];
+  if (res && res.code === 0 && res.data) {
+    if (Array.isArray(res.data)) {
+      list = res.data;
+    } else if (Array.isArray(res.data.object_list)) {
+      list = res.data.object_list;
+    }
+  }
+
+  const headerAvatar = (username && username !== 'all' && AppState.activeSessionTarget?.avatar) || (AppState.botAvatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username || 'moments')}`);
+
+  if (list.length === 0) {
     body.innerHTML = `
       <div class="moments-header-cover">
-        <img src="https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}" class="moments-header-avatar">
+        <img src="${headerAvatar}" class="moments-header-avatar">
       </div>
       <div class="text-center p-6 text-xs text-gray-400">该好友近期暂未公开发布朋友圈动态</div>
     `;
@@ -741,26 +806,52 @@ async function openMomentsModal(username, nickname) {
 
   body.innerHTML = `
     <div class="moments-header-cover">
-      <img src="https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(username)}" class="moments-header-avatar">
+      <img src="${headerAvatar}" class="moments-header-avatar">
     </div>
     <div class="space-y-4">
-      ${res.data.map(m => `
+      ${list.map((m) => {
+        const momentId = m.moment_id || m.id;
+        const authorUser = m.author_username || m.username;
+        const authorNick = m.author_nickname || m.nickname || authorUser;
+        const authorAvatar = m.author_avatar || `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(authorUser)}`;
+        const content = m.content || '';
+        const timeStr = typeof m.create_time === 'number' ? formatMsgTime(new Date(m.create_time * 1000)) : formatMsgTime(m.create_time);
+        const mediaUrls = m.media_urls || [];
+        const likes = m.likes || (m.like_user_list ? m.like_user_list.map(u => u.nickname || u.username) : []);
+        const comments = m.comments || (m.comment_user_list ? m.comment_user_list.map(c => ({ nickname: c.nickname || c.username, content: c.content })) : []);
+
+        return `
         <div class="moment-card">
-          <img src="https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(m.author_username)}" class="moment-avatar">
+          <img src="${authorAvatar}" class="moment-avatar">
           <div class="moment-content">
-            <div class="moment-author">${escapeHtml(m.author_nickname || m.author_username)}</div>
-            <div class="moment-text">${escapeHtml(m.content)}</div>
+            <div class="moment-author">${escapeHtml(authorNick)}</div>
+            ${content ? `<div class="moment-text">${escapeHtml(content)}</div>` : ''}
+            ${mediaUrls.length ? `
+              <div class="grid grid-cols-3 gap-2 my-2">
+                ${mediaUrls.map(url => `
+                  <img src="${url}" class="rounded-lg object-cover w-full h-24 cursor-pointer hover:opacity-90 shadow-sm" onclick="window.open('${url}')" loading="lazy">
+                `).join('')}
+              </div>
+            ` : ''}
             <div class="moment-footer">
-              <span>${formatMsgTime(m.create_time)}</span>
+              <span>${timeStr}</span>
               <div class="flex gap-2">
-                <button onclick="likeMoment('${m.moment_id}')" class="moment-actions-btn">赞</button>
-                <button onclick="commentMoment('${m.moment_id}')" class="moment-actions-btn">评论</button>
+                <button onclick="likeMoment('${momentId}')" class="moment-actions-btn">赞</button>
+                <button onclick="commentMoment('${momentId}')" class="moment-actions-btn">评论</button>
               </div>
             </div>
-            ${m.likes && m.likes.length ? `<div class="moment-likes-box">❤️ ${m.likes.join(', ')}</div>` : ''}
+            ${likes.length ? `<div class="moment-likes-box">❤️ ${escapeHtml(likes.join(', '))}</div>` : ''}
+            ${comments.length ? `
+              <div class="mt-2 text-xs bg-gray-50 dark:bg-gray-750 p-2 rounded-lg space-y-1">
+                ${comments.map(c => `
+                  <div><span class="font-semibold text-green-600">${escapeHtml(c.nickname)}:</span> <span>${escapeHtml(c.content)}</span></div>
+                `).join('')}
+              </div>
+            ` : ''}
           </div>
         </div>
-      `).join('')}
+        `;
+      }).join('')}
     </div>
   `;
 }
@@ -882,8 +973,20 @@ async function refreshContacts() {
   const res = await apiRequest('/api/contacts');
   if (!res || res.code !== 0) return;
 
-  const friends = res.data.friends || [];
-  const rooms = res.data.chatrooms || [];
+  let friends = [];
+  let rooms = [];
+  if (Array.isArray(res.data)) {
+    friends = res.data.filter(c => !c.username.endsWith('@chatroom'));
+    rooms = res.data.filter(c => c.username.endsWith('@chatroom')).map(c => ({
+      chatroom_id: c.username,
+      nickname: c.nickname || c.username,
+      avatar: c.avatar,
+      member_count: 0
+    }));
+  } else if (res.data) {
+    friends = res.data.friends || [];
+    rooms = res.data.chatrooms || [];
+  }
 
   AppState.contacts = friends;
   AppState.chatrooms = rooms;
@@ -973,6 +1076,19 @@ async function editContactRemark(username, currentRemark) {
 
 function startChatWith(id, name, isGroup) {
   switchNav('wechat');
+  if (!AppState.sessions.some(s => (s.session_id || s.id) === id)) {
+    AppState.sessions.unshift({
+      id,
+      session_id: id,
+      name,
+      is_group: isGroup,
+      is_chatroom: isGroup,
+      last_message: '暂无新消息',
+      last_snippet: '暂无新消息',
+      last_time: new Date(),
+    });
+    renderSessionList(AppState.sessions);
+  }
   selectSession(id, name, isGroup);
 }
 
