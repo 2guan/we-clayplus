@@ -26,10 +26,14 @@ type Item struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`                                   // 收藏 ID
 	Status        int32                  `protobuf:"varint,2,opt,name=status,proto3" json:"status,omitempty"`                           // 状态
-	Object        string                 `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`                            // 收藏对象（JSON 格式）
+	Object        string                 `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`                            // core 返回的原始收藏对象描述
 	Flag          uint32                 `protobuf:"varint,4,opt,name=flag,proto3" json:"flag,omitempty"`                               // 标志
 	UpdateTime    uint32                 `protobuf:"varint,5,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"` // 更新时间（Unix 时间戳）
 	UpdateSeq     uint32                 `protobuf:"varint,6,opt,name=update_seq,json=updateSeq,proto3" json:"update_seq,omitempty"`    // 更新序列号
+	Type          uint32                 `protobuf:"varint,7,opt,name=type,proto3" json:"type,omitempty"`                               // 收藏类型，不能当成收藏 ID
+	ClientId      string                 `protobuf:"bytes,8,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`        // 同步记录的客户端标识
+	SourceType    uint32                 `protobuf:"varint,9,opt,name=source_type,json=sourceType,proto3" json:"source_type,omitempty"` // 来源类型
+	SourceId      string                 `protobuf:"bytes,10,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`       // 来源标识；同步记录没有收藏 ID 时 id 保持 0
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -104,6 +108,34 @@ func (x *Item) GetUpdateSeq() uint32 {
 		return x.UpdateSeq
 	}
 	return 0
+}
+
+func (x *Item) GetType() uint32 {
+	if x != nil {
+		return x.Type
+	}
+	return 0
+}
+
+func (x *Item) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *Item) GetSourceType() uint32 {
+	if x != nil {
+		return x.SourceType
+	}
+	return 0
+}
+
+func (x *Item) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
 }
 
 type GetInfo struct {
@@ -742,7 +774,7 @@ var File_favor_favor_proto protoreflect.FileDescriptor
 
 const file_favor_favor_proto_rawDesc = "" +
 	"\n" +
-	"\x11favor/favor.proto\x12\x05favor\"\x9a\x01\n" +
+	"\x11favor/favor.proto\x12\x05favor\"\x89\x02\n" +
 	"\x04Item\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\x05R\x06status\x12\x16\n" +
@@ -751,7 +783,13 @@ const file_favor_favor_proto_rawDesc = "" +
 	"\vupdate_time\x18\x05 \x01(\rR\n" +
 	"updateTime\x12\x1d\n" +
 	"\n" +
-	"update_seq\x18\x06 \x01(\rR\tupdateSeq\"\x86\x02\n" +
+	"update_seq\x18\x06 \x01(\rR\tupdateSeq\x12\x12\n" +
+	"\x04type\x18\a \x01(\rR\x04type\x12\x1b\n" +
+	"\tclient_id\x18\b \x01(\tR\bclientId\x12\x1f\n" +
+	"\vsource_type\x18\t \x01(\rR\n" +
+	"sourceType\x12\x1b\n" +
+	"\tsource_id\x18\n" +
+	" \x01(\tR\bsourceId\"\x86\x02\n" +
 	"\aGetInfo\x1a\t\n" +
 	"\aRequest\x1a\xba\x01\n" +
 	"\x04Info\x12\x1b\n" +

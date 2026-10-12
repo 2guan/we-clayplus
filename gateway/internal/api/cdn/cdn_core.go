@@ -76,7 +76,7 @@ func (w remote) UploadMomentsVideo(videoData, thumbData []byte) (*UploadSnsVideo
 
 // DownloadImage CDN 下载高清图片（返回 ReadCloser 流）
 func (w remote) DownloadImage(fileID, fileAesKey string) (io.ReadCloser, error) {
-	raw, err := api.GetCore().Get("/api/cdn/download/image").Query("id", fileID, "key", fileAesKey).Do()
+	raw, err := api.GetCore().Get("/api/cdn/download/image").Query("id", fileID, "key", fileAesKey).DoBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -85,12 +85,12 @@ func (w remote) DownloadImage(fileID, fileAesKey string) (io.ReadCloser, error) 
 
 // DownloadVideoCover CDN 下载视频封面
 func (w remote) DownloadVideoCover(fileID, fileAesKey string) ([]byte, error) {
-	return api.GetCore().Get("/api/cdn/download/video/cover").Query("id", fileID, "key", fileAesKey).Do()
+	return api.GetCore().Get("/api/cdn/download/video/cover").Query("id", fileID, "key", fileAesKey).DoBinary()
 }
 
 // DownloadVideo CDN 下载聊天视频（返回 ReadCloser 流）
 func (w remote) DownloadVideo(fileID, fileAesKey string) (io.ReadCloser, error) {
-	raw, err := api.GetCore().Get("/api/cdn/download/video").Query("id", fileID, "key", fileAesKey).Do()
+	raw, err := api.GetCore().Get("/api/cdn/download/video").Query("id", fileID, "key", fileAesKey).DoBinary()
 	if err != nil {
 		return nil, err
 	}

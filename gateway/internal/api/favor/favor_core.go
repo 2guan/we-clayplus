@@ -3,6 +3,7 @@ package favorapi
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -78,16 +79,23 @@ func (w remote) Sync(key []byte) (*SyncFavorResponse, error) {
 		req = req.Query("key", base64.StdEncoding.EncodeToString(key))
 	}
 	var resp struct {
-		Items   []*SyncFavorItem `json:"items"`
-		Key     []byte           `json:"key"`
-		HasMore bool             `json:"hasMore"`
+		Items   *[]*SyncFavorItem `json:"items"`
+		Key     []byte            `json:"key"`
+		HasMore *bool             `json:"hasMore"`
+		Unknown []json.RawMessage `json:"unknown"`
 	}
 	if err := req.DoJson(&resp); err != nil {
 		return nil, err
 	}
+	if resp.Items == nil || resp.HasMore == nil {
+		return nil, fmt.Errorf("收藏同步回执不完整，未推进游标")
+	}
+	if len(resp.Unknown) != 0 {
+		return nil, fmt.Errorf("收藏同步包含尚未支持的命令，未推进游标")
+	}
 	return &SyncFavorResponse{
-		Items:   resp.Items,
+		Items:   *resp.Items,
 		Key:     resp.Key,
-		HasMore: resp.HasMore,
+		HasMore: *resp.HasMore,
 	}, nil
 }

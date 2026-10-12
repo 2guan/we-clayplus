@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.1 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.2 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.5.1
+go get github.com/we-clay/we-clay@v0.5.2
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -76,7 +76,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ```sh
 go mod init example.com/my-wechat-bot
-go get github.com/we-clay/we-clay@v0.5.1
+go get github.com/we-clay/we-clay@v0.5.2
 ```
 
 ### 2 · 调用 Run
@@ -211,7 +211,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.1
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.2
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -284,6 +284,8 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 </details>
 
 ## 当前状态
+
+**v0.5.2 补充检查接口回执、好友申请票据、收藏同步字段和媒体返回值**，详见[接口契约核对](docs/接口契约核对.md)。完成离线回归，尚未逐项真机复验。
 
 **13 个能力域，128 个 SDK 方法：52 个已接通，76 个仅保留占位。**
 另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。

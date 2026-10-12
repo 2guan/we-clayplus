@@ -55,7 +55,7 @@ func (s *managedService) Invoke(ctx context.Context, r *corewire.CallRequest) (*
 		if s.views.Load() < 2 {
 			return nil, status.Error(codes.FailedPrecondition, "login not ready")
 		}
-		body = `{"code":0,"data":{"userInfo":{"userName":"synthetic-managed-account"}}}`
+		body = `{"code":0,"data":{"baseResponse":{"code":0},"userInfo":{"userName":"synthetic-managed-account"}}}`
 	}
 	return &corewire.CallResponse{Status: 200, ContentType: "application/json", Body: []byte(body)}, nil
 }

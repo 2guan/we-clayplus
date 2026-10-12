@@ -27,6 +27,8 @@ message Contact {
   string alias = 4; // 微信号
   string avatar = 5; // 头像 URL
   ContactType type = 6; // 联系人类型
+  string v1 = 7; // 搜索返回的验证用户名；仅用于好友申请，不保证是可发消息的 wxid
+  string v2 = 8; // 搜索返回的 antispam_ticket；敏感票据，不应记录日志或持久化
   oneof data {
     Friend friend = 20; // 好友数据
     Chatroom chatroom = 21; // 群组数据

@@ -2,6 +2,7 @@
 package miniappability
 
 import (
+	"errors"
 	sdk "github.com/we-clay/we-clay/sdk/miniapp"
 
 	miniappapi "github.com/we-clay/we-clay/gateway/internal/api/miniapp"
@@ -90,8 +91,11 @@ func (a ability) UploadAvatarImg(appID, jpglink string) (*sdk.UploadAvatarImg_Re
 // GetRecord 获取小程序使用记录
 func (a ability) GetRecord() (*sdk.GetRecord_Response, error) {
 	resp, err := a.api.GetRecord()
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("miniapp 回执缺失，结果未确认")
 	}
 	result := resp.GetResult().GetValue()
 	status := resp.GetStatus()

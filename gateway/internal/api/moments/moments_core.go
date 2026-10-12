@@ -36,7 +36,7 @@ func (w remote) UserPage(username, firstPageMd5 string, maxId uint64) (*UserPage
 	var resp UserPageResponse
 	if err := api.GetCore().Get(fmt.Sprintf("/api/moments/user/%s", url.PathEscape(username))).
 		Query("first_page_md5", firstPageMd5, "max_id", maxId).
-		DoProto(&resp); err != nil {
+		DoProto(&resp, 207); err != nil { // SNS_RET_IS_ALL：正常的分页结束，保留数据和状态。
 		return nil, err
 	}
 	return &resp, nil

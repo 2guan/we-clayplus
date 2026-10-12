@@ -2,6 +2,7 @@
 package favorability
 
 import (
+	"errors"
 	sdk "github.com/we-clay/we-clay/sdk/favor"
 
 	favorapi "github.com/we-clay/we-clay/gateway/internal/api/favor"
@@ -20,8 +21,11 @@ func init() {
 // GetInfo 获取收藏容量信息
 func (a ability) GetInfo() (*sdk.GetInfo_Info, error) {
 	resp, err := a.api.GetInfo()
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("favor 回执缺失，结果未确认")
 	}
 	return &sdk.GetInfo_Info{
 		UsedSize:        resp.GetUsedSize(),
@@ -46,8 +50,11 @@ func (a ability) Delete(favId int32) error {
 // Sync 同步收藏列表
 func (a ability) Sync(key []byte) (*sdk.Sync_Response, error) {
 	resp, err := a.api.Sync(key)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("favor 回执缺失，结果未确认")
 	}
 	result := sdk.Sync_Response{
 		Items:   make([]*sdk.Item, 0, len(resp.Items)),
@@ -79,7 +86,10 @@ func mapSyncItem(item *favorapi.SyncFavorItem) *sdk.Item {
 		return nil
 	}
 	return &sdk.Item{
-		Id:     item.GetType(),
-		Object: item.GetObject(),
+		Type:       item.GetType(),
+		Object:     item.GetObject(),
+		ClientId:   item.GetClientId(),
+		SourceType: item.GetSourceType(),
+		SourceId:   item.GetSourceId(),
 	}
 }

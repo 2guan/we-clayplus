@@ -31,7 +31,7 @@ func TestGRPCMediaAdapters(t *testing.T) {
 			if h.Filename != "示例.txt" || string(b) != "test-file" || r.FormValue("receiver") != "test-peer" {
 				t.Error("wrong file request")
 			}
-			_, _ = io.WriteString(w, `{"code":0,"data":{"new_id":"9007199254740993","create_time":42}}`)
+			_, _ = io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"new_id":"9007199254740993","create_time":42}}`)
 		case "/api/message/forward/image", "/api/message/forward/video", "/api/message/forward/file":
 			var q map[string]string
 			if e := json.NewDecoder(r.Body).Decode(&q); e != nil {
@@ -40,7 +40,7 @@ func TestGRPCMediaAdapters(t *testing.T) {
 			if q["xml"] != "<msg>synthetic</msg>" || q["receiver"] != "test-peer" {
 				t.Error("wrong forward request")
 			}
-			_, _ = io.WriteString(w, `{"code":0,"data":{}}`)
+			_, _ = io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0}}}`)
 		case "/api/message/download/voice":
 			var q struct {
 				NewID      uint64 `json:"new_id"`
@@ -52,7 +52,7 @@ func TestGRPCMediaAdapters(t *testing.T) {
 			if e := d.Decode(&q); e != nil || q.NewID != id || q.Length != 123 {
 				t.Error("voice identity lost", e)
 			}
-			_, _ = io.WriteString(w, `{"code":0,"data":{}}`)
+			_, _ = io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0}}}`)
 		case "/api/message/download/file":
 			var q struct {
 				AttachID     string `json:"attach_id"`
@@ -66,7 +66,7 @@ func TestGRPCMediaAdapters(t *testing.T) {
 				t.Error("wrong attachment request")
 			}
 			data := bytes.Repeat([]byte{byte(q.Offset/32768 + 1)}, int(q.ChunkSize))
-			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": &DownloadFileResponse{Size: proto.Uint32(q.Size), Offset: proto.Uint32(q.Offset), ChunkSize: proto.Uint32(q.ChunkSize), Chunk: &baseapi.Buffer{Size: proto.Uint32(q.ChunkSize), Data: data}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": &DownloadFileResponse{BaseResponse: &baseapi.BaseResponse{Code: proto.Int32(0)}, Size: proto.Uint32(q.Size), Offset: proto.Uint32(q.Offset), ChunkSize: proto.Uint32(q.ChunkSize), Chunk: &baseapi.Buffer{Size: proto.Uint32(q.ChunkSize), Data: data}}})
 		case "/api/cdn/download/image", "/api/cdn/download/video":
 			if r.URL.Query().Get("id") != "test-file-id" || r.URL.Query().Get("key") != "test-key" {
 				t.Error("wrong CDN parameters")

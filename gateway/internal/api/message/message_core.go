@@ -245,7 +245,7 @@ func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64)
 
 // DownloadImg 下载消息图片
 func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error) {
-	b, err := w.core().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).Do()
+	b, err := w.core().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).DoBinary()
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (
 
 // DownloadVideo 下载视频
 func (w remote) DownloadVideo(receiver, fileId, aesKey string, totalSize uint32) (*DownloadVideoResponse, error) {
-	b, err := w.core().Get("/api/cdn/download/video").Query("id", fileId, "key", aesKey).Do()
+	b, err := w.core().Get("/api/cdn/download/video").Query("id", fileId, "key", aesKey).DoBinary()
 	if err != nil {
 		return nil, err
 	}

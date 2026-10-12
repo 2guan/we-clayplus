@@ -30,7 +30,7 @@ func TestSendThenRevokePreservesOriginalReceipt(t *testing.T) {
 	core := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/message/text":
-			io.WriteString(w, `{"code":0,"data":{"list":[{"code":0,"new_id":"9223372036854770001","client_id":"9007199254740993","create_time":1789890000}]}}`)
+			io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"list":[{"code":0,"new_id":"9223372036854770001","client_id":"9007199254740993","create_time":1789890000}]}}`)
 		case "/api/message/revoke":
 			revokes.Add(1)
 			var q struct {

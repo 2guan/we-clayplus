@@ -2,6 +2,7 @@
 package labelability
 
 import (
+	"errors"
 	sdk "github.com/we-clay/we-clay/sdk/label"
 
 	labelapi "github.com/we-clay/we-clay/gateway/internal/api/label"
@@ -19,8 +20,11 @@ func init() {
 // List 获取标签列表
 func (a ability) List() ([]*sdk.LabelPair, error) {
 	resp, err := a.api.List()
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("label 回执缺失，结果未确认")
 	}
 	labels := make([]*sdk.LabelPair, 0, len(resp.List))
 	for _, l := range resp.List {
@@ -32,20 +36,26 @@ func (a ability) List() ([]*sdk.LabelPair, error) {
 // Add 添加标签
 func (a ability) Add(name string) (*sdk.LabelPair, error) {
 	resp, err := a.api.Add(name)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
 	}
-	if resp.List != nil {
+	if resp == nil {
+		return nil, errors.New("label 回执缺失，结果未确认")
+	}
+	if resp.GetList().GetId() != 0 {
 		return mapPair(resp.List), nil
 	}
-	return &sdk.LabelPair{}, nil
+	return nil, errors.New("标签添加回执缺少标签 ID，结果未确认，请勿自动重试")
 }
 
 // Delete 删除标签
 func (a ability) Delete(labelIds string) (*sdk.Delete_Response, error) {
 	resp, err := a.api.Delete(labelIds)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("label 回执缺失，结果未确认")
 	}
 	return &sdk.Delete_Response{
 		Code:    resp.GetBaseResponse().GetCode(),
@@ -56,8 +66,11 @@ func (a ability) Delete(labelIds string) (*sdk.Delete_Response, error) {
 // Update 更新标签名称
 func (a ability) Update(labelId uint32, name string) (*sdk.Update_Response, error) {
 	resp, err := a.api.Update(labelId, name)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("label 回执缺失，结果未确认")
 	}
 	return &sdk.Update_Response{
 		Code:    resp.GetBaseResponse().GetCode(),
@@ -68,8 +81,11 @@ func (a ability) Update(labelId uint32, name string) (*sdk.Update_Response, erro
 // ModifyContactLabels 修改联系人标签
 func (a ability) ModifyContactLabels(usernames []string, labelIds string) (*sdk.ModifyContact_Response, error) {
 	resp, err := a.api.ModifyContactLabels(usernames, labelIds)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("label 回执缺失，结果未确认")
 	}
 	return &sdk.ModifyContact_Response{
 		Code:    resp.GetBaseResponse().GetCode(),

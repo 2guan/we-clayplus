@@ -18,7 +18,7 @@ func TestGRPCEnvelopeFailureAndNoRetry(t *testing.T) {
 		status     int
 		wantErr    bool
 	}{
-		{"success", `{"code":0,"data":{"code":0,"message":"ok"}}`, 200, false},
+		{"success", `{"code":0,"data":{"code":0,"result":{"code":0}}}`, 200, false},
 		{"rejected", `{"code":-1,"message":"rejected"}`, 200, true},
 		{"server error", `{"code":0}`, 500, true},
 		{"invalid response", `<html>login</html>`, 200, true},

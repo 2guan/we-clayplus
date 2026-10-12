@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"mime"
 
 	"time"
 )
@@ -67,7 +68,17 @@ func (r *Request) doGRPC() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeResponse(int(result.GetStatus()), result.GetContentType(), result.GetBody())
+	data, err := decodeResponse(int(result.GetStatus()), result.GetContentType(), result.GetBody())
+	if err != nil {
+		return nil, err
+	}
+	if r.binary {
+		kind, _, err := mime.ParseMediaType(result.GetContentType())
+		if err != nil || kind != "application/octet-stream" || len(data) == 0 {
+			return nil, fmt.Errorf("core media response missing or invalid")
+		}
+	}
+	return data, nil
 }
 func (c *Client) Events(ctx context.Context) (grpc.BidiStreamingClient[corewire.EventControl, corewire.CoreEvent], error) {
 	if c.rpc == nil {

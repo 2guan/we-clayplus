@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/we-clay/we-clay/gateway/internal/api"
+	contactapi "github.com/we-clay/we-clay/gateway/internal/api/contact"
 )
 
 // remote 群聊服务 远程实现（通过 gRPC 调用 core）
@@ -107,6 +108,17 @@ func (w remote) SetName(chatroomID, name string) (*OperateResponse, error) {
 	var resp OperateResponse
 	if err := api.GetCore().Put(fmt.Sprintf("/api/chatroom/name/%s", url.PathEscape(chatroomID))).Query("name", name).DoProto(&resp); err != nil {
 		return nil, err
+	}
+	if resp.GetResult().Code == nil {
+		// packed 命令状态经 JSON 丢失时，只读确认，不重发写操作。
+		detail, err := contactapi.Get().Detail([]string{chatroomID})
+		if err != nil {
+			return nil, fmt.Errorf("群名修改回执已收到，但读回失败，结果未确认，请勿自动重试: %w", err)
+		}
+		list := detail.GetContactList()
+		if len(list) != 1 || list[0].GetUsername().GetValue() != chatroomID || list[0].GetNickname().GetValue() != name {
+			return nil, fmt.Errorf("群名修改回执已收到，但读回不匹配，结果未确认，请勿自动重试")
+		}
 	}
 	return &resp, nil
 }

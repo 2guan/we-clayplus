@@ -39,7 +39,7 @@ func (s *fakeCore) Invoke(ctx context.Context, req *corewire.CallRequest) (*core
 	body := ""
 	switch req.GetPath() {
 	case "/api/user/profile":
-		body = fmt.Sprintf(`{"code":0,"data":{"userInfo":{"userName":"synthetic-account-%d","nickName":"离线测试"}}}`, s.account.Load())
+		body = fmt.Sprintf(`{"code":0,"data":{"baseResponse":{"code":0},"userInfo":{"userName":"synthetic-account-%d","nickName":"离线测试"}}}`, s.account.Load())
 	case "/api/contacts":
 		body = `{"code":0,"data":[]}`
 	default:

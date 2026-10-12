@@ -10,10 +10,14 @@ option go_package = "github.com/we-clay/we-clay/sdk/favor";
 message Item {
   uint32 id = 1; // 收藏 ID
   int32 status = 2; // 状态
-  string object = 3; // 收藏对象（JSON 格式）
+  string object = 3; // core 返回的原始收藏对象描述
   uint32 flag = 4; // 标志
   uint32 update_time = 5; // 更新时间（Unix 时间戳）
   uint32 update_seq = 6; // 更新序列号
+  uint32 type = 7; // 收藏类型，不能当成收藏 ID
+  string client_id = 8; // 同步记录的客户端标识
+  uint32 source_type = 9; // 来源类型
+  string source_id = 10; // 来源标识；同步记录没有收藏 ID 时 id 保持 0
 }
 
 // ==================== 服务定义 ====================

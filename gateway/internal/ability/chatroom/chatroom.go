@@ -59,7 +59,11 @@ func Initial(dataDir string) {
 				slog.Warn("[chatroom ability] 获取群组信息失败", "chatroom", item.Nickname, "err", err)
 				return
 			} else {
-				for _, info := range chatroom.ContactList[0].Members.List {
+				list := chatroom.GetContactList()
+				if len(list) == 0 {
+					return
+				}
+				for _, info := range list[0].GetMembers().GetList() {
 					cache := maputil.GetOrSet(instance.cache, item.Username, map[string]*sdk.Member{})
 					cache[info.GetUsername()] = &sdk.Member{
 						Username:        info.GetUsername(),
@@ -103,7 +107,7 @@ func Refresh(name string) error {
 	if chatroom, err := chatroomapi.Get().ListMembers(name); err != nil {
 		return fmt.Errorf("[chatroom ability] 获取群组 [%s] 信息失败: %w", name, err)
 	} else {
-		for _, info := range chatroom.Result.List {
+		for _, info := range chatroom.GetResult().GetList() {
 			instance.cache[name][info.GetUsername()] = &sdk.Member{
 				Username:        info.GetUsername(),
 				Nickname:        info.GetNickname(),
@@ -254,6 +258,9 @@ func (a *ability) GetQRCode(chatroom string) (*sdk.GetQRCode_Response, error) {
 	code, err := a.api.GetQRCode(chatroom)
 	if err != nil {
 		return nil, err
+	}
+	if code.GetQrcodeUrl() == "" && len(code.GetQrcodeBuffer().GetData()) == 0 {
+		return nil, fmt.Errorf("群二维码回执缺少二维码")
 	}
 	return &sdk.GetQRCode_Response{
 		Qrcode:        code.GetQrcodeBuffer().GetData(),

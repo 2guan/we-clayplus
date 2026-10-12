@@ -38,7 +38,7 @@ func (s *directCore) Invoke(ctx context.Context, req *corewire.CallRequest) (*co
 		s.mu.Unlock()
 		body := `{"code":0,"data":{"baseResponse":{"code":0}}}`
 		if req.GetPath() == "/api/message/text" || req.GetPath() == "/api/message/card" {
-			body = `{"code":0,"data":{"list":[{"newId":"9223372036854770011","clientId":"9007199254740993","createTime":1789890000}]}}`
+			body = `{"code":0,"data":{"base_response":{"code":0},"list":[{"newId":"9223372036854770011","clientId":"9007199254740993","createTime":1789890000}]}}`
 		}
 		if req.GetPath() == "/api/message/revoke" {
 			var q struct {

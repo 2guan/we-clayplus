@@ -2,6 +2,7 @@
 package userability
 
 import (
+	"errors"
 	"io"
 
 	sdk "github.com/we-clay/we-clay/sdk/user"
@@ -28,8 +29,11 @@ func init() {
 // GetProfile 获取个人信息
 func (a *ability) GetProfile() (*sdk.GetProfile_Response, error) {
 	resp, err := a.api.GetProfile()
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("user 回执缺失，结果未确认")
 	}
 	profile := mapProfile(resp.GetUserInfo(), resp.GetUserInfoExt())
 	return &sdk.GetProfile_Response{
@@ -51,8 +55,11 @@ func (a *ability) UploadAvatar(reader io.Reader) (*sdk.UploadAvatar_Response, er
 // GetQRCode 获取个人二维码
 func (a *ability) GetQRCode(style int32) (*sdk.GetQRCode_Response, error) {
 	resp, err := a.api.GetQRCode(style)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("user 回执缺失，结果未确认")
 	}
 	return &sdk.GetQRCode_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
@@ -108,8 +115,11 @@ func (a *ability) SendVerifyEmail() (*sdk.SendVerifyEmail_Response, error) {
 // GetSafetyInfo 获取安全设备列表
 func (a *ability) GetSafetyInfo() (*sdk.GetSafetyInfo_Response, error) {
 	resp, err := a.api.GetSafetyInfo()
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("user 回执缺失，结果未确认")
 	}
 	return &sdk.GetSafetyInfo_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
@@ -130,8 +140,11 @@ func (a *ability) ReportMotion(deviceID, deviceType string, stepCount int64) (*s
 // GetBoundHardDevices 获取绑定的硬件设备列表
 func (a *ability) GetBoundHardDevices() (*sdk.GetBoundHardDevices_Response, error) {
 	resp, err := a.api.GetBoundHardDevices()
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("user 回执缺失，结果未确认")
 	}
 	return &sdk.GetBoundHardDevices_Response{
 		BaseResult:   mapBaseResult(resp.GetBaseResponse()),

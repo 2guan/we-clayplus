@@ -89,6 +89,8 @@ type Contact struct {
 	Alias    string                 `protobuf:"bytes,4,opt,name=alias,proto3" json:"alias,omitempty"`                         // 微信号
 	Avatar   string                 `protobuf:"bytes,5,opt,name=avatar,proto3" json:"avatar,omitempty"`                       // 头像 URL
 	Type     ContactType            `protobuf:"varint,6,opt,name=type,proto3,enum=contact.ContactType" json:"type,omitempty"` // 联系人类型
+	V1       string                 `protobuf:"bytes,7,opt,name=v1,proto3" json:"v1,omitempty"`                               // 搜索返回的验证用户名；仅用于好友申请，不保证是可发消息的 wxid
+	V2       string                 `protobuf:"bytes,8,opt,name=v2,proto3" json:"v2,omitempty"`                               // 搜索返回的 antispam_ticket；敏感票据，不应记录日志或持久化
 	// Types that are valid to be assigned to Data:
 	//
 	//	*Contact_Friend
@@ -169,6 +171,20 @@ func (x *Contact) GetType() ContactType {
 		return x.Type
 	}
 	return ContactType_CONTACT_TYPE_UNSPECIFIED
+}
+
+func (x *Contact) GetV1() string {
+	if x != nil {
+		return x.V1
+	}
+	return ""
+}
+
+func (x *Contact) GetV2() string {
+	if x != nil {
+		return x.V2
+	}
+	return ""
 }
 
 func (x *Contact) GetData() isContact_Data {
@@ -1951,14 +1967,16 @@ var File_contact_contact_proto protoreflect.FileDescriptor
 
 const file_contact_contact_proto_rawDesc = "" +
 	"\n" +
-	"\x15contact/contact.proto\x12\acontact\"\xc6\x02\n" +
+	"\x15contact/contact.proto\x12\acontact\"\xe6\x02\n" +
 	"\aContact\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bnickname\x18\x02 \x01(\tR\bnickname\x12\x16\n" +
 	"\x06remark\x18\x03 \x01(\tR\x06remark\x12\x14\n" +
 	"\x05alias\x18\x04 \x01(\tR\x05alias\x12\x16\n" +
 	"\x06avatar\x18\x05 \x01(\tR\x06avatar\x12(\n" +
-	"\x04type\x18\x06 \x01(\x0e2\x14.contact.ContactTypeR\x04type\x12)\n" +
+	"\x04type\x18\x06 \x01(\x0e2\x14.contact.ContactTypeR\x04type\x12\x0e\n" +
+	"\x02v1\x18\a \x01(\tR\x02v1\x12\x0e\n" +
+	"\x02v2\x18\b \x01(\tR\x02v2\x12)\n" +
 	"\x06friend\x18\x14 \x01(\v2\x0f.contact.FriendH\x00R\x06friend\x12/\n" +
 	"\bchatroom\x18\x15 \x01(\v2\x11.contact.ChatroomH\x00R\bchatroom\x12/\n" +
 	"\bofficial\x18\x16 \x01(\v2\x11.contact.OfficialH\x00R\bofficialB\x06\n" +

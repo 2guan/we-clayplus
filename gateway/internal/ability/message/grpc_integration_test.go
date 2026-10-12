@@ -44,7 +44,7 @@ func TestGRPCFileReachesSeparateGRPCCore(t *testing.T) {
 		if header.Filename != "边界测试.txt" || r.FormValue("receiver") != "test-peer" || !bytes.Equal(data, payload) {
 			t.Error("file changed across transports")
 		}
-		_, _ = io.WriteString(w, `{"code":0,"data":{"new_id":"9007199254740993","create_time":42}}`)
+		_, _ = io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"new_id":"9007199254740993","create_time":42}}`)
 	}))
 	defer core.Close()
 	c, err := httpapi.NewGRPCClient(context.Background(), core.Address, "test-only")

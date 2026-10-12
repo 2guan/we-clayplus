@@ -3,6 +3,8 @@ package momentsability
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 
 	sdk "github.com/we-clay/we-clay/sdk/moments"
 
@@ -24,8 +26,11 @@ func init() {
 // Timeline 获取朋友圈时间线
 func (a ability) Timeline(firstPageMd5 string, maxId uint64) (*sdk.Timeline_Response, error) {
 	resp, err := a.api.Timeline(firstPageMd5, maxId)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.Timeline_Response{
 		BaseResult:            mapBaseResult(resp.GetBaseResponse()),
@@ -45,8 +50,11 @@ func (a ability) Timeline(firstPageMd5 string, maxId uint64) (*sdk.Timeline_Resp
 // UserPage 获取用户朋友圈主页
 func (a ability) UserPage(username, firstPageMd5 string, maxId uint64) (*sdk.UserPage_Response, error) {
 	resp, err := a.api.UserPage(username, firstPageMd5, maxId)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.UserPage_Response{
 		BaseResult:            mapBaseResult(resp.GetBaseResponse()),
@@ -66,8 +74,11 @@ func (a ability) UserPage(username, firstPageMd5 string, maxId uint64) (*sdk.Use
 // Detail 获取单条朋友圈详情
 func (a ability) Detail(id uint64) (*sdk.Detail_Response, error) {
 	resp, err := a.api.Detail(id)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.Detail_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
@@ -83,8 +94,11 @@ func (a ability) Comment(id uint64, content string, typ, replyCommentId int32) (
 // Like 点赞朋友圈
 func (a ability) Like(id uint64) (*sdk.Like_Response, error) {
 	resp, err := a.api.Like(id)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.Like_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
@@ -95,8 +109,16 @@ func (a ability) Like(id uint64) (*sdk.Like_Response, error) {
 // Unlike 取消点赞
 func (a ability) Unlike(id uint64) (*sdk.Unlike_Response, error) {
 	resp, err := a.api.Unlike(id)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
+	}
+	for _, code := range resp.GetList() {
+		if code != 0 {
+			return nil, fmt.Errorf("取消点赞失败，操作返回码 %d", code)
+		}
 	}
 	return &sdk.Unlike_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
@@ -118,8 +140,11 @@ func (a ability) DeleteComment(id uint64, commentId uint32) (*sdk.DeleteComment_
 // Post 发布朋友圈
 func (a ability) Post(content string, blacklist, withUsers []string) (*sdk.Post_Response, error) {
 	resp, err := a.api.Post(content, blacklist, withUsers)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.Post_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
@@ -131,8 +156,11 @@ func (a ability) Post(content string, blacklist, withUsers []string) (*sdk.Post_
 // Upload 上传朋友圈媒体
 func (a ability) Upload(data []byte) (*sdk.Upload_Response, error) {
 	resp, err := a.api.Upload(bytes.NewReader(data))
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.Upload_Response{
 		BaseResult:    mapBaseResult(resp.GetBaseResponse()),
@@ -150,8 +178,11 @@ func (a ability) Upload(data []byte) (*sdk.Upload_Response, error) {
 // Sync 同步朋友圈数据
 func (a ability) Sync(key []byte) (*sdk.Sync_Response, error) {
 	resp, err := a.api.Sync(key)
-	if resp == nil || err != nil {
+	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("moments 回执缺失，结果未确认")
 	}
 	return &sdk.Sync_Response{
 		BaseResult:   mapBaseResult(resp.GetBaseResponse()),

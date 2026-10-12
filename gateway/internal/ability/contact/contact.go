@@ -215,15 +215,9 @@ func (a *ability) List() []*sdk.Contact {
 
 // SetRemark 设置联系人备注
 func (a *ability) SetRemark(username, remark string) error {
-	if response, err := a.api.SetRemark(username, remark); err != nil {
-		return err
-	} else {
-		_ = sdk.SetRemark_Response{
-			Code:    response.GetCode(),
-			Message: string(response.GetResult().GetMessage()),
-		}
-		return nil
-	}
+	// 传输层已校验外层和命令状态；core 负责保留好友关系并读回备注。
+	_, err := a.api.SetRemark(username, remark)
+	return err
 }
 
 // AddFriend 发送好友申请
@@ -259,17 +253,19 @@ func (a *ability) BlacklistRemove(username string) error {
 // Search 搜索联系人
 func (a *ability) Search(keyword string, fromScene, searchScene uint32) *sdk.Contact {
 	search, err := a.api.Search(keyword, fromScene, searchScene)
-	if err != nil {
+	if err != nil || search.GetUsername().GetValue() == "" {
 		return nil
 	}
 	return &sdk.Contact{
-		Username: search.Username.Value,
-		Nickname: search.Nickname.Value,
+		Username: search.GetUsername().GetValue(),
+		Nickname: search.GetNickname().GetValue(),
 		Remark:   "",
 		Alias:    search.GetAlias(),
 		Avatar:   search.GetSmallAvatarUrl(),
 		Type:     sdk.ContactType_CONTACT_TYPE_FRIEND,
 		Data:     nil,
+		V1:       search.GetUsername().GetValue(),
+		V2:       search.GetAntispamTicket(),
 	}
 }
 

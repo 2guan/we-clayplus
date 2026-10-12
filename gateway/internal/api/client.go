@@ -32,6 +32,7 @@ type Request struct {
 	query                    url.Values
 	body                     []byte
 	err                      error
+	binary                   bool
 }
 
 func (r *Request) WithContext(ctx context.Context) *Request { r.ctx = ctx; return r }
@@ -123,6 +124,12 @@ func (r *Request) Do() ([]byte, error) {
 	}
 	return r.doGRPC()
 }
+
+// DoBinary 要求真实的媒体回执，拒绝把成功 JSON 信封保存成文件。
+func (r *Request) DoBinary() ([]byte, error) {
+	r.binary = true
+	return r.Do()
+}
 func decodeResponse(code int, contentType string, raw []byte) ([]byte, error) {
 	if code < 200 || code >= 300 {
 		// 只提取约定错误信封中的说明，不把 HTML、媒体或完整响应体写入错误。
@@ -155,22 +162,22 @@ func decodeResponse(code int, contentType string, raw []byte) ([]byte, error) {
 	}
 	return envelope.Data, nil
 }
-func (r *Request) DoProto(result proto.Message) error {
+func (r *Request) DoProto(result proto.Message, allowedCodes ...int32) error {
 	raw, err := r.Do()
 	if err != nil {
 		return err
 	}
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil
+	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return errors.New("core response data missing; result is unconfirmed")
 	}
 	if err = (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(raw, result); err == nil {
-		return nil
+		return validateReceipt(result, r.uri, allowedCodes)
 	}
 	proto.Reset(result)
 	if err = json.Unmarshal(raw, result); err != nil {
 		return errors.New("invalid core response data")
 	}
-	return nil
+	return validateReceipt(result, r.uri, allowedCodes)
 }
 func (r *Request) DoJson(result any) error {
 	raw, err := r.Do()
