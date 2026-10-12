@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/we-clay/we-clay/gateway/internal/api"
@@ -53,6 +54,12 @@ func (w remote) Detail(id uint64) (*DetailResponse, error) {
 
 // Comment 评论朋友圈
 func (w remote) Comment(id uint64, content string, typ, replyCommentId int32) (*CommentResponse, error) {
+	if id == 0 || typ <= 0 || replyCommentId < 0 {
+		return nil, fmt.Errorf("朋友圈 ID、评论类型必须大于 0，回复评论 ID 不能为负数")
+	}
+	if typ == 2 && strings.TrimSpace(content) == "" {
+		return nil, fmt.Errorf("文字评论内容不能为空")
+	}
 	var resp CommentResponse
 	if err := api.GetCore().Post(fmt.Sprintf("/api/moments/comment/%d", id)).Body(map[string]any{
 		"content":          content,

@@ -88,7 +88,20 @@ func (a ability) Detail(id uint64) (*sdk.Detail_Response, error) {
 
 // Comment 评论朋友圈
 func (a ability) Comment(id uint64, content string, typ, replyCommentId int32) (*sdk.Comment_Response, error) {
-	return nil, sdkroot.NotImplemented("moments.Comment")
+	resp, err := a.api.Comment(id, content, typ, replyCommentId)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("朋友圈评论回执缺失，结果未确认，请勿自动重试")
+	}
+	if object := resp.GetObject(); object != nil && object.Id != nil && object.GetId() != id {
+		return nil, errors.New("朋友圈评论回执对象不匹配，结果未确认，请勿自动重试")
+	}
+	return &sdk.Comment_Response{
+		BaseResult: mapBaseResult(resp.GetBaseResponse()),
+		Object:     mapMoment(resp.GetObject()),
+	}, nil
 }
 
 // Like 点赞朋友圈

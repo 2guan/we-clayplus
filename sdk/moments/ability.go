@@ -8,7 +8,8 @@ type Ability interface {
 	UserPage(username, firstPageMd5 string, maxId uint64) (*UserPage_Response, error)
 	// Detail 获取单条朋友圈详情
 	Detail(id uint64) (*Detail_Response, error)
-	// Comment 评论朋友圈
+	// Comment 评论朋友圈：文字留言 typ=2；普通留言 replyCommentId=0，回复填目标 CommentId。
+	// 透传现有 core 回执，不自动重试。已完成离线验证，仍待真实微信验收。
 	Comment(id uint64, content string, typ, replyCommentId int32) (*Comment_Response, error)
 	// Like 点赞朋友圈
 	Like(id uint64) (*Like_Response, error)

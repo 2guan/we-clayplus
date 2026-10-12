@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.3 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.4 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.5.3
+go get github.com/we-clay/we-clay@v0.5.4
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -60,7 +60,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 | **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回 | [message](sdk/message/ability.go) |
 | **联系人** | 查询、备注、搜索、好友申请与验证 | [contact](sdk/contact/ability.go) |
 | **群聊** | 创建、成员查询、邀请、群名、公告与管理 | [chatroom](sdk/chatroom/ability.go) |
-| **朋友圈** | 时间线、指定好友主页、发布、点赞与取消点赞；评论预留 | [moments](sdk/moments/ability.go) |
+| **朋友圈** | 时间线、指定好友主页、发布、点赞、取消点赞与评论 | [moments](sdk/moments/ability.go) |
 | **插件运行** | 生命周期、事件、命令、能力注入与会话 | [plugin](sdk/plugin) |
 
 这些是当前提供的接口，不代表每个接口都已完成真实账号验证。验证范围见[当前状态](#当前状态)。
@@ -76,7 +76,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ```sh
 go mod init example.com/my-wechat-bot
-go get github.com/we-clay/we-clay@v0.5.3
+go get github.com/we-clay/we-clay@v0.5.4
 ```
 
 ### 2 · 调用 Run
@@ -211,7 +211,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.3
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.4
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -285,9 +285,9 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 ## 当前状态
 
-**v0.5.3 接通头像上传**，提供[上传与非关键错误处理示例](docs/直接接入.md#上传当前账号头像)。头像上传已完成离线契约验证，待真机验收；此前接口修复见[接口契约核对](docs/接口契约核对.md)。
+**v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
-**13 个能力域，128 个 SDK 方法：53 个已接通，75 个仅保留占位。**
+**13 个能力域，128 个 SDK 方法：54 个已接通，74 个仅保留占位。**
 另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。
 
 - **历史真机记录**：Mac 模式下，核心链路已测试消息媒体、联系人、群聊、标签、朋友圈等操作，具体范围见下表后的说明。
@@ -304,7 +304,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Download` | — |
 | `Contact` · 联系人 | `Get`、`List`、`GetSelf`、`SetRemark`、`AddFriend`、`VerifyFriend`、`Search`、`GetOwner` | `Delete`、`BlacklistAdd`、`BlacklistRemove` |
 | `Chatroom` · 群聊 | `Create`、`GetInfo`、`GetQRCode`、`InviteMember`、`SetName`、`SetAnnouncement`、`SetRemark`、`Save`、`SetAdmin`、`ListMembers`、`GetMember`、`GetMembersDetail` | `FacingCreate`、`AddMember`、`RemoveMember`、`RemoveAdmin`、`TransferOwner`、`Quit`、`ScanJoin`、`ScanJoinEnterprise`、`ConsentJoin` |
-| `Moments` · 朋友圈 | `Timeline`、`UserPage`、`Detail`、`Like`、`Unlike`、`Post`、`Upload`、`Sync` | `Comment`、`Delete`、`DeleteComment`、`SetPrivacy` |
+| `Moments` · 朋友圈 | `Timeline`、`UserPage`、`Detail`、`Comment`、`Like`、`Unlike`、`Post`、`Upload`、`Sync` | `Delete`、`DeleteComment`、`SetPrivacy` |
 | `CDN` · 媒体 CDN | `UploadImage`、`UploadVideo`、`DownloadImage`、`DownloadVideo`、`UploadMomentsImage`、`DownloadVideoCover` | `UploadMomentsVideo`、`DownloadMomentsVideo` |
 | `Favor` · 收藏 | `GetInfo`、`Sync` | `GetItem`、`Delete` |
 | `Label` · 标签 | `List`、`Add`、`Delete`、`Update`、`ModifyContactLabels` | — |
@@ -325,7 +325,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | 消息 | 文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；部分媒体仅回执或格式校验。 |
 | 联系人 | 查询、保留好友关系的备注修改、群来源好友申请及接受申请已在历史 Mac 会话读回；GetOwner 为本地配置查询。 |
 | 群聊 | 建群、查询、邀请及入群读回、群名/公告/备注/通讯录保存、设置管理员有历史验收；缓存和适配层仍需当前版本真机复验。 |
-| 朋友圈 | 历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；其他发布类型和部分权限参数未完整验证。 |
+| 朋友圈 | 历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；评论与回复已接通，待真机验收；其他发布类型和部分权限参数未完整验证。 |
 | 媒体 CDN | 聊天图片/视频/封面往返字节一致、朋友圈图片上传通过；朋友圈视频上传曾返回 -5103015。 |
 | 收藏 | 仅容量和空列表同步通过；单项详情及删除未测。 |
 | 标签 | 完整标签生命周期及好友标签读回、恢复通过。 |

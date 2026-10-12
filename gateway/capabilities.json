@@ -64,6 +64,7 @@
       "Timeline",
       "UserPage",
       "Detail",
+      "Comment",
       "Like",
       "Unlike",
       "Post",
@@ -71,12 +72,11 @@
       "Sync"
     ],
     "placeholder": [
-      "Comment",
       "Delete",
       "DeleteComment",
       "SetPrivacy"
     ],
-    "evidence": "历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；其他发布类型和部分权限参数未完整验证"
+    "evidence": "历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；评论/回复于 v0.5.4 接通并完成离线验证，待真机验收；其他发布类型和部分权限参数未完整验证"
   },
   "cdn": {
     "label": "媒体 CDN",
