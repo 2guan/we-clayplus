@@ -127,6 +127,10 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings", s.AuthMiddleware(s.handleSettingsGet))
 	mux.HandleFunc("POST /api/settings", s.RequireAdmin(s.handleSettingsSave))
 
+	// AI 权限矩阵与全维度拟人延时配置
+	mux.HandleFunc("GET /api/settings/matrix", s.AuthMiddleware(s.handleMatrixSettingsGet))
+	mux.HandleFunc("POST /api/settings/matrix", s.RequireAdmin(s.handleMatrixSettingsSave))
+
 	// 实时 SSE 推送管道（携带 URL query token 校验）
 	mux.HandleFunc("GET /api/sse", s.AuthMiddleware(s.sse.ServeHTTP))
 

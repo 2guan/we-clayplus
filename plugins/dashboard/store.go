@@ -6,6 +6,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,6 +126,13 @@ func (s *Store) initTables() error {
 	);
 	INSERT OR IGNORE INTO system_settings (id, site_title, footer_text) 
 	VALUES (1, 'we-clay 机器人控制台', '© 2026 we-clayplus · 微信协议自动化运行系统');
+
+	-- 6. AI能力授权矩阵与全维度拟人延时设置表
+	CREATE TABLE IF NOT EXISTS ai_matrix_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		data_json TEXT NOT NULL,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	_, err := s.db.Exec(schema)
 	return err
@@ -640,5 +648,46 @@ func (s *Store) SaveSettings(cfg *SystemSettings) error {
 // SaveChatMessage 是 AppendChatMessage 的简便别名
 func (s *Store) SaveChatMessage(msg *ChatMessage) error {
 	return s.AppendChatMessage(msg)
+}
+
+// GetAIMatrixSettings 获取 AI 权限矩阵与全维度拟人延时配置
+func (s *Store) GetAIMatrixSettings() (*AIMatrixSettings, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var dataJSON string
+	err := s.db.QueryRow(`SELECT data_json FROM ai_matrix_settings WHERE id = 1`).Scan(&dataJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			def := DefaultAIMatrixSettings()
+			return &def, nil
+		}
+		return nil, err
+	}
+
+	var res AIMatrixSettings
+	if err := json.Unmarshal([]byte(dataJSON), &res); err != nil {
+		def := DefaultAIMatrixSettings()
+		return &def, nil
+	}
+	return &res, nil
+}
+
+// SaveAIMatrixSettings 保存 AI 权限矩阵与全维度拟人延时配置
+func (s *Store) SaveAIMatrixSettings(cfg *AIMatrixSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dataBytes, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT INTO ai_matrix_settings (id, data_json, updated_at)
+		VALUES (1, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET data_json = excluded.data_json, updated_at = excluded.updated_at`,
+		string(dataBytes), time.Now())
+	return err
 }
 

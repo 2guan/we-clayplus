@@ -330,3 +330,47 @@ func TestMultiModalContentExtraction(t *testing.T) {
 		t.Errorf("表情包提取失败: %+v", parts)
 	}
 }
+
+// TestFormatDynamicGreeting 测试动态微信昵称插值与遗留助理硬编码消除
+func TestFormatDynamicGreeting(t *testing.T) {
+	tpl := "你好呀！我是{昵称}，很高兴认识你~"
+	formatted := formatDynamicGreeting(tpl, "小美")
+	if formatted != "你好呀！我是小美，很高兴认识你~" {
+		t.Errorf("动态昵称替换错误: %s", formatted)
+	}
+
+	// 测试空昵称回退为 "我"
+	formattedEmpty := formatDynamicGreeting(tpl, "")
+	if formattedEmpty != "你好呀！我是我，很高兴认识你~" {
+		t.Errorf("空昵称回退错误: %s", formattedEmpty)
+	}
+
+	// 测试遗留硬编码词替换
+	legacyTpl := "你好，我是微信助理，也是你的智能管家！欢迎添加智能微信助理与智能助理。"
+	formattedLegacy := formatDynamicGreeting(legacyTpl, "小美")
+	expected := "你好，我是小美，也是你的小美！欢迎添加小美与小美。"
+	if formattedLegacy != expected {
+		t.Errorf("遗留助理词替换错误: 实际=%s, 期望=%s", formattedLegacy, expected)
+	}
+}
+
+// TestVerifyFriendMatrixConfigDelays 测试好友申请两阶段延时配置与默认值
+func TestVerifyFriendMatrixConfigDelays(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// 验证默认好友验证配置包含两阶段延时
+	if cfg.Matrix.VerifyFriend.MinVerifyDelaySec <= 0 || cfg.Matrix.VerifyFriend.MaxVerifyDelaySec <= 0 {
+		t.Errorf("VerifyFriend 审核等待延时配置未正确设置默认值: min=%d, max=%d",
+			cfg.Matrix.VerifyFriend.MinVerifyDelaySec, cfg.Matrix.VerifyFriend.MaxVerifyDelaySec)
+	}
+
+	if cfg.Matrix.VerifyFriend.MinDelaySec <= 0 || cfg.Matrix.VerifyFriend.MaxDelaySec <= 0 {
+		t.Errorf("VerifyFriend 打招呼等待延时配置未正确设置默认值: min=%d, max=%d",
+			cfg.Matrix.VerifyFriend.MinDelaySec, cfg.Matrix.VerifyFriend.MaxDelaySec)
+	}
+
+	if strings.Contains(cfg.Matrix.VerifyFriend.AutoGreet, "智能微信助理") || strings.Contains(cfg.Matrix.VerifyFriend.AutoGreet, "微信助理") {
+		t.Errorf("默认 AutoGreet 包含硬编码助理词: %s", cfg.Matrix.VerifyFriend.AutoGreet)
+	}
+}
+

@@ -72,6 +72,13 @@ func (p *Pipeline) HandleEvent(event *plugin.Event) (bool, error) {
 
 	rawMsg := msgPayload.Message
 
+	// 动态热同步控制台保存的最新权限矩阵与延时配置
+	if p.auditor != nil {
+		if err := p.auditor.LoadMatrixSettingsFromDB(&p.cfg.Matrix); err == nil {
+			p.matrix.UpdateConfig(p.cfg.Matrix)
+		}
+	}
+
 	// 1. 获取微信自身登录账号信息
 	var (
 		selfUsername string
@@ -357,15 +364,27 @@ func (p *Pipeline) handlePatSystemTip(
 		return true, nil
 	}
 
-	// 1. 若配置开启被拍互拍，执行拍一拍反拍
+	// 1. 若配置开启被拍互拍，执行拍一拍反拍 (带有拟人生理反应延时)
 	if p.cfg.Matrix.Pat.Enabled && p.cfg.Matrix.Pat.PatBack {
 		if p.matrix.CheckPatAllowed(senderID) {
-			slog.Info("[pipeline] 触发反拍互动", "target", senderID)
-			// 发送幽默拍一拍回复
-			reply := fmt.Sprintf("拍了拍 @%s ，并对你眨了眨眼~", senderName)
-			_, _ = p.message.Send(&message.Message{
-				Receiver: &contactsdk.Contact{Username: sessionID},
-				Content:  reply,
+			targetSession := sessionID
+			targetSenderName := senderName
+			minPatDelay := p.cfg.Matrix.Pat.MinDelaySec
+			if minPatDelay <= 0 {
+				minPatDelay = 2
+			}
+			maxPatDelay := p.cfg.Matrix.Pat.MaxDelaySec
+			if maxPatDelay < minPatDelay {
+				maxPatDelay = minPatDelay + 4
+			}
+			_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("反拍互动-%s", senderID), minPatDelay, maxPatDelay, func() error {
+				slog.Info("[pipeline] 拟人延时触发反拍互动", "target", senderID)
+				reply := fmt.Sprintf("拍了拍 @%s ，并对你眨了眨眼~", targetSenderName)
+				_, sErr := p.message.Send(&message.Message{
+					Receiver: &contactsdk.Contact{Username: targetSession},
+					Content:  reply,
+				})
+				return sErr
 			})
 		}
 	}
@@ -381,7 +400,7 @@ func (p *Pipeline) handlePatSystemTip(
 	return true, nil
 }
 
-// handleVerifyFriendEvent 自动审核新好友申请
+// handleVerifyFriendEvent 自动审核新好友申请 (严格执行两阶段拟人延时：先延时审核，再延时打招呼)
 func (p *Pipeline) handleVerifyFriendEvent(msg *message.Message) (bool, error) {
 	if !p.cfg.Matrix.VerifyFriend.Enabled {
 		return true, nil
@@ -402,31 +421,70 @@ func (p *Pipeline) handleVerifyFriendEvent(msg *message.Message) (bool, error) {
 		v1 = msg.Sender.GetUsername()
 	}
 
-	if p.contact == nil {
+	if p.contact == nil || p.matrix == nil {
 		return true, nil
 	}
 
-	// 通过好友验证
-	err := p.contact.VerifyFriend(v1, v2, 6)
-	if err != nil {
-		slog.Error("[pipeline] 自动通过好友验证失败", "err", err)
-		return true, nil
+	// 获取自身微信真实昵称，用于动态欢迎语
+	selfNickname := ""
+	if self := p.contact.GetSelf(); self != nil {
+		selfNickname = self.Nickname
 	}
-	slog.Info("[pipeline] 自动通过好友验证成功", "username", v1)
 
-	// 延时 20s~45s 发送个性化欢迎打招呼语
-	greet := p.cfg.Matrix.VerifyFriend.AutoGreet
-	if greet != "" && p.matrix != nil {
-		targetUser := v1
-		minDelay := p.cfg.Matrix.VerifyFriend.MinDelaySec
-		maxDelay := p.cfg.Matrix.VerifyFriend.MaxDelaySec
-		_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("新好友打招呼-%s", targetUser), minDelay, maxDelay, func() error {
-			_, sErr := p.message.Send(&message.Message{
-				Receiver: &contactsdk.Contact{Username: targetUser},
-				Content:  greet,
+	targetUser := v1
+	targetV2 := v2
+
+	minVerify := p.cfg.Matrix.VerifyFriend.MinVerifyDelaySec
+	if minVerify <= 0 {
+		minVerify = 30
+	}
+	maxVerify := p.cfg.Matrix.VerifyFriend.MaxVerifyDelaySec
+	if maxVerify < minVerify {
+		maxVerify = minVerify + 30
+	}
+
+	greetTpl := p.cfg.Matrix.VerifyFriend.AutoGreet
+	if greetTpl == "" {
+		greetTpl = "你好呀！我是{昵称}，很高兴认识你~"
+	}
+	greet := formatDynamicGreeting(greetTpl, selfNickname)
+
+	minGreet := p.cfg.Matrix.VerifyFriend.MinDelaySec
+	if minGreet <= 0 {
+		minGreet = 20
+	}
+	maxGreet := p.cfg.Matrix.VerifyFriend.MaxDelaySec
+	if maxGreet < minGreet {
+		maxGreet = minGreet + 25
+	}
+
+	// 阶段一：收到好友申请后，先在拟人队列中等待延时（模拟真人查看微信并点击通过）
+	err := p.matrix.EnqueueHumanTask(fmt.Sprintf("延时通过好友申请-%s", targetUser), minVerify, maxVerify, func() error {
+		if p.contact == nil {
+			return fmt.Errorf("联系人能力未就绪")
+		}
+		vErr := p.contact.VerifyFriend(targetUser, targetV2, 6)
+		if vErr != nil {
+			slog.Error("[pipeline] 自动通过好友验证失败", "username", targetUser, "err", vErr)
+			return vErr
+		}
+		slog.Info("[pipeline] 拟人延时通过好友申请成功", "username", targetUser)
+
+		// 阶段二：通过后，再延时发送个性化欢迎打招呼语
+		if greet != "" && p.message != nil {
+			_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("新好友打招呼-%s", targetUser), minGreet, maxGreet, func() error {
+				_, sErr := p.message.Send(&message.Message{
+					Receiver: &contactsdk.Contact{Username: targetUser},
+					Content:  greet,
+				})
+				return sErr
 			})
-			return sErr
-		})
+		}
+		return nil
+	})
+
+	if err != nil {
+		slog.Warn("[pipeline] 排队延时通过好友申请失败", "err", err)
 	}
 
 	return true, nil
@@ -524,7 +582,7 @@ func (p *Pipeline) executeChatWorkflow(
 	}
 
 	// 6. 执行被解析的各项底层 Action 指令
-	p.dispatchParsedActions(sessionID, parsed)
+	p.dispatchParsedActions(sessionID, botNickname, parsed)
 
 	// 7. 更新上下文记忆
 	p.memory.Append(sessionID, currentUserMsg, contextRounds)
@@ -547,15 +605,35 @@ func (p *Pipeline) executeChatWorkflow(
 }
 
 // dispatchParsedActions 分发由大模型生成的各项微信底层操作指令
-func (p *Pipeline) dispatchParsedActions(sessionID string, parsed *ParsedActionResult) {
-	// 1. 拍一拍操作
+func (p *Pipeline) dispatchParsedActions(sessionID, botNickname string, parsed *ParsedActionResult) {
+	// 1. 拍一拍操作 (拟人延迟)
 	for _, target := range parsed.PatTargets {
 		if p.matrix.CheckPatAllowed(target) {
 			slog.Info("[pipeline] 执行大模型拍一拍指令", "target", target)
+			minPatDelay := p.cfg.Matrix.Pat.MinDelaySec
+			if minPatDelay <= 0 {
+				minPatDelay = 2
+			}
+			maxPatDelay := p.cfg.Matrix.Pat.MaxDelaySec
+			if maxPatDelay < minPatDelay {
+				maxPatDelay = minPatDelay + 4
+			}
+			targetUser := target
+			_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("指令拍一拍-%s", targetUser), minPatDelay, maxPatDelay, func() error {
+				if p.message != nil {
+					reply := fmt.Sprintf("拍了拍 @%s", targetUser)
+					_, sErr := p.message.Send(&message.Message{
+						Receiver: &contactsdk.Contact{Username: sessionID},
+						Content:  reply,
+					})
+					return sErr
+				}
+				return nil
+			})
 		}
 	}
 
-	// 2. 群内加好友指令 (进入 30s~60s 拟人等待队列)
+	// 2. 群内加好友指令 (进入拟人等待队列)
 	for _, task := range parsed.AddFriendTasks {
 		if p.matrix.CheckAddFriendAllowed() && p.contact != nil {
 			uID := task.UserID
@@ -563,8 +641,15 @@ func (p *Pipeline) dispatchParsedActions(sessionID string, parsed *ParsedActionR
 			if greet == "" {
 				greet = p.cfg.Matrix.AddFriend.GreetTemplate
 			}
+			greet = formatDynamicGreeting(greet, botNickname)
 			minWait := p.cfg.Matrix.AddFriend.MinWaitSec
+			if minWait <= 0 {
+				minWait = 30
+			}
 			maxWait := p.cfg.Matrix.AddFriend.MaxWaitSec
+			if maxWait < minWait {
+				maxWait = minWait + 30
+			}
 
 			_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("加好友-%s", uID), minWait, maxWait, func() error {
 				return p.contact.AddFriend(uID, "", greet, 2, 14)
@@ -572,7 +657,64 @@ func (p *Pipeline) dispatchParsedActions(sessionID string, parsed *ParsedActionR
 		}
 	}
 
-	// 3. 消息自我纠错撤回
+	// 3. 好友审核指令 (严格执行两阶段拟人延时：先延时审核，再延时打招呼)
+	for _, task := range parsed.VerifyFriendTasks {
+		if p.cfg.Matrix.VerifyFriend.Enabled && p.contact != nil {
+			targetUser := task.V1
+			targetV2 := task.V2
+			greet := task.Greet
+			if greet == "" {
+				greet = p.cfg.Matrix.VerifyFriend.AutoGreet
+			}
+			if greet == "" {
+				greet = "你好呀！我是{昵称}，很高兴认识你~"
+			}
+			greet = formatDynamicGreeting(greet, botNickname)
+
+			minVerify := p.cfg.Matrix.VerifyFriend.MinVerifyDelaySec
+			if minVerify <= 0 {
+				minVerify = 30
+			}
+			maxVerify := p.cfg.Matrix.VerifyFriend.MaxVerifyDelaySec
+			if maxVerify < minVerify {
+				maxVerify = minVerify + 30
+			}
+
+			minGreet := p.cfg.Matrix.VerifyFriend.MinDelaySec
+			if minGreet <= 0 {
+				minGreet = 20
+			}
+			maxGreet := p.cfg.Matrix.VerifyFriend.MaxDelaySec
+			if maxGreet < minGreet {
+				maxGreet = minGreet + 25
+			}
+
+			_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("指令延时通过好友申请-%s", targetUser), minVerify, maxVerify, func() error {
+				if p.contact == nil {
+					return fmt.Errorf("联系人能力未就绪")
+				}
+				vErr := p.contact.VerifyFriend(targetUser, targetV2, 6)
+				if vErr != nil {
+					slog.Error("[pipeline] 指令通过好友验证失败", "username", targetUser, "err", vErr)
+					return vErr
+				}
+				slog.Info("[pipeline] 指令拟人延时通过好友申请成功", "username", targetUser)
+
+				if greet != "" && p.message != nil {
+					_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("指令新好友打招呼-%s", targetUser), minGreet, maxGreet, func() error {
+						_, sErr := p.message.Send(&message.Message{
+							Receiver: &contactsdk.Contact{Username: targetUser},
+							Content:  greet,
+						})
+						return sErr
+					})
+				}
+				return nil
+			})
+		}
+	}
+
+	// 4. 消息自我纠错撤回
 	for _, task := range parsed.RevokeTasks {
 		if p.cfg.Matrix.Revoke.Enabled && p.message != nil {
 			msgIDUint, err := strconv.ParseUint(task.MsgID, 10, 64)
@@ -580,16 +722,23 @@ func (p *Pipeline) dispatchParsedActions(sessionID string, parsed *ParsedActionR
 				slog.Info("[pipeline] 执行消息撤回指令", "msg_id", task.MsgID)
 				_, _ = p.message.Revoke(sessionID, msgIDUint)
 				if p.cfg.Matrix.Revoke.AutoApologize && task.Explanation != "" {
-					_, _ = p.message.Send(&message.Message{
-						Receiver: &contactsdk.Contact{Username: sessionID},
-						Content:  task.Explanation,
+					apologizeDelay := p.cfg.Matrix.Revoke.ApologizeDelaySec
+					if apologizeDelay <= 0 {
+						apologizeDelay = 2
+					}
+					_ = p.matrix.EnqueueHumanTask(fmt.Sprintf("撤回致歉-%s", sessionID), apologizeDelay, apologizeDelay+2, func() error {
+						_, sErr := p.message.Send(&message.Message{
+							Receiver: &contactsdk.Contact{Username: sessionID},
+							Content:  formatDynamicGreeting(task.Explanation, botNickname),
+						})
+						return sErr
 					})
 				}
 			}
 		}
 	}
 
-	// 4. 修改好友备注
+	// 5. 修改好友备注
 	for _, task := range parsed.SetRemarkTasks {
 		if p.cfg.Matrix.SetRemark.Enabled && p.contact != nil {
 			slog.Info("[pipeline] 执行修改备注指令", "user", task.UserID, "remark", task.Remark)
@@ -597,7 +746,7 @@ func (p *Pipeline) dispatchParsedActions(sessionID string, parsed *ParsedActionR
 		}
 	}
 
-	// 5. 设置群公告
+	// 6. 设置群公告
 	for _, task := range parsed.Announcements {
 		if p.cfg.Matrix.ChatroomAdmin.Enabled && p.chatroom != nil {
 			slog.Info("[pipeline] 执行设置群公告指令", "room", task.ChatroomID)
@@ -605,11 +754,28 @@ func (p *Pipeline) dispatchParsedActions(sessionID string, parsed *ParsedActionR
 		}
 	}
 
-	// 6. 违规踢人
+	// 7. 违规踢人
 	for _, task := range parsed.KickTasks {
 		if p.cfg.Matrix.ChatroomAdmin.Enabled && p.chatroom != nil {
 			slog.Warn("[pipeline] 执行群管移出成员指令", "room", task.ChatroomID, "member", task.UserID, "reason", task.Reason)
 			_, _ = p.chatroom.RemoveMember(task.ChatroomID, []string{task.UserID})
 		}
 	}
+}
+
+// formatDynamicGreeting 动态格式化欢迎语，将 {昵称} 及遗留的硬编码助理字眼替换为实际获取的微信真实昵称
+func formatDynamicGreeting(tpl, selfNickname string) string {
+	if strings.TrimSpace(tpl) == "" {
+		return ""
+	}
+	nick := strings.TrimSpace(selfNickname)
+	if nick == "" {
+		nick = "我"
+	}
+	res := strings.ReplaceAll(tpl, "{昵称}", nick)
+	res = strings.ReplaceAll(res, "智能微信助理", nick)
+	res = strings.ReplaceAll(res, "微信助理", nick)
+	res = strings.ReplaceAll(res, "智能助理", nick)
+	res = strings.ReplaceAll(res, "智能管家", nick)
+	return res
 }

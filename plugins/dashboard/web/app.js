@@ -1001,7 +1001,7 @@ function renderPresetPrompts() {
   const grid = document.getElementById('preset-prompts-grid');
   if (!grid) return;
   const presets = [
-    { name: '温柔体贴智能助理', desc: '语气亲切有耐心，擅长日程答疑、天气提醒与生活常识解答。' },
+    { name: '温柔体贴知心好友', desc: '语气亲切有耐心，擅长生活倾听、日常答疑与温暖陪伴。' },
     { name: '硬核技术工程师', desc: '言简意赅，擅长 Go / Python / Linux 协议与架构代码调试。' },
     { name: '风趣幽默好伙伴', desc: '金句频出、善于调侃与共情，擅长群聊破冰和氛围活跃。' },
   ];
@@ -1033,7 +1033,7 @@ function aiRefinePrompt() {
   }
   showToast('正在调用大模型重构提示词...', 'info');
   setTimeout(() => {
-    area.value = `你是一名专业且可靠的智能管家。在与用户的微信交互中，请遵循以下原则：\n1. 语言自然得体，避免机械化AI应答模板。\n2. 深入理解用户需求，优先给出清晰精确的解答。\n3. 保守用户隐私，遵循平台安全准则。`;
+    area.value = `你在微信日常交互中请遵循以下原则：\n1. 语言自然得体，完全以真实朋友口吻交流，严禁自称AI、助理或机器人。\n2. 深入理解好友意图，给出清晰贴心、真实有趣的解答。\n3. 保守隐私，遵循平台安全准则。`;
     showToast('提示词已完成专业化润色！', 'success');
   }, 1200);
 }
@@ -1050,62 +1050,135 @@ function saveModelOrder() {
   showToast('模型调用链优先级已保存', 'success');
 }
 
-function saveMatrixConfig() {
+async function saveMatrixConfig() {
   const matrix = {
     moments_enabled: document.getElementById('matrix-moments-enabled')?.checked ?? true,
     moments_times: document.getElementById('matrix-moments-times')?.value || '18:00',
     moments_min_wait: parseInt(document.getElementById('matrix-moments-min-wait')?.value || '30', 10),
     moments_max_wait: parseInt(document.getElementById('matrix-moments-max-wait')?.value || '60', 10),
+    moments_max_ops: parseInt(document.getElementById('matrix-moments-max-ops')?.value || '15', 10),
     like_threshold: parseInt(document.getElementById('matrix-like-threshold')?.value || '60', 10),
+
     add_friend_enabled: document.getElementById('matrix-add-friend-enabled')?.checked ?? false,
     add_friend_msg: document.getElementById('matrix-add-friend-msg')?.value || '',
     add_friend_limit: parseInt(document.getElementById('matrix-add-friend-limit')?.value || '10', 10),
+    add_friend_min_wait: parseInt(document.getElementById('matrix-add-friend-min-wait')?.value || '30', 10),
+    add_friend_max_wait: parseInt(document.getElementById('matrix-add-friend-max-wait')?.value || '60', 10),
+
     auto_verify: document.getElementById('matrix-auto-verify')?.checked ?? true,
     verify_keyword: document.getElementById('matrix-verify-keyword')?.value || '',
+    verify_min_delay: parseInt(document.getElementById('matrix-verify-min-delay')?.value || '30', 10),
+    verify_max_delay: parseInt(document.getElementById('matrix-verify-max-delay')?.value || '90', 10),
     verify_greet: document.getElementById('matrix-verify-greet')?.value || '',
+    greet_min_delay: parseInt(document.getElementById('matrix-greet-min-delay')?.value || '20', 10),
+    greet_max_delay: parseInt(document.getElementById('matrix-greet-max-delay')?.value || '45', 10),
+
     pat_back: document.getElementById('matrix-pat-back')?.checked ?? true,
-    pat_cooldown: parseInt(document.getElementById('matrix-pat-cooldown')?.value || '300', 10),
     pat_proactive: document.getElementById('matrix-pat-proactive')?.checked ?? true,
+    pat_cooldown: parseInt(document.getElementById('matrix-pat-cooldown')?.value || '300', 10),
+    pat_min_delay: parseInt(document.getElementById('matrix-pat-min-delay')?.value || '2', 10),
+    pat_max_delay: parseInt(document.getElementById('matrix-pat-max-delay')?.value || '6', 10),
+
     revoke_enabled: document.getElementById('matrix-revoke-enabled')?.checked ?? true,
     revoke_window: parseInt(document.getElementById('matrix-revoke-window')?.value || '120', 10),
+    revoke_auto_apologize: document.getElementById('matrix-revoke-auto-apologize')?.checked ?? true,
+    revoke_apologize_delay: parseInt(document.getElementById('matrix-revoke-apologize-delay')?.value || '3', 10),
+
     at_mode: document.getElementById('matrix-at-mode')?.value || 'smart',
     typing_simulate: document.getElementById('matrix-typing-simulate')?.checked ?? true,
+    typing_min_ms: parseInt(document.getElementById('matrix-typing-min-ms')?.value || '1500', 10),
+    typing_max_ms: parseInt(document.getElementById('matrix-typing-max-ms')?.value || '4500', 10),
+
     set_remark_enabled: document.getElementById('matrix-set-remark-enabled')?.checked ?? false,
     remark_template: document.getElementById('matrix-remark-template')?.value || '',
+
     chatroom_admin_enabled: document.getElementById('matrix-chatroom-admin-enabled')?.checked ?? false,
     chatroom_kick_words: document.getElementById('matrix-chatroom-kick-words')?.value || '',
+
+    voice_enabled: document.getElementById('matrix-voice-enabled')?.checked ?? false,
+    voice_name: document.getElementById('matrix-voice-name')?.value || 'xiaomi-sweet',
   };
+
   localStorage.setItem('wc_matrix_config', JSON.stringify(matrix));
-  showToast('AI 能力授权矩阵配置已保存并同步至运行引擎！', 'success');
+
+  try {
+    const res = await apiRequest('/api/settings/matrix', 'POST', matrix);
+    if (res && res.code === 0) {
+      showToast('AI 权限矩阵与全维度延时配置已成功同步持久化！', 'success');
+      return;
+    }
+  } catch (e) {
+    console.warn('API同步失败，已缓存到本地存储', e);
+  }
+  showToast('AI 权限矩阵配置已保存（本地模式）', 'success');
 }
 
-function loadMatrixConfig() {
-  const raw = localStorage.getItem('wc_matrix_config');
-  if (!raw) return;
+async function loadMatrixConfig() {
+  let m = null;
   try {
-    const m = JSON.parse(raw);
+    const res = await apiRequest('/api/settings/matrix');
+    if (res && res.code === 0 && res.data) {
+      m = res.data;
+    }
+  } catch (e) {
+    console.warn('读取远端矩阵配置失败，尝试本地缓存', e);
+  }
+
+  if (!m) {
+    const raw = localStorage.getItem('wc_matrix_config');
+    if (raw) {
+      try { m = JSON.parse(raw); } catch (e) {}
+    }
+  }
+
+  if (!m) return;
+
+  try {
     if (document.getElementById('matrix-moments-enabled')) document.getElementById('matrix-moments-enabled').checked = m.moments_enabled;
     if (document.getElementById('matrix-moments-times')) document.getElementById('matrix-moments-times').value = m.moments_times;
     if (document.getElementById('matrix-moments-min-wait')) document.getElementById('matrix-moments-min-wait').value = m.moments_min_wait;
     if (document.getElementById('matrix-moments-max-wait')) document.getElementById('matrix-moments-max-wait').value = m.moments_max_wait;
+    if (document.getElementById('matrix-moments-max-ops')) document.getElementById('matrix-moments-max-ops').value = m.moments_max_ops || 15;
     if (document.getElementById('matrix-like-threshold')) document.getElementById('matrix-like-threshold').value = m.like_threshold;
+
     if (document.getElementById('matrix-add-friend-enabled')) document.getElementById('matrix-add-friend-enabled').checked = m.add_friend_enabled;
     if (document.getElementById('matrix-add-friend-msg')) document.getElementById('matrix-add-friend-msg').value = m.add_friend_msg;
     if (document.getElementById('matrix-add-friend-limit')) document.getElementById('matrix-add-friend-limit').value = m.add_friend_limit;
+    if (document.getElementById('matrix-add-friend-min-wait')) document.getElementById('matrix-add-friend-min-wait').value = m.add_friend_min_wait || 30;
+    if (document.getElementById('matrix-add-friend-max-wait')) document.getElementById('matrix-add-friend-max-wait').value = m.add_friend_max_wait || 60;
+
     if (document.getElementById('matrix-auto-verify')) document.getElementById('matrix-auto-verify').checked = m.auto_verify;
     if (document.getElementById('matrix-verify-keyword')) document.getElementById('matrix-verify-keyword').value = m.verify_keyword;
+    if (document.getElementById('matrix-verify-min-delay')) document.getElementById('matrix-verify-min-delay').value = m.verify_min_delay || 30;
+    if (document.getElementById('matrix-verify-max-delay')) document.getElementById('matrix-verify-max-delay').value = m.verify_max_delay || 90;
     if (document.getElementById('matrix-verify-greet')) document.getElementById('matrix-verify-greet').value = m.verify_greet;
+    if (document.getElementById('matrix-greet-min-delay')) document.getElementById('matrix-greet-min-delay').value = m.greet_min_delay || 20;
+    if (document.getElementById('matrix-greet-max-delay')) document.getElementById('matrix-greet-max-delay').value = m.greet_max_delay || 45;
+
     if (document.getElementById('matrix-pat-back')) document.getElementById('matrix-pat-back').checked = m.pat_back;
-    if (document.getElementById('matrix-pat-cooldown')) document.getElementById('matrix-pat-cooldown').value = m.pat_cooldown;
     if (document.getElementById('matrix-pat-proactive')) document.getElementById('matrix-pat-proactive').checked = m.pat_proactive;
+    if (document.getElementById('matrix-pat-cooldown')) document.getElementById('matrix-pat-cooldown').value = m.pat_cooldown;
+    if (document.getElementById('matrix-pat-min-delay')) document.getElementById('matrix-pat-min-delay').value = m.pat_min_delay || 2;
+    if (document.getElementById('matrix-pat-max-delay')) document.getElementById('matrix-pat-max-delay').value = m.pat_max_delay || 6;
+
     if (document.getElementById('matrix-revoke-enabled')) document.getElementById('matrix-revoke-enabled').checked = m.revoke_enabled;
     if (document.getElementById('matrix-revoke-window')) document.getElementById('matrix-revoke-window').value = m.revoke_window;
+    if (document.getElementById('matrix-revoke-auto-apologize')) document.getElementById('matrix-revoke-auto-apologize').checked = m.revoke_auto_apologize ?? true;
+    if (document.getElementById('matrix-revoke-apologize-delay')) document.getElementById('matrix-revoke-apologize-delay').value = m.revoke_apologize_delay || 3;
+
     if (document.getElementById('matrix-at-mode')) document.getElementById('matrix-at-mode').value = m.at_mode;
     if (document.getElementById('matrix-typing-simulate')) document.getElementById('matrix-typing-simulate').checked = m.typing_simulate;
+    if (document.getElementById('matrix-typing-min-ms')) document.getElementById('matrix-typing-min-ms').value = m.typing_min_ms || 1500;
+    if (document.getElementById('matrix-typing-max-ms')) document.getElementById('matrix-typing-max-ms').value = m.typing_max_ms || 4500;
+
     if (document.getElementById('matrix-set-remark-enabled')) document.getElementById('matrix-set-remark-enabled').checked = m.set_remark_enabled;
     if (document.getElementById('matrix-remark-template')) document.getElementById('matrix-remark-template').value = m.remark_template;
+
     if (document.getElementById('matrix-chatroom-admin-enabled')) document.getElementById('matrix-chatroom-admin-enabled').checked = m.chatroom_admin_enabled;
     if (document.getElementById('matrix-chatroom-kick-words')) document.getElementById('matrix-chatroom-kick-words').value = m.chatroom_kick_words;
+
+    if (document.getElementById('matrix-voice-enabled')) document.getElementById('matrix-voice-enabled').checked = m.voice_enabled ?? false;
+    if (document.getElementById('matrix-voice-name')) document.getElementById('matrix-voice-name').value = m.voice_name || 'xiaomi-sweet';
   } catch (e) {
     console.error('加载矩阵配置失败', e);
   }

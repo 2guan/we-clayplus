@@ -113,3 +113,113 @@ type SystemSettings struct {
 	Owner      string `json:"owner"`
 	Forbidden  string `json:"forbidden"`
 }
+
+// AIMatrixSettings AI 微信底层能力授权矩阵与全维度防风控拟人延时配置模型
+type AIMatrixSettings struct {
+	// 1. 朋友圈批量互动
+	MomentsEnabled  bool   `json:"moments_enabled"`
+	MomentsTimes    string `json:"moments_times"`
+	MomentsMinWait  int    `json:"moments_min_wait"`
+	MomentsMaxWait  int    `json:"moments_max_wait"`
+	MomentsMaxOps   int    `json:"moments_max_ops"`
+	LikeThreshold   int    `json:"like_threshold"`
+
+	// 2. 群内加好友
+	AddFriendEnabled bool   `json:"add_friend_enabled"`
+	AddFriendMsg     string `json:"add_friend_msg"`
+	AddFriendLimit   int    `json:"add_friend_limit"`
+	AddFriendMinWait int    `json:"add_friend_min_wait"`
+	AddFriendMaxWait int    `json:"add_friend_max_wait"`
+
+	// 3. 通过好友申请 (含收到申请后延时通过、通过后延时打招呼)
+	AutoVerify     bool   `json:"auto_verify"`
+	VerifyKeyword  string `json:"verify_keyword"`
+	VerifyMinDelay int    `json:"verify_min_delay"` // 收到申请后延时通过最小秒数
+	VerifyMaxDelay int    `json:"verify_max_delay"` // 收到申请后延时通过最大秒数
+	VerifyGreet    string `json:"verify_greet"`
+	GreetMinDelay  int    `json:"greet_min_delay"`  // 通过后延时打招呼最小秒数
+	GreetMaxDelay  int    `json:"greet_max_delay"`  // 通过后延时打招呼最大秒数
+
+	// 4. 拍一拍互动
+	PatBack      bool `json:"pat_back"`
+	PatProactive bool `json:"pat_proactive"`
+	PatCooldown  int  `json:"pat_cooldown"`
+	PatMinDelay  int  `json:"pat_min_delay"`
+	PatMaxDelay  int  `json:"pat_max_delay"`
+
+	// 5. 消息纠错撤回
+	RevokeEnabled        bool `json:"revoke_enabled"`
+	RevokeWindow         int  `json:"revoke_window"`
+	RevokeAutoApologize  bool `json:"revoke_auto_apologize"`
+	RevokeApologizeDelay int  `json:"revoke_apologize_delay"`
+
+	// 6. @群友互动
+	AtMode string `json:"at_mode"`
+
+	// 7. 自然打字拟态延时
+	TypingSimulate bool `json:"typing_simulate"`
+	TypingMinMs    int  `json:"typing_min_ms"`
+	TypingMaxMs    int  `json:"typing_max_ms"`
+
+	// 8. 修改好友备注
+	SetRemarkEnabled bool   `json:"set_remark_enabled"`
+	RemarkTemplate   string `json:"remark_template"`
+
+	// 9. 智能群聊治理
+	ChatroomAdminEnabled bool   `json:"chatroom_admin_enabled"`
+	ChatroomKickWords    string `json:"chatroom_kick_words"`
+
+	// 10. 语音回复
+	VoiceEnabled bool   `json:"voice_enabled"`
+	VoiceName    string `json:"voice_name"`
+}
+
+// DefaultAIMatrixSettings 提供默认矩阵参数
+func DefaultAIMatrixSettings() AIMatrixSettings {
+	return AIMatrixSettings{
+		MomentsEnabled:  true,
+		MomentsTimes:    "18:00",
+		MomentsMinWait:  30,
+		MomentsMaxWait:  60,
+		MomentsMaxOps:   15,
+		LikeThreshold:   60,
+
+		AddFriendEnabled: false,
+		AddFriendMsg:     "你好呀，看到你在群里找我，特来加你~",
+		AddFriendLimit:   10,
+		AddFriendMinWait: 30,
+		AddFriendMaxWait: 60,
+
+		AutoVerify:     true,
+		VerifyKeyword:  "",
+		VerifyMinDelay: 30,
+		VerifyMaxDelay: 90,
+		VerifyGreet:    "你好呀！我是{昵称}，很高兴认识你~",
+		GreetMinDelay:  20,
+		GreetMaxDelay:  45,
+
+		PatBack:      true,
+		PatProactive: true,
+		PatCooldown:  300,
+		PatMinDelay:  2,
+		PatMaxDelay:  6,
+
+		RevokeEnabled:        true,
+		RevokeWindow:         120,
+		RevokeAutoApologize:  true,
+		RevokeApologizeDelay: 3,
+
+		AtMode:         "smart",
+		TypingSimulate: true,
+		TypingMinMs:    1500,
+		TypingMaxMs:    4500,
+
+		SetRemarkEnabled:     false,
+		RemarkTemplate:       "{姓名}-{公司/职位}",
+		ChatroomAdminEnabled: false,
+		ChatroomKickWords:    "刷单, 兼职日结, 股票内幕, 代开发票, 博彩平台",
+
+		VoiceEnabled: false,
+		VoiceName:    "xiaomi-sweet",
+	}
+}

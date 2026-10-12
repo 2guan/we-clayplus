@@ -544,22 +544,29 @@
                     <span class="font-bold text-sm">朋友圈周期性批量互动</span>
                     <input type="checkbox" id="matrix-moments-enabled" checked class="w-4 h-4 text-green-600 rounded">
                   </div>
-                  <p class="text-gray-400">每日定时集中巡回，模拟真人浏览节奏防风控</p>
+                  <p class="text-gray-400">每日定时集中巡回，模拟真人阅读与点赞节奏防风控</p>
                   <div>
                     <label class="block font-semibold mb-1">每日批量执行时刻</label>
-                    <input type="text" id="matrix-moments-times" value="18:00" placeholder="多个时刻用逗号分隔，如 12:30,18:00" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                    <input type="text" id="matrix-moments-times" value="18:00" placeholder="例如 18:00" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
                   <div>
-                    <label class="block font-semibold mb-1">单操作拟人等待 (秒，建议 30-60)</label>
+                    <label class="block font-semibold mb-1">单操作拟人等待延时 (秒，建议 30-60)</label>
                     <div class="flex items-center gap-2">
                       <input type="number" id="matrix-moments-min-wait" value="30" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
                       <span>至</span>
                       <input type="number" id="matrix-moments-max-wait" value="60" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>秒</span>
                     </div>
                   </div>
-                  <div>
-                    <label class="block font-semibold mb-1">点赞正向情绪阈值 (0-100)</label>
-                    <input type="number" id="matrix-like-threshold" value="60" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="block font-semibold mb-1">点赞正向情绪阈值</label>
+                      <input type="number" id="matrix-like-threshold" value="60" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                    </div>
+                    <div>
+                      <label class="block font-semibold mb-1">单次最大互动上限</label>
+                      <input type="number" id="matrix-moments-max-ops" value="15" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                    </div>
                   </div>
                 </div>
 
@@ -575,6 +582,15 @@
                     <input type="text" id="matrix-add-friend-msg" value="你好呀，看到你在群里找我，特来加你~" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
                   <div>
+                    <label class="block font-semibold mb-1">发起加好友排队拟人等待 (秒，建议 30-60)</label>
+                    <div class="flex items-center gap-2">
+                      <input type="number" id="matrix-add-friend-min-wait" value="30" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>至</span>
+                      <input type="number" id="matrix-add-friend-max-wait" value="60" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>秒</span>
+                    </div>
+                  </div>
+                  <div>
                     <label class="block font-semibold mb-1">单日最大加好友上限 (防风控)</label>
                     <input type="number" id="matrix-add-friend-limit" value="10" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
@@ -586,14 +602,32 @@
                     <span class="font-bold text-sm">通过好友申请</span>
                     <input type="checkbox" id="matrix-auto-verify" checked class="w-4 h-4 text-green-600 rounded">
                   </div>
-                  <p class="text-gray-400">自动审核新好友申请，同意后随机延时发送欢迎语</p>
+                  <p class="text-gray-400">收到好友申请后先延时再通过，同意后再延时发送欢迎语</p>
                   <div>
-                    <label class="block font-semibold mb-1">验证暗号关键词过滤 (留空为全通过)</label>
-                    <input type="text" id="matrix-verify-keyword" placeholder="例如：合作, 咨询, VIP" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                    <label class="block font-semibold mb-1">收到申请后延时通过审核 (秒，拟人沉淀)</label>
+                    <div class="flex items-center gap-2">
+                      <input type="number" id="matrix-verify-min-delay" value="30" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>至</span>
+                      <input type="number" id="matrix-verify-max-delay" value="90" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>秒</span>
+                    </div>
                   </div>
                   <div>
-                    <label class="block font-semibold mb-1">自动欢迎打招呼语</label>
-                    <input type="text" id="matrix-verify-greet" value="你好呀！我是智能助理，很高兴认识你~" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                    <label class="block font-semibold mb-1">验证通过后延时发送打招呼语 (秒)</label>
+                    <div class="flex items-center gap-2">
+                      <input type="number" id="matrix-greet-min-delay" value="20" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>至</span>
+                      <input type="number" id="matrix-greet-max-delay" value="45" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>秒</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block font-semibold mb-1">自动欢迎打招呼语 (支持 {昵称} 动态替换)</label>
+                    <input type="text" id="matrix-verify-greet" value="你好呀！我是{昵称}，很高兴认识你~" placeholder="支持使用 {昵称} 动态替换为微信真实昵称" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                  </div>
+                  <div>
+                    <label class="block font-semibold mb-1">暗号关键词过滤 (留空为全通过)</label>
+                    <input type="text" id="matrix-verify-keyword" placeholder="例如：合作, 咨询, VIP" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
                 </div>
 
@@ -608,7 +642,16 @@
                     <label class="block font-semibold mb-1">同一人拍一拍冷却时间 (秒)</label>
                     <input type="number" id="matrix-pat-cooldown" value="300" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
-                  <div class="flex items-center gap-2 pt-2">
+                  <div>
+                    <label class="block font-semibold mb-1">被拍后反拍生理反应延时 (秒)</label>
+                    <div class="flex items-center gap-2">
+                      <input type="number" id="matrix-pat-min-delay" value="2" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>至</span>
+                      <input type="number" id="matrix-pat-max-delay" value="6" class="w-20 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>秒</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 pt-1">
                     <input type="checkbox" id="matrix-pat-proactive" checked class="w-4 h-4 text-green-600 rounded">
                     <span>允许大模型在幽默语境下主动拍对方</span>
                   </div>
@@ -625,19 +668,23 @@
                     <label class="block font-semibold mb-1">撤回有效时限 (秒，微信上限 120 秒)</label>
                     <input type="number" id="matrix-revoke-window" value="120" max="120" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
-                  <div class="flex items-center gap-2 pt-2">
+                  <div>
+                    <label class="block font-semibold mb-1">撤回后发送更正说明延时 (秒)</label>
+                    <input type="number" id="matrix-revoke-apologize-delay" value="3" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                  </div>
+                  <div class="flex items-center gap-2 pt-1">
                     <input type="checkbox" id="matrix-revoke-auto-apologize" checked class="w-4 h-4 text-green-600 rounded">
                     <span>撤回后自动发送幽默更正说明</span>
                   </div>
                 </div>
 
-                <!-- 6. @群友互动策略 -->
+                <!-- 6. @群友互动与打字延时 -->
                 <div class="p-4 bg-gray-50 dark:bg-gray-750 rounded-xl border border-gray-200 dark:border-gray-600 space-y-3">
                   <div class="flex items-center justify-between">
-                    <span class="font-bold text-sm">@群友互动策略</span>
+                    <span class="font-bold text-sm">@群友互动与拟人打字延时</span>
                     <span class="text-green-600 text-xs">群聊生效</span>
                   </div>
-                  <p class="text-gray-400">控制在群聊中生成回复时是否显式 @目标成员</p>
+                  <p class="text-gray-400">模拟真人打字耗时（毫秒），杜绝机器秒回风控</p>
                   <div>
                     <label class="block font-semibold mb-1">@群友模式</label>
                     <select id="matrix-at-mode" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
@@ -646,9 +693,18 @@
                       <option value="never">从不@ (完全免打扰静音模式)</option>
                     </select>
                   </div>
-                  <div class="flex items-center gap-2 pt-2">
+                  <div>
+                    <label class="block font-semibold mb-1">自然打字模拟延时范围 (毫秒)</label>
+                    <div class="flex items-center gap-2">
+                      <input type="number" id="matrix-typing-min-ms" value="1500" class="w-24 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>至</span>
+                      <input type="number" id="matrix-typing-max-ms" value="4500" class="w-24 px-2 py-1 border rounded dark:bg-gray-700">
+                      <span>ms</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 pt-1">
                     <input type="checkbox" id="matrix-typing-simulate" checked class="w-4 h-4 text-green-600 rounded">
-                    <span>自然拟人态打字延时 (防秒回风控)</span>
+                    <span>启用打字生理延时防秒回</span>
                   </div>
                 </div>
 
@@ -675,6 +731,19 @@
                   <div>
                     <label class="block font-semibold mb-1">广告链接/违规关键词黑名单</label>
                     <input type="text" id="matrix-chatroom-kick-words" placeholder="例如：兼职, 刷单, 股票群, 代开发票" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
+                  </div>
+                </div>
+
+                <!-- 9. 语音回复权限 -->
+                <div class="p-4 bg-gray-50 dark:bg-gray-750 rounded-xl border border-gray-200 dark:border-gray-600 space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="font-bold text-sm">语音回复权限 (mimo TTS)</span>
+                    <input type="checkbox" id="matrix-voice-enabled" class="w-4 h-4 text-green-600 rounded">
+                  </div>
+                  <p class="text-gray-400">大模型使用 [VOICE] 标签时，自动合成并发送微信语音</p>
+                  <div>
+                    <label class="block font-semibold mb-1">默认合成音色</label>
+                    <input type="text" id="matrix-voice-name" value="xiaomi-sweet" placeholder="例如 xiaomi-sweet" class="w-full px-2 py-1 border rounded dark:bg-gray-700">
                   </div>
                 </div>
               </div>

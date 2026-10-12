@@ -901,6 +901,32 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Message: "系统设置已更新"})
 }
 
+// handleMatrixSettingsGet 读取 AI 权限矩阵与全维度拟人延时配置
+func (s *Server) handleMatrixSettingsGet(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.store.GetAIMatrixSettings()
+	if err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, APIResponse{Code: 500, Message: err.Error()})
+		return
+	}
+	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Data: settings})
+}
+
+// handleMatrixSettingsSave 保存 AI 权限矩阵与全维度拟人延时配置
+func (s *Server) handleMatrixSettingsSave(w http.ResponseWriter, r *http.Request) {
+	var req AIMatrixSettings
+	if err := s.parseJSON(r, &req); err != nil {
+		s.writeJSON(w, http.StatusBadRequest, APIResponse{Code: 400, Message: "无效的矩阵配置参数"})
+		return
+	}
+
+	if err := s.store.SaveAIMatrixSettings(&req); err != nil {
+		s.writeJSON(w, http.StatusInternalServerError, APIResponse{Code: 500, Message: "保存矩阵配置失败: " + err.Error()})
+		return
+	}
+
+	s.writeJSON(w, http.StatusOK, APIResponse{Code: 0, Message: "AI 权限矩阵与延时配置已更新并持久化"})
+}
+
 // ----------------- 微信底层连接辅助检查 -----------------
 
 func (s *Server) isWeChatOnline() bool {

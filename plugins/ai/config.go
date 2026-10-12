@@ -115,11 +115,13 @@ type AddFriendMatrixConfig struct {
 
 // VerifyFriendMatrixConfig 自动通过好友验证申请配置
 type VerifyFriendMatrixConfig struct {
-	Enabled       bool   `toml:"enabled" comment:"是否自动通过好友申请"`
-	KeywordFilter string `toml:"keyword_filter" comment:"验证申请附言关键词过滤 (留空为全通过)"`
-	AutoGreet     string `toml:"auto_greet" comment:"通过后自动发送的欢迎打招呼语"`
-	MinDelaySec   int    `toml:"min_delay_sec" comment:"通过后延时发送欢迎语最小秒数 (默认 20)"`
-	MaxDelaySec   int    `toml:"max_delay_sec" comment:"通过后延时发送欢迎语最大秒数 (默认 45)"`
+	Enabled           bool   `toml:"enabled" comment:"是否自动通过好友申请"`
+	KeywordFilter     string `toml:"keyword_filter" comment:"验证申请附言关键词过滤 (留空为全通过)"`
+	MinVerifyDelaySec int    `toml:"min_verify_delay_sec" comment:"收到申请后延时通过最小秒数 (默认 30)"`
+	MaxVerifyDelaySec int    `toml:"max_verify_delay_sec" comment:"收到申请后延时通过最大秒数 (默认 90)"`
+	AutoGreet         string `toml:"auto_greet" comment:"通过后自动发送的欢迎打招呼语"`
+	MinDelaySec       int    `toml:"min_delay_sec" comment:"通过后延时发送欢迎语最小秒数 (默认 20)"`
+	MaxDelaySec       int    `toml:"max_delay_sec" comment:"通过后延时发送欢迎语最大秒数 (默认 45)"`
 }
 
 // PatMatrixConfig 拍一拍互动配置
@@ -128,13 +130,16 @@ type PatMatrixConfig struct {
 	PatBack     bool `toml:"pat_back" comment:"被拍一拍后是否主动反拍对方"`
 	Proactive   bool `toml:"proactive" comment:"允许大模型在幽默语境下主动拍对方"`
 	CooldownSec int  `toml:"cooldown_sec" comment:"针对同一人的拍一拍冷却时间秒数 (默认 300)"`
+	MinDelaySec int  `toml:"min_delay_sec" comment:"被拍后反拍反应延时最小秒数 (默认 2)"`
+	MaxDelaySec int  `toml:"max_delay_sec" comment:"被拍后反拍反应延时最大秒数 (默认 6)"`
 }
 
 // RevokeMatrixConfig 大模型消息撤回配置
 type RevokeMatrixConfig struct {
-	Enabled        bool `toml:"enabled" comment:"是否允许大模型撤回消息"`
-	WindowSec      int  `toml:"window_sec" comment:"撤回有效时限 (微信上限 120 秒)"`
-	AutoApologize  bool `toml:"auto_apologize" comment:"撤回后是否自动发送更正说明"`
+	Enabled           bool `toml:"enabled" comment:"是否允许大模型撤回消息"`
+	WindowSec         int  `toml:"window_sec" comment:"撤回有效时限 (微信上限 120 秒)"`
+	AutoApologize     bool `toml:"auto_apologize" comment:"撤回后是否自动发送更正说明"`
+	ApologizeDelaySec int  `toml:"apologize_delay_sec" comment:"更正说明发送延时秒数 (默认 3)"`
 }
 
 // SetRemarkMatrixConfig 修改好友备注配置
@@ -246,22 +251,27 @@ func DefaultConfig() Config {
 				GreetTemplate: "你好，刚在群里看到你的消息，特意添加交流~",
 			},
 			VerifyFriend: VerifyFriendMatrixConfig{
-				Enabled:       true,
-				KeywordFilter: "",
-				AutoGreet:     "你好呀！我是智能微信助理，很高兴认识你~",
-				MinDelaySec:   20,
-				MaxDelaySec:   45,
+				Enabled:           true,
+				KeywordFilter:     "",
+				MinVerifyDelaySec: 30,
+				MaxVerifyDelaySec: 90,
+				AutoGreet:         "你好呀！我是{昵称}，很高兴认识你~",
+				MinDelaySec:       20,
+				MaxDelaySec:       45,
 			},
 			Pat: PatMatrixConfig{
 				Enabled:     true,
 				PatBack:     true,
 				Proactive:   true,
 				CooldownSec: 300,
+				MinDelaySec: 2,
+				MaxDelaySec: 6,
 			},
 			Revoke: RevokeMatrixConfig{
-				Enabled:       true,
-				WindowSec:     120,
-				AutoApologize: true,
+				Enabled:           true,
+				WindowSec:         120,
+				AutoApologize:     true,
+				ApologizeDelaySec: 3,
 			},
 			AtMode: "smart",
 			SetRemark: SetRemarkMatrixConfig{
