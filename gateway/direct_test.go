@@ -32,13 +32,23 @@ type directCore struct {
 }
 
 func (s *directCore) Invoke(ctx context.Context, req *corewire.CallRequest) (*corewire.CallResponse, error) {
-	if (req.GetPath() == "/api/message/text" || req.GetPath() == "/api/message/card") || strings.HasPrefix(req.GetPath(), "/api/moments/like/") {
+	if (req.GetPath() == "/api/message/text" || req.GetPath() == "/api/message/card" || req.GetPath() == "/api/message/revoke") || strings.HasPrefix(req.GetPath(), "/api/moments/like/") {
 		s.mu.Lock()
 		s.writes = append(s.writes, req)
 		s.mu.Unlock()
 		body := `{"code":0,"data":{"baseResponse":{"code":0}}}`
 		if req.GetPath() == "/api/message/text" || req.GetPath() == "/api/message/card" {
-			body = `{"code":0,"data":{"list":[{"newId":"9223372036854770011"}]}}`
+			body = `{"code":0,"data":{"list":[{"newId":"9223372036854770011","clientId":"9007199254740993","createTime":1789890000}]}}`
+		}
+		if req.GetPath() == "/api/message/revoke" {
+			var q struct {
+				NewID    uint64 `json:"new_id"`
+				ClientID uint64 `json:"client_id"`
+				Created  uint64 `json:"create_time"`
+			}
+			if json.Unmarshal(req.GetBody(), &q) != nil || q.NewID != 9223372036854770011 || q.ClientID != 9007199254740993 || q.Created != 1789890000 {
+				return &corewire.CallResponse{Status: 400, Body: []byte(`{"code":-1,"message":"incomplete receipt"}`)}, nil
+			}
 		}
 		return &corewire.CallResponse{Status: 200, ContentType: "application/json", Body: []byte(body)}, nil
 	}
@@ -290,5 +300,45 @@ func TestDirectCardRequestAndValidation(t *testing.T) {
 	}
 	if server.writes[0].Path != "/api/message/card" || body["receiver"] != "test-receiver" || body["card_username"] != "test-card" || body["card_nickname"] != "测试名片" || body["card_alias"] != "test-alias" {
 		t.Fatal("card mapping incorrect")
+	}
+}
+
+func TestRunRevokeReceiptsAreClearedAcrossAccounts(t *testing.T) {
+	server, cfg := directFixture(t)
+	finished := errors.New("fixture complete")
+	err := gateway.Run(context.Background(), cfg, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{OnReady: func(_ context.Context, c *gateway.Client) error {
+		sent, err := c.SendText("test-peer", "test revoke")
+		if err != nil {
+			return err
+		}
+		if _, err = c.Message.Revoke("test-peer", sent.GetNewId()); err != nil {
+			return err
+		}
+		card, err := c.SendCard("test-card-receiver", "test-card", "", " ")
+		if err != nil {
+			return err
+		}
+		if _, err = c.Message.Revoke("test-card-receiver", card.GetNewId()); err != nil {
+			return err
+		}
+		return finished
+	}}))
+	if !errors.Is(err, finished) {
+		t.Fatal(err)
+	}
+	server.account.Store(3)
+	err = gateway.Run(context.Background(), cfg, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{OnReady: func(_ context.Context, c *gateway.Client) error {
+		if _, err := c.Message.Revoke("test-peer", 9223372036854770011); !errors.Is(err, message.ErrRevokeReceiptUnavailable) {
+			return fmt.Errorf("receipt crossed Run: %v", err)
+		}
+		return finished
+	}}))
+	if !errors.Is(err, finished) {
+		t.Fatal(err)
+	}
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if len(server.writes) != 4 {
+		t.Fatalf("extra business requests: %d", len(server.writes))
 	}
 }

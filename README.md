@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.0 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.1 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.5.0
+go get github.com/we-clay/we-clay@v0.5.1
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -76,7 +76,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ```sh
 go mod init example.com/my-wechat-bot
-go get github.com/we-clay/we-clay@v0.5.0
+go get github.com/we-clay/we-clay@v0.5.1
 ```
 
 ### 2 · 调用 Run
@@ -174,7 +174,20 @@ unliked, err := client.Moments.Unlike(momentID)
 每次调用都应单独处理 `err`；朋友圈还应检查返回值的 `BaseResult`。以上是接口示意，不要把点赞和取消点赞当作必须连续执行的步骤。
 完整的[直接接入指南](docs/直接接入.md)包含主动调用、图片发送、朋友圈点赞及后台任务示例。
 
-### 4 · 可选：加入插件
+### 4 · 撤回消息
+
+使用发送回执中的 `NewId`，在同一次 Run 中调用：
+
+```go
+sent, err := client.SendText(receiver, "测试撤回")
+if err != nil { return err }
+_, err = client.Message.Revoke(receiver, sent.GetNewId())
+return err
+```
+
+以上片段放在返回 `error` 的业务函数或回调中。**v0.5.1 修复了 v0.5.0 撤回缺少回执字段导致的 400**；gateway 自动保存和传递原始回执。重启或回执缺失后不能仅凭消息 ID 撤回，详见[撤回示例与限制](docs/直接接入.md#发送后撤回完整函数)。
+
+### 5 · 可选：加入插件
 
 普通机器人推荐直接 Client。需要独立加载、启停多个功能模块或分别配置能力权限时，再使用插件。插件以独立进程运行，便于独立交付；具有当前系统用户权限，不是安全沙箱。
 
@@ -198,7 +211,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.0
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.1
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 

@@ -25,17 +25,19 @@ import (
 
 // ability 消息能力实现
 type ability struct {
-	api api.MessageService
+	api      api.MessageService
+	receipts receiptCache
 }
 
 var (
+	instance            = &ability{api: api.Get()}
 	outboundReady       atomic.Bool
 	errOutboundNotReady = errors.New("基础数据初始化未完成，已禁止发送消息")
 )
 
 func init() {
 	outboundReady.Store(true)
-	sdk.Instance = &ability{api: api.Get()}
+	sdk.Instance = instance
 }
 
 // SetOutboundReady 设置消息出站开关。
@@ -69,6 +71,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 
 	msg = proto.Clone(msg).(*sdk.Message)
 	var result sdk.Send_Response
+	var clientID uint64
 	receiver := msg.GetReceiver().GetUsername()
 
 	switch msg.GetType().GetCode() {
@@ -93,6 +96,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			}
 			result.NewId = item.GetNewId()
 			result.CreateTime = item.GetCreateTime()
+			clientID = item.GetClientId()
 		}
 	case sdk.TypeFile.Code:
 		data := msg.GetFile()
@@ -108,6 +112,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
+		clientID = numericClientID(resp.GetClientId())
 		msg.Content = data.GetFilename()
 	case sdk.TypeImage.Code:
 		data := msg.GetImage()
@@ -121,6 +126,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = resp.GetCreateTime()
+		clientID = numericClientID(resp.GetClientId().GetValue())
 		result.Media = &sdk.Media{
 			Key:  resp.GetAesKey(),
 			Url:  resp.GetFileId(),
@@ -142,6 +148,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = resp.GetCreateTime()
+		clientID = numericClientID(resp.GetClientId())
 		result.Media = &sdk.Media{
 			Url:  resp.GetClientId(),
 			Size: uint32(resp.GetSize()),
@@ -190,6 +197,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			}
 			result.NewId = item.GetNewId()
 			result.CreateTime = item.GetCreateTime()
+			clientID = item.GetClientId()
 		}
 	case sdk.TypeApplication.Code, sdk.TypeAppChatRecord.Code, sdk.TypeAppMusic.Code:
 		return nil, sdkroot.NotImplemented("message.Send: 通用应用/聊天记录/音乐")
@@ -204,6 +212,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
+		clientID = numericClientID(resp.GetClientId())
 
 	default:
 		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Send: type=%d", msg.GetType().GetCode()))
@@ -211,10 +220,14 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 	if result.NewId == 0 {
 		return nil, errors.New("消息回执缺少消息 ID，结果未确认，请勿自动重试")
 	}
+	canRevoke := a.receipts.remember(receiver, result.NewId, clientID, uint64(result.CreateTime))
 	slog.Info(fmt.Sprintf("[%s] -> %s : %s", msg.GetType().GetDesc(), msg.GetReceiver().GetNickname(), msg.Content))
 
 	// 自动撤回绑定当前连接和 context，不能在下一次 Run 操作另一个账号。
-	if msg.Timestamp != 0 && result.NewId != 0 {
+	if msg.Timestamp != 0 && !canRevoke {
+		slog.Warn("消息已发送，但回执缺少撤回字段，未安排自动撤回")
+	}
+	if msg.Timestamp != 0 && canRevoke {
 		conn := coreapi.GetCore()
 		scoped := api.New(conn)
 		ctx := conn.Context()
@@ -230,7 +243,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			if ctx.Err() != nil {
 				return
 			}
-			if _, err := scoped.Revoke(receiver, newID, 0, uint64(created)); err != nil {
+			if _, err := scoped.Revoke(receiver, newID, clientID, uint64(created)); err != nil {
 				slog.Warn("消息撤回失败", "err", err)
 			}
 		}()
@@ -260,6 +273,7 @@ func (a *ability) Forward(msg *sdk.Message, receiver string) (*sdk.Forward_Respo
 		if resp.GetNewId() == 0 {
 			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
 		}
+		a.receipts.remember(receiver, resp.GetNewId(), numericClientID(resp.GetClientId().GetValue()), uint64(resp.GetCreateTime()))
 		return &sdk.Forward_Response{NewId: resp.GetNewId(), CreateTime: resp.GetCreateTime()}, nil
 	case sdk.TypeVideo.Code, sdk.TypeTinyVideo.Code:
 		raw, err := messageXML(msg)
@@ -285,6 +299,9 @@ func (a *ability) Forward(msg *sdk.Message, receiver string) (*sdk.Forward_Respo
 		}
 		if resp.GetNewId() == 0 {
 			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
+		}
+		if resp.GetCreateTime() > 0 {
+			a.receipts.remember(receiver, resp.GetNewId(), numericClientID(resp.GetClientId()), uint64(resp.GetCreateTime()))
 		}
 		return &sdk.Forward_Response{NewId: resp.GetNewId(), CreateTime: uint32(resp.GetCreateTime())}, nil
 	default:
@@ -323,7 +340,14 @@ func messageXML(msg *sdk.Message) (string, error) {
 
 // Revoke 撤回消息
 func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response, error) {
-	resp, err := a.api.Revoke(receiver, newMsgId, 0, 0)
+	if receiver == "" || newMsgId == 0 {
+		return nil, errors.New("撤回需要接收人 ID 和原发送回执的消息 ID")
+	}
+	receipt, ok := a.receipts.get(receiver, newMsgId)
+	if !ok {
+		return nil, sdk.ErrRevokeReceiptUnavailable
+	}
+	resp, err := a.api.Revoke(receiver, newMsgId, receipt.clientID, receipt.created)
 	if err != nil {
 		return nil, err
 	}

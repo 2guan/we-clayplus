@@ -228,6 +228,9 @@ func (w remote) ForwardFile(receiver, xml string) (*SendAppMessageResponse, erro
 
 // Revoke 撤回消息
 func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64) (*RevokeMessageResponse, error) {
+	if receiver == "" || newMsgId == 0 || clientMsgId == 0 || timestamp == 0 {
+		return nil, errors.New("撤回需要原始 receiver、new_id、client_id 和 create_time")
+	}
 	var resp RevokeMessageResponse
 	if err := w.core().Post("/api/message/revoke").Body(map[string]any{
 		"receiver":    receiver,

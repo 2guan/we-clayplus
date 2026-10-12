@@ -125,6 +125,18 @@ func (r *Request) Do() ([]byte, error) {
 }
 func decodeResponse(code int, contentType string, raw []byte) ([]byte, error) {
 	if code < 200 || code >= 300 {
+		// 只提取约定错误信封中的说明，不把 HTML、媒体或完整响应体写入错误。
+		var problem struct {
+			Code    *int64 `json:"code"`
+			Message string `json:"message"`
+		}
+		if len(raw) <= 64<<10 && json.Unmarshal(raw, &problem) == nil && problem.Code != nil && *problem.Code != 0 && problem.Message != "" {
+			message := []rune(problem.Message)
+			if len(message) > 1024 {
+				message = append(message[:1024], '…')
+			}
+			return nil, fmt.Errorf("core returned status %d (code %d): %s", code, *problem.Code, string(message))
+		}
 		return nil, fmt.Errorf("core returned status %d", code)
 	}
 	if strings.HasPrefix(contentType, "application/octet-stream") {

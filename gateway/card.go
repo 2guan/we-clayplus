@@ -3,6 +3,7 @@ package gateway
 import (
 	"fmt"
 
+	messageability "github.com/we-clay/we-clay/gateway/internal/ability/message"
 	messageapi "github.com/we-clay/we-clay/gateway/internal/api/message"
 	"github.com/we-clay/we-clay/sdk/message"
 )
@@ -25,6 +26,7 @@ func (c *Client) SendCard(receiver, username, nickname, alias string) (*message.
 		if item.GetCode() != 0 {
 			return nil, fmt.Errorf("名片发送未成功，返回码 %d", item.GetCode())
 		}
+		messageability.RememberReceipt(receiver, item.GetNewId(), item.GetClientId(), uint64(item.GetCreateTime()))
 		return &message.Send_Response{NewId: item.GetNewId(), CreateTime: item.GetCreateTime()}, nil
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/we-clay/we-clay/gateway/internal/coretest"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -98,5 +99,16 @@ func TestNoRedirectOrRequestAfterEncodingFailure(t *testing.T) {
 	}
 	if targetCalls.Load() != 0 {
 		t.Fatal("redirect followed")
+	}
+}
+
+func TestCoreErrorDetailIsRetainedWithoutDumpingBody(t *testing.T) {
+	_, err := decodeResponse(400, "application/json", []byte(`{"code":-1,"message":"missing original client_id","data":{"private":"not-for-errors"}}`))
+	if err == nil || !strings.Contains(err.Error(), "missing original client_id") || strings.Contains(err.Error(), "not-for-errors") {
+		t.Fatal("error envelope detail was lost or body leaked")
+	}
+	_, err = decodeResponse(500, "text/html", []byte(`<html>not-for-errors</html>`))
+	if err == nil || strings.Contains(err.Error(), "not-for-errors") {
+		t.Fatal("raw error body leaked")
 	}
 }

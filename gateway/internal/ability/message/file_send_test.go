@@ -141,6 +141,7 @@ func TestIncompleteMessageReceiptsDoNotReportSuccess(t *testing.T) {
 	if _, err := a.Send(&sdk.Message{Type: sdk.TypeText, Receiver: &contact.Contact{Username: "test-peer"}, Content: "test"}); err == nil {
 		t.Fatal("empty send receipt accepted")
 	}
+	a.receipts.remember("test-peer", 123, 456, 789)
 	if _, err := a.Revoke("test-peer", 123); err == nil {
 		t.Fatal("empty revoke receipt accepted")
 	}

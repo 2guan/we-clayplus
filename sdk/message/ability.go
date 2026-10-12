@@ -8,7 +8,8 @@ type Ability interface {
 	Send(msg *Message) (*Send_Response, error)
 	// Forward 转发消息给新接收者
 	Forward(msg *Message, receiver string) (*Forward_Response, error)
-	// Revoke 撤回消息
+	// Revoke 撤回当前 gateway 运行内发送且已保存完整回执的消息。
+	// v0.5.1 起自动补齐原始 client_id/create_time；缺失时返回 ErrRevokeReceiptUnavailable。
 	Revoke(receiver string, newMsgId uint64) (*Revoke_Response, error)
 	// Download 下载消息中的媒体资源（server-stream：流式返回）
 	Download(msg *Message) (io.ReadCloser, error)

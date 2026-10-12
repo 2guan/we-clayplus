@@ -111,6 +111,8 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	api.GetCore = func() *api.Client { return client }
 	defer func() { api.GetCore = oldClient }()
 
+	messageability.ResetReceipts()
+	defer messageability.ResetReceipts()
 	messageability.SetOutboundReady(false)
 	defer messageability.SetOutboundReady(false)
 	if cfg.Core != nil {
