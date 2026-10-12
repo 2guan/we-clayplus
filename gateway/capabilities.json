@@ -1,0 +1,229 @@
+{
+  "message": {
+    "label": "消息",
+    "enabled": [
+      "Send",
+      "Forward",
+      "Revoke",
+      "Download"
+    ],
+    "placeholder": [],
+    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；部分媒体仅回执或格式校验"
+  },
+  "contact": {
+    "label": "联系人",
+    "enabled": [
+      "Get",
+      "List",
+      "GetSelf",
+      "SetRemark",
+      "AddFriend",
+      "VerifyFriend",
+      "Search",
+      "GetOwner"
+    ],
+    "placeholder": [
+      "Delete",
+      "BlacklistAdd",
+      "BlacklistRemove"
+    ],
+    "evidence": "查询、保留好友关系的备注修改、群来源好友申请及接受申请已在历史 Mac 会话读回；GetOwner 为本地配置查询"
+  },
+  "chatroom": {
+    "label": "群聊",
+    "enabled": [
+      "Create",
+      "GetInfo",
+      "GetQRCode",
+      "InviteMember",
+      "SetName",
+      "SetAnnouncement",
+      "SetRemark",
+      "Save",
+      "SetAdmin",
+      "ListMembers",
+      "GetMember",
+      "GetMembersDetail"
+    ],
+    "placeholder": [
+      "FacingCreate",
+      "AddMember",
+      "RemoveMember",
+      "RemoveAdmin",
+      "TransferOwner",
+      "Quit",
+      "ScanJoin",
+      "ScanJoinEnterprise",
+      "ConsentJoin"
+    ],
+    "evidence": "建群、查询、邀请及入群读回、群名/公告/备注/通讯录保存、设置管理员有历史验收；缓存和适配层仍需当前版本真机复验"
+  },
+  "moments": {
+    "label": "朋友圈",
+    "enabled": [
+      "Timeline",
+      "UserPage",
+      "Detail",
+      "Like",
+      "Unlike",
+      "Post",
+      "Upload",
+      "Sync"
+    ],
+    "placeholder": [
+      "Comment",
+      "Delete",
+      "DeleteComment",
+      "SetPrivacy"
+    ],
+    "evidence": "历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；其他发布类型和部分权限参数未完整验证"
+  },
+  "cdn": {
+    "label": "媒体 CDN",
+    "enabled": [
+      "UploadImage",
+      "UploadVideo",
+      "DownloadImage",
+      "DownloadVideo",
+      "UploadMomentsImage",
+      "DownloadVideoCover"
+    ],
+    "placeholder": [
+      "UploadMomentsVideo",
+      "DownloadMomentsVideo"
+    ],
+    "evidence": "聊天图片/视频/封面往返字节一致、朋友圈图片上传通过；朋友圈视频上传曾返回 -5103015"
+  },
+  "favor": {
+    "label": "收藏",
+    "enabled": [
+      "GetInfo",
+      "Sync"
+    ],
+    "placeholder": [
+      "GetItem",
+      "Delete"
+    ],
+    "evidence": "仅容量和空列表同步通过；单项详情及删除未测"
+  },
+  "label": {
+    "label": "标签",
+    "enabled": [
+      "List",
+      "Add",
+      "Delete",
+      "Update",
+      "ModifyContactLabels"
+    ],
+    "placeholder": [],
+    "evidence": "完整标签生命周期及好友标签读回、恢复通过"
+  },
+  "login": {
+    "label": "登录",
+    "enabled": [],
+    "placeholder": [
+      "Login",
+      "Init",
+      "Refresh",
+      "Wakeup",
+      "Logout",
+      "PasswordLogin"
+    ],
+    "evidence": "Run 已负责 Mac 登录等待和会话恢复；单独调用这些登录方法未逐项验收，保留占位"
+  },
+  "miniapp": {
+    "label": "小程序",
+    "enabled": [
+      "GetRecord"
+    ],
+    "placeholder": [
+      "JSLogin",
+      "QrcodeAuthLogin",
+      "GetRuntimeSession",
+      "GetSessionQRCode",
+      "OperateWxData",
+      "CloudCallFunction",
+      "SendVerifyCode",
+      "CheckVerifyCode",
+      "AddMobile",
+      "DelMobile",
+      "GetAllMobile",
+      "GetRandomAvatar",
+      "AddAvatar",
+      "UploadAvatarImg",
+      "AddRecord",
+      "GetUserOpenID",
+      "OauthSdkApp",
+      "ThirdAppGrant"
+    ],
+    "evidence": "仅使用记录查询通过；其他接口缺少测试 appID 或未测"
+  },
+  "official": {
+    "label": "公众号",
+    "enabled": [],
+    "placeholder": [
+      "Follow",
+      "Quit",
+      "MpGetA8Key",
+      "JSAPIPreVerify",
+      "OauthAuthorize",
+      "ReadArticle",
+      "LikeArticle"
+    ],
+    "evidence": "没有完整真实验收，保留占位"
+  },
+  "payment": {
+    "label": "支付",
+    "enabled": [],
+    "placeholder": [
+      "GeneratePayQCode",
+      "GetBandCardList",
+      "CreateHongBao",
+      "ReceiveHongBao",
+      "OpenHongBao",
+      "GrabHongBao",
+      "QueryHongBaoDetail",
+      "QueryHongBaoList",
+      "CreatePreTransfer",
+      "ConfirmPreTransfer",
+      "CollectMoney"
+    ],
+    "evidence": "没有真实验收，保留占位"
+  },
+  "report": {
+    "label": "状态通知",
+    "enabled": [
+      "StartTyping",
+      "StopTyping"
+    ],
+    "placeholder": [
+      "ReadMessage"
+    ],
+    "evidence": "开始/停止输入仅收到成功回执，未手机观察；已读通知未测"
+  },
+  "user": {
+    "label": "当前账号",
+    "enabled": [
+      "GetProfile",
+      "GetQRCode",
+      "GetSafetyInfo",
+      "GetBoundHardDevices"
+    ],
+    "placeholder": [
+      "UpdateProfile",
+      "UploadAvatar",
+      "SetPrivacy",
+      "SetAlias",
+      "VerifyPassword",
+      "SetPassword",
+      "SendVerifyMobile",
+      "BindMobile",
+      "BindEmail",
+      "SendVerifyEmail",
+      "DelSafeDevice",
+      "ReportMotion",
+      "GetCert"
+    ],
+    "evidence": "资料、个人二维码、安全设备/绑定硬件查询通过；资料/安全写操作未完整测试"
+  }
+}

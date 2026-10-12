@@ -125,6 +125,7 @@ message GetInfo {
     string avatar = 5; // 头像 URL
     string owner = 6; // 群主 wxid
     uint32 member_count = 7; // 群成员数量
+    string announcement = 8; // 群公告（独立读取群详情）
   }
 }
 

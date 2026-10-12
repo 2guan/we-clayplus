@@ -14,7 +14,15 @@ import (
 )
 
 // remote 消息服务 gRPC 实现
-type remote struct{}
+type remote struct{ client *api.Client }
+
+func New(client *api.Client) MessageService { return &remote{client: client} }
+func (w remote) core() *api.Client {
+	if w.client != nil {
+		return w.client
+	}
+	return api.GetCore()
+}
 
 // Get 获取 MessageService 单例（gRPC 模式）
 var Get = sync.OnceValue(func() MessageService {
@@ -24,7 +32,7 @@ var Get = sync.OnceValue(func() MessageService {
 // Sync 同步消息
 func (w remote) Sync(selector uint32) (*SyncResult, error) {
 	var resp SyncResult
-	if err := api.GetCore().Get("/api/message/sync").Query("selector", selector).DoProto(&resp); err != nil {
+	if err := w.core().Get("/api/message/sync").Query("selector", selector).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -38,7 +46,7 @@ func (w remote) SendText(receiver, content, remind string) (*SendMessageResponse
 		"content":  content,
 		"remind":   remind,
 	}
-	if err := api.GetCore().Post("/api/message/text").Body(body).DoProto(&resp); err != nil {
+	if err := w.core().Post("/api/message/text").Body(body).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -51,7 +59,7 @@ func (w remote) SendImage(receiver string, reader io.Reader) (*UploadImageRespon
 		return nil, err
 	}
 	var resp UploadImageResponse
-	if err := api.GetCore().Post("/api/message/image").Multipart(
+	if err := w.core().Post("/api/message/image").Multipart(
 		map[string][]byte{"image": imageData},
 		map[string]string{"receiver": receiver},
 	).DoProto(&resp); err != nil {
@@ -75,7 +83,7 @@ func (w remote) SendVideo(receiver string, thumb, video io.Reader, duration uint
 		files["thumb"] = thumbData
 	}
 	var resp UploadVideoResponse
-	if err := api.GetCore().Post("/api/message/video").Multipart(files,
+	if err := w.core().Post("/api/message/video").Multipart(files,
 		map[string]string{
 			"receiver": receiver,
 			"duration": fmt.Sprintf("%d", duration),
@@ -93,7 +101,7 @@ func (w remote) SendVoice(receiver string, reader io.Reader, duration, format in
 		return nil, err
 	}
 	var resp UploadVoiceResponse
-	if err := api.GetCore().Post("/api/message/voice").Multipart(
+	if err := w.core().Post("/api/message/voice").Multipart(
 		map[string][]byte{"voice": voiceData},
 		map[string]string{
 			"receiver": receiver,
@@ -109,7 +117,7 @@ func (w remote) SendVoice(receiver string, reader io.Reader, duration, format in
 // SendEmoji 发送表情消息（multipart/form-data）
 func (w remote) SendEmoji(receiver, md5 string, data []byte) (*UploadEmojiResponse, error) {
 	var resp UploadEmojiResponse
-	if err := api.GetCore().Post("/api/message/emoji").Multipart(
+	if err := w.core().Post("/api/message/emoji").Multipart(
 		map[string][]byte{"emoji": data},
 		map[string]string{"receiver": receiver, "md5": md5},
 	).DoProto(&resp); err != nil {
@@ -121,7 +129,7 @@ func (w remote) SendEmoji(receiver, md5 string, data []byte) (*UploadEmojiRespon
 // SendApp 发送应用消息
 func (w remote) SendApp(receiver, xml, extendXML string, typ int32) (*SendAppMessageResponse, error) {
 	var resp SendAppMessageResponse
-	if err := api.GetCore().Post("/api/message/app").Body(map[string]any{
+	if err := w.core().Post("/api/message/app").Body(map[string]any{
 		"receiver":   receiver,
 		"xml":        xml,
 		"type":       typ,
@@ -135,7 +143,7 @@ func (w remote) SendApp(receiver, xml, extendXML string, typ int32) (*SendAppMes
 // SendLink 发送链接消息
 func (w remote) SendLink(receiver, title, desc, url, thumbUrl string) (*SendAppMessageResponse, error) {
 	var resp SendAppMessageResponse
-	if err := api.GetCore().Post("/api/message/link").Body(map[string]any{
+	if err := w.core().Post("/api/message/link").Body(map[string]any{
 		"receiver":  receiver,
 		"title":     title,
 		"desc":      desc,
@@ -150,7 +158,7 @@ func (w remote) SendLink(receiver, title, desc, url, thumbUrl string) (*SendAppM
 // SendCard 发送名片消息
 func (w remote) SendCard(receiver, cardUsername, cardNickname, cardAlias string) (*SendMessageResponse, error) {
 	var resp SendMessageResponse
-	if err := api.GetCore().Post("/api/message/card").Body(map[string]any{
+	if err := w.core().Post("/api/message/card").Body(map[string]any{
 		"receiver":      receiver,
 		"card_username": cardUsername,
 		"card_nickname": cardNickname,
@@ -164,7 +172,7 @@ func (w remote) SendCard(receiver, cardUsername, cardNickname, cardAlias string)
 // SendPosition 发送位置消息
 func (w remote) SendPosition(receiver, label, poiName string, lon, lat, scale float64) (*SendMessageResponse, error) {
 	var resp SendMessageResponse
-	if err := api.GetCore().Post("/api/message/position").Body(map[string]any{
+	if err := w.core().Post("/api/message/position").Body(map[string]any{
 		"receiver": receiver,
 		"label":    label,
 		"poi_name": poiName,
@@ -187,7 +195,7 @@ func (w remote) ForwardImage(receiver string, reader io.Reader) (*UploadImageRes
 		return nil, errors.New("forward XML exceeds 4 MiB")
 	}
 	var resp UploadImageResponse
-	if err = api.GetCore().Post("/api/message/forward/image").Body(map[string]any{"receiver": receiver, "xml": string(b)}).DoProto(&resp); err != nil {
+	if err = w.core().Post("/api/message/forward/image").Body(map[string]any{"receiver": receiver, "xml": string(b)}).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -203,7 +211,7 @@ func (w remote) ForwardVideo(receiver string, reader io.Reader) (*UploadVideoRes
 		return nil, errors.New("forward XML exceeds 4 MiB")
 	}
 	var resp UploadVideoResponse
-	if err = api.GetCore().Post("/api/message/forward/video").Body(map[string]any{"receiver": receiver, "xml": string(b)}).DoProto(&resp); err != nil {
+	if err = w.core().Post("/api/message/forward/video").Body(map[string]any{"receiver": receiver, "xml": string(b)}).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -212,7 +220,7 @@ func (w remote) ForwardVideo(receiver string, reader io.Reader) (*UploadVideoRes
 // ForwardFile 转发文件
 func (w remote) ForwardFile(receiver, xml string) (*SendAppMessageResponse, error) {
 	var resp SendAppMessageResponse
-	if err := api.GetCore().Post("/api/message/forward/file").Body(map[string]any{"receiver": receiver, "xml": xml}).DoProto(&resp); err != nil {
+	if err := w.core().Post("/api/message/forward/file").Body(map[string]any{"receiver": receiver, "xml": xml}).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -221,7 +229,7 @@ func (w remote) ForwardFile(receiver, xml string) (*SendAppMessageResponse, erro
 // Revoke 撤回消息
 func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64) (*RevokeMessageResponse, error) {
 	var resp RevokeMessageResponse
-	if err := api.GetCore().Post("/api/message/revoke").Body(map[string]any{
+	if err := w.core().Post("/api/message/revoke").Body(map[string]any{
 		"receiver":    receiver,
 		"new_id":      newMsgId,
 		"client_id":   clientMsgId,
@@ -234,7 +242,7 @@ func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64)
 
 // DownloadImg 下载消息图片
 func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error) {
-	b, err := api.GetCore().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).Do()
+	b, err := w.core().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +252,7 @@ func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (
 
 // DownloadVideo 下载视频
 func (w remote) DownloadVideo(receiver, fileId, aesKey string, totalSize uint32) (*DownloadVideoResponse, error) {
-	b, err := api.GetCore().Get("/api/cdn/download/video").Query("id", fileId, "key", aesKey).Do()
+	b, err := w.core().Get("/api/cdn/download/video").Query("id", fileId, "key", aesKey).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +267,7 @@ func (w remote) DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceL
 		return nil, errors.New("voice fileId must be a numeric message ID")
 	}
 	var resp DownloadVoiceResponse
-	if err = api.GetCore().Post("/api/message/download/voice").Body(map[string]any{"new_id": id, "chatroom_id": receiver, "length": totalSize}).DoProto(&resp); err != nil {
+	if err = w.core().Post("/api/message/download/voice").Body(map[string]any{"new_id": id, "chatroom_id": receiver, "length": totalSize}).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -270,11 +278,29 @@ func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) 
 	if aesKey != "" {
 		return nil, errors.New("attachment download requires an attach ID, not a CDN AES key")
 	}
-	var resp DownloadFileResponse
-	if err := api.GetCore().Post("/api/message/download/file").Body(map[string]any{"attach_id": fileId, "username": receiver, "size": totalSize, "chunk_size": min(totalSize, 32<<10)}).DoProto(&resp); err != nil {
-		return nil, err
+	if fileId == "" || totalSize == 0 || totalSize > 32<<20 {
+		return nil, errors.New("attachment must contain 1..32 MiB and have an attach ID")
 	}
-	return &resp, nil
+	data := make([]byte, 0, totalSize)
+	var last *DownloadFileResponse
+	for offset := uint32(0); offset < totalSize; {
+		var resp DownloadFileResponse
+		length := min(totalSize-offset, uint32(32<<10))
+		if err := w.core().Post("/api/message/download/file").Body(map[string]any{"attach_id": fileId, "username": receiver, "size": totalSize, "offset": offset, "chunk_size": length}).DoProto(&resp); err != nil {
+			return nil, err
+		}
+		chunk := resp.GetChunk().GetData()
+		if resp.GetOffset() != offset || resp.GetSize() != totalSize || len(chunk) == 0 || uint32(len(chunk)) > length || resp.GetChunkSize() != uint32(len(chunk)) {
+			return nil, errors.New("attachment chunk receipt mismatch")
+		}
+		data = append(data, chunk...)
+		offset += uint32(len(chunk))
+		last = &resp
+	}
+	last.Offset = proto.Uint32(0)
+	last.ChunkSize = proto.Uint32(uint32(len(data)))
+	last.Chunk = &baseapi.Buffer{Size: proto.Uint32(uint32(len(data))), Data: data}
+	return last, nil
 }
 
 // SendFile preserves the original filename in the multipart upload.
@@ -287,7 +313,7 @@ func (w remote) SendFile(receiver, filename string, reader io.Reader) (*SendAppM
 		return nil, errors.New("file must contain 1..32 MiB")
 	}
 	var resp SendAppMessageResponse
-	if err = api.GetCore().Post("/api/message/file").MultipartFiles([]api.FilePart{{Name: "file", Filename: filename, Data: b}}, map[string]string{"receiver": receiver}).DoProto(&resp); err != nil {
+	if err = w.core().Post("/api/message/file").MultipartFiles([]api.FilePart{{Name: "file", Filename: filename, Data: b}}, map[string]string{"receiver": receiver}).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

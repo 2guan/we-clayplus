@@ -3,31 +3,35 @@ package sync
 import (
 	contactability "github.com/we-clay/we-clay/gateway/internal/ability/contact"
 	messageapi "github.com/we-clay/we-clay/gateway/internal/api/message"
-	"github.com/we-clay/we-clay/gateway/internal/plugin"
 	pluginsdk "github.com/we-clay/we-clay/sdk/plugin"
 )
 
-func handleContact(contacts []*messageapi.ModifyContact) {
-	publishChangeEvents(contactability.HandleModifyContacts(contacts))
+func (p *processor) handleContact(contacts []*messageapi.ModifyContact) error {
+	return p.publishChangeEvents(contactability.HandleModifyContacts(contacts))
 }
 
-func publishChangeEvents(events []*pluginsdk.ChangeEvent) {
+func (p *processor) publishChangeEvents(events []*pluginsdk.ChangeEvent) error {
 	for _, event := range events {
 		if event == nil {
 			continue
 		}
-		plugin.Publish(&pluginsdk.Event{
+		if err := p.publish(&pluginsdk.Event{
 			Topic:   event.Domain + "::" + event.Action,
 			Payload: &pluginsdk.Event_Change{Change: event},
-		})
+		}); err != nil {
+			return err
+		}
 		for _, change := range event.Changes {
 			if change.GetPath() == "" {
 				continue
 			}
-			plugin.Publish(&pluginsdk.Event{
+			if err := p.publish(&pluginsdk.Event{
 				Topic:   event.Domain + "::" + event.Action + "::" + change.GetPath(),
 				Payload: &pluginsdk.Event_Change{Change: event},
-			})
+			}); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }

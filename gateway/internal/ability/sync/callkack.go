@@ -17,23 +17,36 @@ func CallBack() {
 		return
 	}
 	slog.Debug("同步数据成功")
-	handle(result)
+	if err := (&processor{}).handle(result); err != nil {
+		slog.Warn("处理同步事件失败", "err", err)
+	}
 }
 
-func handle(result *messageapi.SyncResult) {
+func (p *processor) handle(result *messageapi.SyncResult) error {
 	if result.ModifyUserInfo != nil || result.UserInfoExtend != nil {
-		handleUserInfo(result.ModifyUserInfo, result.UserInfoExtend)
+		if err := p.handleUserInfo(result.ModifyUserInfo, result.UserInfoExtend); err != nil {
+			return err
+		}
 	}
 	if result.NewMessage != nil {
-		handleMessage(result.NewMessage)
+		if err := p.handleMessage(result.NewMessage); err != nil {
+			return err
+		}
 	}
 	if result.ModifyContact != nil {
-		handleContact(result.ModifyContact)
+		if err := p.handleContact(result.ModifyContact); err != nil {
+			return err
+		}
 	}
 	if result.ModifyChatroomMember != nil {
-		handleChatroomMember(result.ModifyChatroomMember)
+		if err := p.handleChatroomMember(result.ModifyChatroomMember); err != nil {
+			return err
+		}
 	}
 	if result.ModifyChatroomMemberDisplayName != nil {
-		handleChatroomMemberDisplayName(result.ModifyChatroomMemberDisplayName)
+		if err := p.handleChatroomMemberDisplayName(result.ModifyChatroomMemberDisplayName); err != nil {
+			return err
+		}
 	}
+	return nil
 }

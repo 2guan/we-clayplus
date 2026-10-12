@@ -7,6 +7,7 @@ import (
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
 	contactapi "github.com/we-clay/we-clay/gateway/internal/api/contact"
 	officialapi "github.com/we-clay/we-clay/gateway/internal/api/official"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -21,114 +22,37 @@ func init() {
 
 // Follow 关注公众号
 func (a ability) Follow(appid string) (*sdk.Follow_Response, error) {
-	resp, err := a.api.Follow(appid)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.Follow_Response{
-		BaseResult: mapContactBaseResult(resp),
-		Username:   resp.GetUsername(),
-	}, nil
+	return nil, sdkroot.NotImplemented("official.Follow")
 }
 
 // Quit 取关公众号
 func (a ability) Quit(appid string) (*sdk.Quit_Response, error) {
-	resp, err := a.api.Quit(appid)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	result := resp.GetResult()
-	return &sdk.Quit_Response{
-		Code:       resp.GetCode(),
-		Count:      result.GetCount(),
-		ResultCode: result.GetCode(),
-		Message:    result.GetMessage(),
-	}, nil
+	return nil, sdkroot.NotImplemented("official.Quit")
 }
 
 // MpGetA8Key 获取公众号 A8Key
 func (a ability) MpGetA8Key(url string) (*sdk.MpGetA8Key_Response, error) {
-	resp, err := a.api.MpGetA8Key(url)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.MpGetA8Key_Response{
-		BaseResult:        mapBaseResult(resp.GetBaseResponse()),
-		FullUrl:           resp.GetFullUrl(),
-		A8Key:             resp.GetA8Key(),
-		ActionCode:        resp.GetActionCode(),
-		Title:             resp.GetTitle(),
-		Content:           resp.GetContent(),
-		JsapiPermission:   mapJSAPIPermission(resp.GetJsapiPermission()),
-		GeneralControl:    resp.GetGeneralControl().GetValue(),
-		UserName:          resp.GetUserName(),
-		ShareUrl:          resp.GetShareUrl(),
-		ScopeCount:        resp.GetScopeCount(),
-		ScopeList:         mapScopeList(resp.GetScopeList()),
-		AntispamTicket:    resp.GetAntispamTicket(),
-		Ssid:              resp.GetSsid(),
-		Mid:               resp.GetMid(),
-		DeepLink:          resp.GetDeepLink().GetValue(),
-		JsapiControlBytes: mapBuffer(resp.GetJsapiControlBytes()),
-		HttpHeaderCount:   resp.GetHttpHeaderCount(),
-		HttpHeaderList:    mapHTTPHeaders(resp.GetHttpHeaderList()),
-		Wording:           resp.GetWording(),
-		Avatar:            resp.GetAvatar(),
-		Cookie:            mapBuffer(resp.GetCookie()),
-		MenuWording:       resp.GetMenuWording(),
-	}, nil
+	return nil, sdkroot.NotImplemented("official.MpGetA8Key")
 }
 
 // JSAPIPreVerify JSAPI 预验证
 func (a ability) JSAPIPreVerify(url, appid string, jsapiList []string) (*sdk.JSAPIPreVerify_Response, error) {
-	resp, err := a.api.JSAPIPreVerify(url, appid, jsapiList)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.JSAPIPreVerify_Response{
-		BaseResult:     mapBaseResult(resp.GetBaseResponse()),
-		JsapiResult:    mapJSAPIResult(resp.GetJsapiResult()),
-		VerifyInfoList: resp.GetVerifyInfoList(),
-		DomainPathList: resp.GetDomainPathList(),
-		AppAvatarUrl:   resp.GetAppAvatarUrl(),
-		AppNickname:    resp.GetAppNickname(),
-	}, nil
+	return nil, sdkroot.NotImplemented("official.JSAPIPreVerify")
 }
 
 // OauthAuthorize OAuth 授权
 func (a ability) OauthAuthorize(url, appid string) (*sdk.OauthAuthorize_Response, error) {
-	resp, err := a.api.OauthAuthorize(url, appid)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.OauthAuthorize_Response{
-		BaseResult:              mapBaseResult(resp.GetBaseResponse()),
-		ScopeList:               resp.GetScopeList(),
-		AppName:                 resp.GetAppName(),
-		AppIconUrl:              resp.GetAppIconUrl(),
-		RedirectUrl:             resp.GetRedirectUrl(),
-		IsRecentHasAuth:         resp.GetIsRecentHasAuth(),
-		IsSilentAuth:            resp.GetIsSilentAuth(),
-		IsCallServerWhenConfirm: resp.GetIsCallServerWhenConfirm(),
-	}, nil
+	return nil, sdkroot.NotImplemented("official.OauthAuthorize")
 }
 
 // ReadArticle 阅读公众号文章
 func (a ability) ReadArticle(url string) (*sdk.ReadArticle_Response, error) {
-	resp, err := a.api.ReadArticle(url)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.ReadArticle_Response{Result: mapArticleResult(resp)}, nil
+	return nil, sdkroot.NotImplemented("official.ReadArticle")
 }
 
 // LikeArticle 点赞公众号文章
 func (a ability) LikeArticle(url string) (*sdk.LikeArticle_Response, error) {
-	resp, err := a.api.LikeArticle(url)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.LikeArticle_Response{Result: mapArticleResult(resp)}, nil
+	return nil, sdkroot.NotImplemented("official.LikeArticle")
 }
 
 func mapContactBaseResult(resp *contactapi.VerifyUserResponse) *sdk.BaseResult {

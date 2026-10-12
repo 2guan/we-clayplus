@@ -9,6 +9,7 @@ import (
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
 	messageapi "github.com/we-clay/we-clay/gateway/internal/api/message"
 	momentsapi "github.com/we-clay/we-clay/gateway/internal/api/moments"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability 朋友圈能力实现（直连型）。
@@ -76,14 +77,7 @@ func (a ability) Detail(id uint64) (*sdk.Detail_Response, error) {
 
 // Comment 评论朋友圈
 func (a ability) Comment(id uint64, content string, typ, replyCommentId int32) (*sdk.Comment_Response, error) {
-	resp, err := a.api.Comment(id, content, typ, replyCommentId)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.Comment_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		Object:     mapMoment(resp.GetObject()),
-	}, nil
+	return nil, sdkroot.NotImplemented("moments.Comment")
 }
 
 // Like 点赞朋友圈
@@ -113,28 +107,12 @@ func (a ability) Unlike(id uint64) (*sdk.Unlike_Response, error) {
 
 // Delete 删除朋友圈
 func (a ability) Delete(id uint64) (*sdk.Delete_Response, error) {
-	resp, err := a.api.Delete(id)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.Delete_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		Count:      resp.GetCount(),
-		List:       resp.GetList(),
-	}, nil
+	return nil, sdkroot.NotImplemented("moments.Delete")
 }
 
 // DeleteComment 删除朋友圈评论
 func (a ability) DeleteComment(id uint64, commentId uint32) (*sdk.DeleteComment_Response, error) {
-	resp, err := a.api.DeleteComment(id, commentId)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.DeleteComment_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		Count:      resp.GetCount(),
-		List:       resp.GetList(),
-	}, nil
+	return nil, sdkroot.NotImplemented("moments.DeleteComment")
 }
 
 // Post 发布朋友圈
@@ -185,17 +163,7 @@ func (a ability) Sync(key []byte) (*sdk.Sync_Response, error) {
 
 // SetPrivacy 设置朋友圈隐私
 func (a ability) SetPrivacy(function int32, value uint32) (*sdk.SetPrivacy_Response, error) {
-	resp, err := a.api.SetPrivacy(function, value)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	result := resp.GetResult()
-	return &sdk.SetPrivacy_Response{
-		Code:       resp.GetCode(),
-		Count:      result.GetCount(),
-		ResultCode: result.GetCode(),
-		Message:    result.GetMessage(),
-	}, nil
+	return nil, sdkroot.NotImplemented("moments.SetPrivacy")
 }
 
 func mapBaseResult(resp *baseapi.BaseResponse) *sdk.BaseResult {

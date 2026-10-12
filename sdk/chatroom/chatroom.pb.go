@@ -1321,6 +1321,7 @@ type GetInfo_Response struct {
 	Avatar        string                 `protobuf:"bytes,5,opt,name=avatar,proto3" json:"avatar,omitempty"`                               // 头像 URL
 	Owner         string                 `protobuf:"bytes,6,opt,name=owner,proto3" json:"owner,omitempty"`                                 // 群主 wxid
 	MemberCount   uint32                 `protobuf:"varint,7,opt,name=member_count,json=memberCount,proto3" json:"member_count,omitempty"` // 群成员数量
+	Announcement  string                 `protobuf:"bytes,8,opt,name=announcement,proto3" json:"announcement,omitempty"`                   // 群公告（独立读取群详情）
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1402,6 +1403,13 @@ func (x *GetInfo_Response) GetMemberCount() uint32 {
 		return x.MemberCount
 	}
 	return 0
+}
+
+func (x *GetInfo_Response) GetAnnouncement() string {
+	if x != nil {
+		return x.Announcement
+	}
+	return ""
 }
 
 type GetMemberDetail_Request struct {
@@ -3165,10 +3173,10 @@ const file_chatroom_chatroom_proto_rawDesc = "" +
 	"\bchatroom\x18\x01 \x01(\tR\bchatroom\x12\x16\n" +
 	"\x06ticket\x18\x02 \x01(\tR\x06ticket\x12!\n" +
 	"\fmember_count\x18\x03 \x01(\rR\vmemberCount\x127\n" +
-	"\amembers\x18\x04 \x03(\v2\x1d.chatroom.FacingCreate.MemberR\amembers\"\xf4\x01\n" +
+	"\amembers\x18\x04 \x03(\v2\x1d.chatroom.FacingCreate.MemberR\amembers\"\x98\x02\n" +
 	"\aGetInfo\x1a%\n" +
 	"\aRequest\x12\x1a\n" +
-	"\bchatroom\x18\x01 \x01(\tR\bchatroom\x1a\xc1\x01\n" +
+	"\bchatroom\x18\x01 \x01(\tR\bchatroom\x1a\xe5\x01\n" +
 	"\bResponse\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bnickname\x18\x02 \x01(\tR\bnickname\x12\x16\n" +
@@ -3176,7 +3184,8 @@ const file_chatroom_chatroom_proto_rawDesc = "" +
 	"\x05alias\x18\x04 \x01(\tR\x05alias\x12\x16\n" +
 	"\x06avatar\x18\x05 \x01(\tR\x06avatar\x12\x14\n" +
 	"\x05owner\x18\x06 \x01(\tR\x05owner\x12!\n" +
-	"\fmember_count\x18\a \x01(\rR\vmemberCount\"\x8a\x01\n" +
+	"\fmember_count\x18\a \x01(\rR\vmemberCount\x12\"\n" +
+	"\fannouncement\x18\b \x01(\tR\fannouncement\"\x8a\x01\n" +
 	"\x0fGetMemberDetail\x1a?\n" +
 	"\aRequest\x12\x1a\n" +
 	"\bchatroom\x18\x01 \x01(\tR\bchatroom\x12\x18\n" +

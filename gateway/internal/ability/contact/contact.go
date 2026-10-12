@@ -13,15 +13,17 @@ import (
 	"github.com/duke-git/lancet/v2/slice"
 	contactapi "github.com/we-clay/we-clay/gateway/internal/api/contact"
 	hc "github.com/we-clay/we-clay/gateway/internal/config"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 	sdk "github.com/we-clay/we-clay/sdk/contact"
 )
 
 // ability 联系人能力实现（缓存型）
 type ability struct {
-	api    contactapi.ContactService
-	cache  map[string]*sdk.Contact
-	self   *sdk.SelfInfo
-	selfMu sync.RWMutex
+	api     contactapi.ContactService
+	cache   map[string]*sdk.Contact
+	self    *sdk.SelfInfo
+	selfMu  sync.RWMutex
+	cacheMu sync.RWMutex
 }
 
 var instance ability
@@ -33,6 +35,8 @@ func init() {
 }
 
 func Initial(dataDir string) {
+	instance.cacheMu.Lock()
+	defer instance.cacheMu.Unlock()
 	cacheDir = dataDir
 	instance.cache = map[string]*sdk.Contact{}
 	// 从文件读取联系人信息
@@ -67,7 +71,7 @@ func Initial(dataDir string) {
 		}
 	}
 	slog.Info("[contact ability] 获取联系人信息成功", "count", len(instance.cache))
-	Destroy()
+	destroyLocked()
 }
 
 // SetSelf 保存当前登录账号信息。
@@ -81,6 +85,12 @@ func GetSelf() *sdk.SelfInfo {
 }
 
 func Destroy() {
+	instance.cacheMu.RLock()
+	defer instance.cacheMu.RUnlock()
+	destroyLocked()
+}
+
+func destroyLocked() {
 	marshal, err := json.Marshal(instance.cache)
 	if err != nil {
 		slog.Warn("[contact ability] 序列化联系人信息失败", "err", err)
@@ -94,6 +104,8 @@ func Destroy() {
 
 // Refresh 刷新缓存
 func Refresh() error {
+	instance.cacheMu.Lock()
+	defer instance.cacheMu.Unlock()
 	// 清除缓存
 	instance.cache = map[string]*sdk.Contact{}
 	// 通过api获取联系人信息
@@ -116,7 +128,7 @@ func Refresh() error {
 		}
 	}
 	slog.Info("[contact ability] 获取联系人信息成功", "count", len(instance.cache))
-	Destroy()
+	destroyLocked()
 	return nil
 }
 
@@ -145,7 +157,9 @@ func RefreshOne(key string) (*sdk.Contact, error) {
 	if err != nil {
 		return nil, fmt.Errorf("[contact ability] 构建联系人 [%s] 失败: %w", contact.Username, err)
 	}
+	instance.cacheMu.Lock()
 	instance.cache[build.Username] = build
+	instance.cacheMu.Unlock()
 	Destroy()
 	return build, nil
 }
@@ -167,8 +181,10 @@ func (a *ability) GetSelf() *sdk.SelfInfo {
 
 // Get 按键查询缓存联系人，支持前缀：username::（默认）、nickname::、remark::
 func (a *ability) Get(key string) *sdk.Contact {
+	a.cacheMu.RLock()
+	defer a.cacheMu.RUnlock()
 	if c := getStrategy(key).find(a.cache); c != nil {
-		return c
+		return cloneContact(c)
 	}
 	return nil
 }
@@ -188,9 +204,11 @@ func (a *ability) Get(key string) *sdk.Contact {
 //
 // List 获取联系人列表
 func (a *ability) List() []*sdk.Contact {
+	a.cacheMu.RLock()
+	defer a.cacheMu.RUnlock()
 	var result []*sdk.Contact
 	for _, c := range a.cache {
-		result = append(result, c)
+		result = append(result, cloneContact(c))
 	}
 	return result
 }
@@ -226,27 +244,16 @@ func (a *ability) VerifyFriend(v1, v2 string, scene int) error {
 }
 
 // Delete 删除联系人
-func (a *ability) Delete(username string) error {
-	if _, err := a.api.Delete(username); err != nil {
-		return err
-	}
-	return nil
-}
+func (a *ability) Delete(username string) error { return sdkroot.NotImplemented("contact.Delete") }
 
 // BlacklistAdd 添加到黑名单
 func (a *ability) BlacklistAdd(username string) error {
-	if _, err := a.api.BlacklistAdd(username); err != nil {
-		return err
-	}
-	return nil
+	return sdkroot.NotImplemented("contact.BlacklistAdd")
 }
 
 // BlacklistRemove 从黑名单移除
 func (a *ability) BlacklistRemove(username string) error {
-	if _, err := a.api.BlacklistRemove(username); err != nil {
-		return err
-	}
-	return nil
+	return sdkroot.NotImplemented("contact.BlacklistRemove")
 }
 
 // Search 搜索联系人

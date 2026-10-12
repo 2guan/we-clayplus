@@ -75,3 +75,11 @@ func (c *Client) Events(ctx context.Context) (grpc.BidiStreamingClient[corewire.
 	}
 	return c.rpc.Events(c.authenticated(ctx))
 }
+
+// Context 是此连接绑定的运行周期。
+func (c *Client) Context() context.Context {
+	if c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
+}

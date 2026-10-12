@@ -16,6 +16,8 @@ import (
 
 // HandleModifyContacts 处理同步得到的联系人变更。
 func HandleModifyContacts(contacts []*messageapi.ModifyContact) []*pluginsdk.ChangeEvent {
+	instance.cacheMu.Lock()
+	defer instance.cacheMu.Unlock()
 	var events []*pluginsdk.ChangeEvent
 	for _, item := range contacts {
 		if item == nil || item.GetUsername().GetValue() == "" {

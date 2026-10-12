@@ -5,6 +5,7 @@ import (
 	sdk "github.com/we-clay/we-clay/sdk/favor"
 
 	favorapi "github.com/we-clay/we-clay/gateway/internal/api/favor"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability 收藏能力实现（直连型）
@@ -33,24 +34,13 @@ func (a ability) GetInfo() (*sdk.GetInfo_Info, error) {
 
 // GetItem 获取收藏项详情
 func (a ability) GetItem(favId int32) ([]*sdk.Item, error) {
-	resp, err := a.api.GetItem(favId)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	items := make([]*sdk.Item, 0, len(resp.Items))
-	for _, item := range resp.Items {
-		items = append(items, mapItem(item))
-	}
-	return items, nil
+	return nil, sdkroot.NotImplemented(
+		"favor.GetItem")
 }
 
 // Delete 删除收藏项
 func (a ability) Delete(favId int32) error {
-	resp, err := a.api.Delete(favId)
-	if resp == nil || err != nil {
-		return err
-	}
-	return nil
+	return sdkroot.NotImplemented("favor.Delete")
 }
 
 // Sync 同步收藏列表

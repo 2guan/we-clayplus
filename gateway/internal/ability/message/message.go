@@ -3,15 +3,21 @@ package messageability
 
 import (
 	"bytes"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/dustin/go-humanize"
+	sdkroot "github.com/we-clay/we-clay/sdk"
+	"google.golang.org/protobuf/proto"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/dustin/go-humanize"
+	coreapi "github.com/we-clay/we-clay/gateway/internal/api"
 	api "github.com/we-clay/we-clay/gateway/internal/api/message"
 	"github.com/we-clay/we-clay/sdk/contact"
 	sdk "github.com/we-clay/we-clay/sdk/message"
@@ -61,6 +67,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		return nil, err
 	}
 
+	msg = proto.Clone(msg).(*sdk.Message)
 	var result sdk.Send_Response
 	receiver := msg.GetReceiver().GetUsername()
 
@@ -81,6 +88,9 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		if len(resp.GetList()) > 0 {
 			item := resp.GetList()[0]
+			if item.GetCode() != 0 {
+				return nil, fmt.Errorf("消息发送未成功，返回码 %d", item.GetCode())
+			}
 			result.NewId = item.GetNewId()
 			result.CreateTime = item.GetCreateTime()
 		}
@@ -101,8 +111,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		msg.Content = data.GetFilename()
 	case sdk.TypeImage.Code:
 		data := msg.GetImage()
-		if data.GetMedia() == nil {
-			break
+		if data.GetMedia() == nil || len(data.GetMedia().GetData()) == 0 {
+			return nil, errors.New("缺少待发送的媒体数据")
 		}
 		msg.Content = humanize.Bytes(uint64(len(data.GetMedia().Data)))
 		resp, err := a.api.SendImage(receiver, bytes.NewReader(data.GetMedia().Data))
@@ -119,8 +129,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 	case sdk.TypeVoice.Code:
 		format := int32(4)
 		data := msg.GetVoice()
-		if data.GetMedia() == nil {
-			break
+		if data.GetMedia() == nil || len(data.GetMedia().GetData()) == 0 {
+			return nil, errors.New("缺少待发送的媒体数据")
 		}
 		if data != nil && data.Format != nil {
 			format = data.GetFormat()
@@ -138,8 +148,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 	case sdk.TypeVideo.Code:
 		data := msg.GetVideo()
-		if data.GetMedia() == nil {
-			break
+		if data.GetMedia() == nil || len(data.GetMedia().GetData()) == 0 {
+			return nil, errors.New("缺少待发送的媒体数据")
 		}
 		msg.Content = fmt.Sprintf("[%ds] %s", data.GetDuration(), humanize.Bytes(uint64(len(data.GetMedia().Data))))
 		resp, err := a.api.SendVideo(receiver, bytes.NewReader(data.GetThumb()), bytes.NewReader(data.GetMedia().Data), data.GetDuration())
@@ -155,8 +165,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 	case sdk.TypeEmoji.Code:
 		data := msg.GetEmoji()
-		if data.GetMedia() == nil {
-			break
+		if data.GetMedia() == nil || len(data.GetMedia().GetData()) == 0 {
+			return nil, errors.New("缺少待发送的媒体数据")
 		}
 		resp, err := a.api.SendEmoji(receiver, data.GetMedia().GetMd5(), data.GetMedia().Data)
 		if err != nil {
@@ -175,21 +185,18 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		if len(resp.GetList()) > 0 {
 			item := resp.GetList()[0]
+			if item.GetCode() != 0 {
+				return nil, fmt.Errorf("消息发送未成功，返回码 %d", item.GetCode())
+			}
 			result.NewId = item.GetNewId()
 			result.CreateTime = item.GetCreateTime()
 		}
 	case sdk.TypeApplication.Code, sdk.TypeAppChatRecord.Code, sdk.TypeAppMusic.Code:
-		data := msg.GetApp()
-		resp, err := a.api.SendApp(receiver, data.GetXml(), data.GetExtendXml(), int32(data.GetSubType()))
-		if err != nil {
-			return nil, err
-		}
-		result.NewId = resp.GetNewId()
-		result.CreateTime = uint32(resp.GetCreateTime())
+		return nil, sdkroot.NotImplemented("message.Send: 通用应用/聊天记录/音乐")
 	case sdk.TypeAppLink.Code:
 		data := msg.GetApp()
 		if data == nil {
-			return nil, nil
+			return nil, errors.New("缺少链接消息参数")
 		}
 		resp, err := a.api.SendLink(receiver, data.Title, data.Desc, data.Url, data.Xml)
 		if err != nil {
@@ -199,18 +206,36 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		result.CreateTime = uint32(resp.GetCreateTime())
 
 	default:
-		slog.Debug("未知类型消息", "type", msg.Type, "content", msg.Content)
+		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Send: type=%d", msg.GetType().GetCode()))
+	}
+	if result.NewId == 0 {
+		return nil, errors.New("消息回执缺少消息 ID，结果未确认，请勿自动重试")
 	}
 	slog.Info(fmt.Sprintf("[%s] -> %s : %s", msg.GetType().GetDesc(), msg.GetReceiver().GetNickname(), msg.Content))
 
-	// 如果有撤回时间
+	// 自动撤回绑定当前连接和 context，不能在下一次 Run 操作另一个账号。
 	if msg.Timestamp != 0 && result.NewId != 0 {
-		time.AfterFunc(time.Duration(msg.Timestamp)*time.Second, func() {
-			if _, err := a.api.Revoke(receiver, result.NewId, 0, uint64(result.CreateTime)); err != nil {
+		conn := coreapi.GetCore()
+		scoped := api.New(conn)
+		ctx := conn.Context()
+		newID, created := result.NewId, result.CreateTime
+		timer := time.NewTimer(time.Duration(msg.Timestamp) * time.Second)
+		go func() {
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			if _, err := scoped.Revoke(receiver, newID, 0, uint64(created)); err != nil {
 				slog.Warn("消息撤回失败", "err", err)
 			}
-		})
+		}()
 	}
+
 	return &result, nil
 }
 
@@ -219,86 +244,162 @@ func (a *ability) Forward(msg *sdk.Message, receiver string) (*sdk.Forward_Respo
 	if err := ensureOutboundReady(); err != nil {
 		return nil, err
 	}
-	switch msg.GetType() {
-	case sdk.TypeImage:
-		data := msg.GetImage()
-		if data.GetMedia() != nil {
-			_, err := a.api.ForwardImage(receiver, bytes.NewReader(nil))
-			if err != nil {
-				return nil, err
-			}
-		}
-	case sdk.TypeVideo:
-		data := msg.GetVideo()
-		if data.GetMedia() != nil {
-			_, err := a.api.ForwardVideo(receiver, bytes.NewReader(nil))
-			if err != nil {
-				return nil, err
-			}
-		}
-	case sdk.TypeApplication:
-		data := msg.GetApp()
-		_, err := a.api.ForwardFile(receiver, data.GetXml())
-		if err != nil {
-			return nil, err
-		}
-	default:
-		// 文本等类型直接用 Send 转发
-		msg.Receiver = &contact.Contact{Username: receiver}
-		resp, err := a.Send(msg)
-		if err != nil {
-			return nil, err
-		}
-		return &sdk.Forward_Response{NewId: resp.NewId, CreateTime: resp.CreateTime}, nil
+	if msg == nil || receiver == "" {
+		return nil, errors.New("消息和转发接收人不可为空")
 	}
-	return &sdk.Forward_Response{}, nil
+	switch msg.GetType().GetCode() {
+	case sdk.TypeImage.Code:
+		raw, err := messageXML(msg)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := a.api.ForwardImage(receiver, strings.NewReader(raw))
+		if err != nil {
+			return nil, err
+		}
+		if resp.GetNewId() == 0 {
+			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
+		}
+		return &sdk.Forward_Response{NewId: resp.GetNewId(), CreateTime: resp.GetCreateTime()}, nil
+	case sdk.TypeVideo.Code, sdk.TypeTinyVideo.Code:
+		raw, err := messageXML(msg)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := a.api.ForwardVideo(receiver, strings.NewReader(raw))
+		if err != nil {
+			return nil, err
+		}
+		if resp.GetNewId() == 0 {
+			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
+		}
+		return &sdk.Forward_Response{NewId: resp.GetNewId()}, nil
+	case sdk.TypeAppFileAttach.Code:
+		raw, err := messageXML(msg)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := a.api.ForwardFile(receiver, raw)
+		if err != nil {
+			return nil, err
+		}
+		if resp.GetNewId() == 0 {
+			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
+		}
+		return &sdk.Forward_Response{NewId: resp.GetNewId(), CreateTime: uint32(resp.GetCreateTime())}, nil
+	default:
+		copy := proto.Clone(msg).(*sdk.Message)
+		copy.Receiver = &contact.Contact{Username: receiver}
+		copy.Timestamp = 0 // 接收时间不是自动撤回延迟。
+		resp, err := a.Send(copy)
+		if err != nil {
+			return nil, err
+		}
+		if resp.GetNewId() == 0 {
+			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
+		}
+		return &sdk.Forward_Response{NewId: resp.GetNewId(), CreateTime: resp.GetCreateTime()}, nil
+	}
+}
+
+func messageXML(msg *sdk.Message) (string, error) {
+	raw := msg.GetApp().GetXml()
+	if raw == "" && msg.GetRaw() != "" {
+		var source api.NewMessage
+		if err := json.Unmarshal([]byte(msg.GetRaw()), &source); err != nil {
+			return "", errors.New("原始消息无法解析")
+		}
+		raw = source.GetContent().GetValue()
+	}
+	if parts := strings.SplitN(raw, ":\n", 2); len(parts) == 2 {
+		raw = parts[1]
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("转发/下载缺少原始消息 XML")
+	}
+	return raw, nil
 }
 
 // Revoke 撤回消息
 func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response, error) {
-	_, err := a.api.Revoke(receiver, newMsgId, 0, 0)
+	resp, err := a.api.Revoke(receiver, newMsgId, 0, 0)
 	if err != nil {
 		return nil, err
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil {
+		return nil, errors.New("撤回回执不完整，请核对消息状态")
+	}
+	if resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("消息撤回失败，返回码 %d", resp.GetBaseResponse().GetCode())
 	}
 	return &sdk.Revoke_Response{Code: 0}, nil
 }
 
 // Download 下载媒体资源
 func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
-	receiver := msg.GetReceiver().GetUsername()
+	if msg == nil {
+		return nil, errors.New("消息不可为空")
+	}
+	receiver := msg.GetSender().GetUsername()
 	switch msg.GetType().GetCode() {
 	case sdk.TypeImage.Code:
-		data := msg.GetImage()
-		if data.GetMedia() == nil {
-			return io.NopCloser(bytes.NewReader(nil)), nil
+		media := msg.GetImage().GetMedia()
+		if media.GetUrl() == "" || media.GetKey() == "" {
+			return nil, errors.New("缺少图片 CDN 地址或密钥")
 		}
-		resp, err := a.api.DownloadImg(receiver, data.GetMedia().GetMd5(), data.GetMedia().GetKey(), data.GetMedia().GetSize())
+		resp, err := a.api.DownloadImg(receiver, media.GetUrl(), media.GetKey(), media.GetSize())
 		if err != nil {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
-	case sdk.TypeVideo.Code:
-		data := msg.GetVideo()
-		if data.GetMedia() == nil {
-			return io.NopCloser(bytes.NewReader(nil)), nil
+	case sdk.TypeVideo.Code, sdk.TypeTinyVideo.Code:
+		media := msg.GetVideo().GetMedia()
+		if media.GetUrl() == "" || media.GetKey() == "" {
+			return nil, errors.New("缺少视频 CDN 地址或密钥")
 		}
-		resp, err := a.api.DownloadVideo(receiver, data.GetMedia().GetMd5(), data.GetMedia().GetKey(), data.GetMedia().GetSize())
+		resp, err := a.api.DownloadVideo(receiver, media.GetUrl(), media.GetKey(), media.GetSize())
 		if err != nil {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
 	case sdk.TypeVoice.Code:
 		data := msg.GetVoice()
-		if data.GetMedia() == nil {
-			return io.NopCloser(bytes.NewReader(nil)), nil
+		if msg.GetId() == 0 || data.GetMedia().GetSize() == 0 {
+			return nil, errors.New("语音下载缺少消息 ID 或长度")
 		}
-		resp, err := a.api.DownloadVoice(receiver, data.GetMedia().GetMd5(), data.GetMedia().GetKey(), data.GetMedia().GetSize(), data.GetDuration())
+		resp, err := a.api.DownloadVoice(receiver, strconv.FormatUint(uint64(msg.GetId()), 10), "", data.GetMedia().GetSize(), data.GetDuration())
 		if err != nil {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetData().GetData())), nil
+	case sdk.TypeAppFileAttach.Code:
+		raw, err := messageXML(msg)
+		if err != nil {
+			return nil, err
+		}
+		var item struct {
+			App struct {
+				Attach struct {
+					ID   string `xml:"attachid"`
+					Size uint32 `xml:"totallen"`
+				} `xml:"appattach"`
+			} `xml:"appmsg"`
+		}
+		if err = xml.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, errors.New("文件消息 XML 无法解析")
+		}
+		if item.App.Attach.ID == "" || item.App.Attach.Size == 0 {
+			return nil, errors.New("文件消息缺少附件 ID 或长度")
+		}
+		resp, err := a.api.DownloadFile(receiver, item.App.Attach.ID, "", item.App.Attach.Size)
+		if err != nil {
+			return nil, err
+		}
+		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
+	default:
+		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Download: type=%d", msg.GetType().GetCode()))
 	}
-	return nil, io.ErrUnexpectedEOF
 }
 
 // SupportsFileSend advertises the optional local-file extension to the SDK.

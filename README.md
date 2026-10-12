@@ -3,12 +3,12 @@
 </p>
 
 <p align="center">
-  <strong>面向 Go 开发者的微信插件框架</strong><br />
+  <strong>面向 Go 开发者的微信机器人框架</strong><br />
   消息、联系人、群聊与朋友圈，从统一的 SDK 接入你的应用。
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.4.1 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.0 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,11 +22,11 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.4.1
+go get github.com/we-clay/we-clay@v0.5.0
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
-we-clay 将连接管理、插件加载与事件分发封装为 Go 库；应用生命周期由你掌握，底层微信连接由独立 core 提供。
+在同一个 Go 程序里接收消息、主动发送、操作联系人和朋友圈。通过回调取得 `Client` 即可调用业务接口；插件可选，底层微信连接由独立 core 提供。
 
 <table>
 <tr>
@@ -35,8 +35,8 @@ we-clay 将连接管理、插件加载与事件分发封装为 Go 库；应用�
 通过 Go Modules 引入，gateway 与 SDK 共用一个模块。无需克隆本仓库，编译应用也不需要 core 源码。
 </td>
 <td width="50%" valign="top">
-<h3>围绕插件扩展</h3>
-插件独立运行，按需注入能力。支持事件订阅、命令处理、会话管理与配置更新。
+<h3>直接写机器人逻辑</h3>
+OnReady 获取客户端，OnMessage 处理消息，OnEvent 接收资料变更。需要独立扩展时再启用插件。
 </td>
 </tr>
 <tr>
@@ -53,14 +53,14 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ## 能力概览
 
-从消息处理到社交操作，按业务领域组织 API，插件只需声明自己需要的能力。
+从消息处理到社交操作，Client 与插件复用同一套 SDK 类型和业务能力。
 
 | 领域 | 提供的接口 | SDK |
 | --- | --- | --- |
 | **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回 | [message](sdk/message/ability.go) |
 | **联系人** | 查询、备注、搜索、好友申请与验证 | [contact](sdk/contact/ability.go) |
 | **群聊** | 创建、成员查询、邀请、群名、公告与管理 | [chatroom](sdk/chatroom/ability.go) |
-| **朋友圈** | 时间线、指定好友主页、发布、评论、点赞与取消点赞 | [moments](sdk/moments/ability.go) |
+| **朋友圈** | 时间线、指定好友主页、发布、点赞与取消点赞；评论预留 | [moments](sdk/moments/ability.go) |
 | **插件运行** | 生命周期、事件、命令、能力注入与会话 | [plugin](sdk/plugin) |
 
 这些是当前提供的接口，不代表每个接口都已完成真实账号验证。验证范围见[当前状态](#当前状态)。
@@ -76,7 +76,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ```sh
 go mod init example.com/my-wechat-bot
-go get github.com/we-clay/we-clay@v0.4.1
+go get github.com/we-clay/we-clay@v0.5.0
 ```
 
 ### 2 · 调用 Run
@@ -94,20 +94,39 @@ import (
     "syscall"
 
     "github.com/we-clay/we-clay/gateway"
+    "github.com/we-clay/we-clay/sdk/message"
 )
 
 func main() {
     ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
+    // 填允许自动回复的好友微信 ID 或群 ID；留空只连接、不回复。
+    allowed := os.Getenv("WE_CLAY_REPLY_TO")
 
     err := gateway.Run(ctx, gateway.Config{
         Core: &gateway.CoreConfig{
-            Repository: "we-clay/core-release",
-            Version:    os.Getenv("WE_CLAY_CORE_VERSION"),
+            Version: os.Getenv("WE_CLAY_CORE_VERSION"),
         },
-        DataDir:     "./runtime/gateway/data",
-        PluginsDir:  "./runtime/gateway/plugins",
-    })
+    }, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{
+        OnReady: func(ctx context.Context, client *gateway.Client) error {
+            log.Println("微信已就绪，可以主动发送和调用朋友圈等接口")
+            return nil
+        },
+        OnMessage: func(ctx context.Context, client *gateway.Client, msg *message.Message) error {
+            self := client.Contact.GetSelf()
+            if self == nil || msg.GetSender().GetUsername() == self.Username {
+                return nil // 忽略当前账号自己发出的消息
+            }
+            if allowed == "" || msg.GetSender().GetUsername() != allowed {
+                return nil
+            }
+            if msg.GetType().GetCode() == message.TypeText.Code && msg.GetContent() == "ping" {
+                _, err := client.SendText(msg.GetSender().GetUsername(), "pong")
+                return err
+            }
+            return nil
+        },
+    }))
     if err != nil {
         log.Fatal(err)
     }
@@ -123,7 +142,7 @@ go run .
 ```
 
 `Run` 会下载当前平台的二进制、校验 SHA-256、启动 core，并等待登录。
-打开 [localhost:8086](http://127.0.0.1:8086) 完成 Mac 扫码；登录成功后自动加载插件、订阅事件。
+打开 [localhost:8086](http://127.0.0.1:8086) 完成 Mac 扫码；登录成功并完成事件订阅后触发 `OnReady`，随后通过 `OnMessage` 接收消息。
 后续启动复用本地缓存，并尝试恢复已有会话。按 Ctrl+C 会清理插件及本次启动的 core 子进程，保留账号状态。
 
 <details>
@@ -137,11 +156,29 @@ go run .
 
 </details>
 
-完整配置、超时、会话恢复与停止规则见[运行指南](docs/运行指南.md)。
+完整配置、超时、会话恢复与停止规则见[运行指南](docs/运行指南.md)。自动回复示例不需要插件目录或插件二进制。
 
-### 3 · 加入你的插件
+### 3 · 主动发送与朋友圈
 
-插件导入同一模块下的 SDK：
+下面代码在 `OnReady` / `OnMessage` 回调内，或取得客户端后的业务函数中执行：
+
+```go
+// client 是回调传入的 *gateway.Client；receiver 是微信 ID / 群 ID。
+sent, err := client.SendText(receiver, "你好")
+
+// momentID 是从朋友圈列表或详情取得的 uint64 ID。
+liked, err := client.Moments.Like(momentID)
+unliked, err := client.Moments.Unlike(momentID)
+```
+
+每次调用都应单独处理 `err`；朋友圈还应检查返回值的 `BaseResult`。以上是接口示意，不要把点赞和取消点赞当作必须连续执行的步骤。
+完整的[直接接入指南](docs/直接接入.md)包含主动调用、图片发送、朋友圈点赞及后台任务示例。
+
+### 4 · 可选：加入插件
+
+普通机器人推荐直接 Client。需要独立加载、启停多个功能模块或分别配置能力权限时，再使用插件。插件以独立进程运行，便于独立交付；具有当前系统用户权限，不是安全沙箱。
+
+需要插件时移除 `gateway.WithoutPlugins()`；直接回调和插件可以同时使用。插件导入同一模块下的 SDK：
 
 ```go
 import (
@@ -161,7 +198,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.4.1
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.0
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -175,7 +212,8 @@ mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 
 ```mermaid
 flowchart LR
-    P["插件进程 · SDK"] <-->|"gRPC"| G["你的 Go 应用 · gateway"]
+    A["你的业务 · 回调 / Client"] <-->|"进程内调用"| G
+    P["可选插件进程 · SDK"] <-->|"gRPC"| G["你的 Go 应用 · gateway"]
     G <-->|"gRPC · 调用 / 事件 / 确认"| C["core · 微信协议服务"]
     C <--> W["微信"]
     B["浏览器 · 登录页面"] -->|"HTTP"| C
@@ -185,8 +223,8 @@ flowchart LR
 
 | 组件 | 职责 | 运行方式 |
 | --- | --- | --- |
-| **gateway** | 可选下载与启动 core、连接管理、加载插件、分发事件 | 嵌入你的 Go 应用 |
-| **SDK** | 插件使用的类型、接口与通信封装 | 编译进插件 |
+| **gateway** | 管理 core、提供 Client 与回调、可选加载插件 | 嵌入你的 Go 应用 |
+| **SDK** | 业务类型、能力接口与插件通信封装 | 编译进你的程序或插件 |
 | **core** | 微信协议、登录与底层会话 | 独立二进制服务 |
 
 gateway 与 core 统一使用 gRPC，默认端口 `8088`。浏览器登录页面由 core 的 HTTP `8086` 提供。
@@ -196,6 +234,7 @@ gateway 与 core 统一使用 gRPC，默认端口 `8088`。浏览器登录页面
 
 | 开始使用 | 开发与维护 |
 | --- | --- |
+| [直接接入](docs/直接接入.md) · 收发消息、朋友圈、主动任务 | [迁移说明](docs/迁移说明.md) · 升级兼容性 |
 | [运行指南](docs/运行指南.md) · 配置、启动、退出与排错 | [开发指南](docs/开发指南.md) · 构建、测试与协议生成 |
 | [插件开发](docs/插件开发.md) · 从最小插件到能力注入 | [通信协议](docs/gRPC通信.md) · 调用、事件与确认 |
 | [完整示例](examples/plugin/README.md) · 事件、命令与会话 | [迁移说明](docs/迁移说明.md) · 版本与结构调整 |
@@ -211,7 +250,7 @@ we-clay/
 ├── go.mod              # 唯一 Go 模块
 ├── gateway/            # Run、Config、LoadConfig
 │   └── internal/       # 连接、缓存、能力实现与插件管理
-├── sdk/                # 插件导入的 Go 包
+├── sdk/                # 业务模型、能力接口及插件协议
 ├── proto/              # protobuf / gRPC 定义
 ├── examples/plugin/    # 插件示例
 ├── configs/            # 配置模板
@@ -233,10 +272,65 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 ## 当前状态
 
-- **已验证**：独立 Go 项目引入、编译及离线竞态测试；覆盖下载校验、缓存复用、core 子进程管理、等待登录、失败清理、缓存隔离、事件确认和重放、大文件传输。
-- **运行边界**：每个进程支持一个活动 gateway，同一 core 支持一个事件订阅者。事件去重为内存状态，业务应处理重放。
-- **实测组合**：core v0.3.0 · macOS ARM64，已验证真实下载、摘要校验、启动、gRPC 鉴权、二维码生成与取消后的进程回收。
-- **后续验证**：本轮未扫码登录账号；登录后的插件运行及全量接口仍需继续验证。
+**13 个能力域，128 个 SDK 方法：52 个已接通，76 个仅保留占位。**
+另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。
+
+- **历史真机记录**：Mac 模式下，核心链路已测试消息媒体、联系人、群聊、标签、朋友圈等操作，具体范围见下表后的说明。
+- **本次验证**：直接 Client、事件回调、主动发送、朋友圈点赞/取消点赞、群管理和媒体适配使用本地模拟 core 验证，并运行竞态检查；没有操作真实微信账号。
+- **验收边界**：历史核心链路成功不等于本次完整的 Client → gateway → 发布版 core 链路已逐项真机复验。“已接通”也不代表所有参数组合可用。
+- **占位行为**：保留 SDK/proto 签名，方法体只返回 `ErrNotImplemented`，不发送业务请求。直接调用用 `errors.Is(err, gateway.ErrNotImplemented)` 判断；独立插件跨 gRPC 后用 `status.Code(err) == codes.Unimplemented` 判断。
+
+<details>
+<summary>展开全部接口：已接通与待实现清单</summary>
+
+<!-- capabilities:start -->
+| Client 字段 | 已接通的方法 | 保留占位的方法 |
+| --- | --- | --- |
+| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Download` | — |
+| `Contact` · 联系人 | `Get`、`List`、`GetSelf`、`SetRemark`、`AddFriend`、`VerifyFriend`、`Search`、`GetOwner` | `Delete`、`BlacklistAdd`、`BlacklistRemove` |
+| `Chatroom` · 群聊 | `Create`、`GetInfo`、`GetQRCode`、`InviteMember`、`SetName`、`SetAnnouncement`、`SetRemark`、`Save`、`SetAdmin`、`ListMembers`、`GetMember`、`GetMembersDetail` | `FacingCreate`、`AddMember`、`RemoveMember`、`RemoveAdmin`、`TransferOwner`、`Quit`、`ScanJoin`、`ScanJoinEnterprise`、`ConsentJoin` |
+| `Moments` · 朋友圈 | `Timeline`、`UserPage`、`Detail`、`Like`、`Unlike`、`Post`、`Upload`、`Sync` | `Comment`、`Delete`、`DeleteComment`、`SetPrivacy` |
+| `CDN` · 媒体 CDN | `UploadImage`、`UploadVideo`、`DownloadImage`、`DownloadVideo`、`UploadMomentsImage`、`DownloadVideoCover` | `UploadMomentsVideo`、`DownloadMomentsVideo` |
+| `Favor` · 收藏 | `GetInfo`、`Sync` | `GetItem`、`Delete` |
+| `Label` · 标签 | `List`、`Add`、`Delete`、`Update`、`ModifyContactLabels` | — |
+| `Login` · 登录 | — | `Login`、`Init`、`Refresh`、`Wakeup`、`Logout`、`PasswordLogin` |
+| `Miniapp` · 小程序 | `GetRecord` | `JSLogin`、`QrcodeAuthLogin`、`GetRuntimeSession`、`GetSessionQRCode`、`OperateWxData`、`CloudCallFunction`、`SendVerifyCode`、`CheckVerifyCode`、`AddMobile`、`DelMobile`、`GetAllMobile`、`GetRandomAvatar`、`AddAvatar`、`UploadAvatarImg`、`AddRecord`、`GetUserOpenID`、`OauthSdkApp`、`ThirdAppGrant` |
+| `Official` · 公众号 | — | `Follow`、`Quit`、`MpGetA8Key`、`JSAPIPreVerify`、`OauthAuthorize`、`ReadArticle`、`LikeArticle` |
+| `Payment` · 支付 | — | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CreatePreTransfer`、`ConfirmPreTransfer`、`CollectMoney` |
+| `Report` · 状态通知 | `StartTyping`、`StopTyping` | `ReadMessage` |
+| `User` · 当前账号 | `GetProfile`、`GetQRCode`、`GetSafetyInfo`、`GetBoundHardDevices` | `UpdateProfile`、`UploadAvatar`、`SetPrivacy`、`SetAlias`、`VerifyPassword`、`SetPassword`、`SendVerifyMobile`、`BindMobile`、`BindEmail`、`SendVerifyEmail`、`DelSafeDevice`、`ReportMotion`、`GetCert` |
+<!-- capabilities:end -->
+
+</details>
+
+### 历史实测范围
+
+| 领域 | 已有证据与剩余限制 |
+| --- | --- |
+| 消息 | 文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；部分媒体仅回执或格式校验。 |
+| 联系人 | 查询、保留好友关系的备注修改、群来源好友申请及接受申请已在历史 Mac 会话读回；GetOwner 为本地配置查询。 |
+| 群聊 | 建群、查询、邀请及入群读回、群名/公告/备注/通讯录保存、设置管理员有历史验收；缓存和适配层仍需当前版本真机复验。 |
+| 朋友圈 | 历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；其他发布类型和部分权限参数未完整验证。 |
+| 媒体 CDN | 聊天图片/视频/封面往返字节一致、朋友圈图片上传通过；朋友圈视频上传曾返回 -5103015。 |
+| 收藏 | 仅容量和空列表同步通过；单项详情及删除未测。 |
+| 标签 | 完整标签生命周期及好友标签读回、恢复通过。 |
+| 登录 | Run 已负责 Mac 登录等待和会话恢复；单独调用这些登录方法未逐项验收，保留占位。 |
+| 小程序 | 仅使用记录查询通过；其他接口缺少测试 appID 或未测。 |
+| 公众号 | 没有完整真实验收，保留占位。 |
+| 支付 | 没有真实验收，保留占位。 |
+| 状态通知 | 开始/停止输入仅收到成功回执，未手机观察；已读通知未测。 |
+| 当前账号 | 资料、个人二维码、安全设备/绑定硬件查询通过；资料/安全写操作未完整测试。 |
+
+**消息类型也有边界：**
+
+- 已接通文字、@、图片、语音、视频、文件、链接、位置、表情；名片使用 `client.SendCard`。历史上表情和“正在输入”仅收到成功回执，未完整手机验收。
+- 转发支持收到的图片、视频和文件；其他已支持发送的类型可按模型重发。下载支持图片、视频、语音和文件。收到的文件为 `TypeAppFileAttach`，发送本地文件为 `TypeFile`。
+- 小文件发送/转发曾在手机确认可打开；图片与文件下载做过字节校验，视频做过解码检查，语音下载仅检查长度与 SILK 格式。更大的附件及各种客户端组合仍待复验。
+- 通用应用消息、聊天记录、音乐等未验证发送类型返回占位错误。朋友圈纯文字/单图历史发布成功；朋友圈视频上传曾失败，当前保留占位。
+
+**运行边界：** 每进程一个活动 gateway，同一 core 一个事件订阅者。事件去重为内存状态，业务需要持久化处理重放。
+core v0.3.0 的 macOS ARM64 附件已验证下载、校验、启动、gRPC 鉴权和二维码生成；本轮没有扫码。
+完整调用示例见[直接接入](docs/直接接入.md)，机器可读清单见 [capabilities.json](gateway/capabilities.json)。
 
 令牌与账号状态仅保存在本地，插件只加载可信程序。部署与提交要求见 [SECURITY.md](SECURITY.md)。
 

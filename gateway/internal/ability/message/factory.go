@@ -27,7 +27,7 @@ func Build(msg *messageapi.NewMessage) (*sdk.Message, error) {
 
 	// 群消息解析 member
 	var member *chatroom.Member
-	if strings.Contains(content, ":\n") && msgType != sdk.TypeSystemTip {
+	if strings.HasSuffix(msg.GetSender().GetValue(), "@chatroom") && strings.Contains(content, ":\n") && msgType != sdk.TypeSystemTip {
 		parts := strings.SplitN(content, ":\n", 2)
 		memberName := parts[0]
 		content = parts[1]
@@ -52,7 +52,7 @@ func Build(msg *messageapi.NewMessage) (*sdk.Message, error) {
 		buildImage(result, msg)
 	case sdk.TypeVoice:
 		buildVoice(result, msg)
-	case sdk.TypeVideo:
+	case sdk.TypeVideo, sdk.TypeTinyVideo:
 		buildVideo(result, msg)
 	case sdk.TypeEmoji:
 		buildEmoji(result, msg)
@@ -90,14 +90,18 @@ func buildImage(msg *sdk.Message, raw *messageapi.NewMessage) {
 			Md5    string `xml:"md5,attr"`
 			Key    string `xml:"aeskey,attr"`
 			Url    string `xml:"url,attr"`
+			CDNUrl string `xml:"cdnmidimgurl,attr"`
 			Size   uint32 `xml:"length,attr"`
 			Width  uint32 `xml:"cdnthumbwidth,attr"`
 			Height uint32 `xml:"cdnthumbheight,attr"`
 		} `xml:"img"`
 	}
-	if err := xml.Unmarshal([]byte(raw.GetContent().GetValue()), &temp); err != nil {
+	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {
 		slog.Warn("parse image xml failed", "err", err)
 		return
+	}
+	if temp.Image.CDNUrl != "" {
+		temp.Image.Url = temp.Image.CDNUrl
 	}
 	msg.Content = fmt.Sprintf("[%d x %d] %s", temp.Image.Width, temp.Image.Height, formatter.DecimalBytes(float64(temp.Image.Size), 2))
 	msg.Data = &sdk.Message_Image{Image: &sdk.ImageData{
@@ -117,7 +121,7 @@ func buildVoice(msg *sdk.Message, raw *messageapi.NewMessage) {
 			Duration uint32 `xml:"voicelength,attr"`
 		} `xml:"voicemsg"`
 	}
-	if err := xml.Unmarshal([]byte(raw.GetContent().GetValue()), &temp); err != nil {
+	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {
 		slog.Warn("parse voice xml failed", "err", err)
 		return
 	}
@@ -141,7 +145,7 @@ func buildVideo(msg *sdk.Message, raw *messageapi.NewMessage) {
 			ThumbUrl string `xml:"cdnthumburl,attr"`
 		} `xml:"videomsg"`
 	}
-	if err := xml.Unmarshal([]byte(raw.GetContent().GetValue()), &temp); err != nil {
+	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {
 		slog.Warn("parse video xml failed", "err", err)
 		return
 	}
@@ -164,7 +168,7 @@ func buildEmoji(msg *sdk.Message, raw *messageapi.NewMessage) {
 			Url  string `xml:"cdnurl,attr"`
 		} `xml:"emoji"`
 	}
-	if err := xml.Unmarshal([]byte(raw.GetContent().GetValue()), &temp); err != nil {
+	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {
 		slog.Warn("parse emoji xml failed", "err", err)
 		return
 	}
@@ -186,7 +190,7 @@ func buildLocation(msg *sdk.Message, raw *messageapi.NewMessage) {
 			Label     string  `xml:"label"`
 		} `xml:"location"`
 	}
-	if err := xml.Unmarshal([]byte(raw.GetContent().GetValue()), &temp); err != nil {
+	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {
 		slog.Warn("parse location xml failed", "err", err)
 		return
 	}
@@ -208,12 +212,12 @@ func buildApp(msg *sdk.Message, raw *messageapi.NewMessage) {
 		Url     string   `xml:"appmsg>url"`
 		Desc    string   `xml:"appmsg>des"`
 	}
-	if err := xml.Unmarshal([]byte(raw.GetContent().GetValue()), &temp); err != nil {
+	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {
 		slog.Warn("parse app xml failed", "err", err)
 		return
 	}
 
-	typ := fmt.Sprintf("49%2d", temp.Type)
+	typ := fmt.Sprintf("49%02d", temp.Type)
 	code, _ := strconv.Atoi(typ)
 	msg.Type = sdk.TypeOf(int32(code))
 	msg.Content = temp.Title

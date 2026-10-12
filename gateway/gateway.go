@@ -1,4 +1,4 @@
-// Package gateway 提供可嵌入应用的插件运行入口，通过 gRPC 连接独立 core。
+// Package gateway 提供可嵌入应用的机器人及插件运行入口，通过 gRPC 连接独立 core。
 // 导入此包不会启动服务；调用方负责 context、信号及自身进程的退出策略。
 package gateway
 
@@ -23,6 +23,8 @@ import (
 	"github.com/we-clay/we-clay/gateway/internal/coreprocess"
 	"github.com/we-clay/we-clay/gateway/internal/plugin"
 	sdkcontact "github.com/we-clay/we-clay/sdk/contact"
+	"github.com/we-clay/we-clay/sdk/message"
+	sdkplugin "github.com/we-clay/we-clay/sdk/plugin"
 )
 
 // Config 是 gateway 的运行配置。零值使用本机 core 及 runtime/gateway 目录。
@@ -44,7 +46,13 @@ func LoadConfig(path string) (Config, error) { return config.Load(path) }
 // Config.Core 为 nil 时连接已启动且已登录的 core，不管理其进程。
 // 两种模式均不调用微信退出登录接口。
 // 每个进程同时允许一个 Run；退出清理完成后可以再次调用。
-func Run(ctx context.Context, cfg Config) (err error) {
+func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
+	opts := runOptions{}
+	for _, option := range options {
+		if option != nil {
+			option(&opts)
+		}
+	}
 	if ctx == nil {
 		return errors.New("gateway.Run 需要非 nil context")
 	}
@@ -132,13 +140,31 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	defer ability.Destroy()
 	// 启动失败也回收已经启动的插件；停止回调先于缓存落盘及连接释放。
 	defer func() { messageability.SetOutboundReady(false); cancel(); plugin.Destroy() }()
-	if err = plugin.Initial(runCtx, cfg.PluginsDir); err != nil {
-		return fmt.Errorf("插件初始化失败: %w", err)
+	if !opts.withoutPlugins {
+		if err = plugin.Initial(runCtx, cfg.PluginsDir); err != nil {
+			return fmt.Errorf("插件初始化失败: %w", err)
+		}
 	}
 	if runCtx.Err() != nil {
 		return nil
 	}
 	messageability.SetOutboundReady(true)
 	slog.Info("we-clay gateway 已启动", "core", cfg.CoreAddress, "transport", "grpc")
-	return eventsync.RunEvents(runCtx, client)
+	direct := newClient(runCtx)
+	defer func() { cancel(); direct.state.close() }()
+	hooks := eventsync.Hooks{WithoutPlugins: opts.withoutPlugins}
+	if h := opts.handlers.OnReady; h != nil {
+		hooks.Ready = func() error { return invokeHandler("OnReady", func() error { return h(runCtx, direct) }) }
+	}
+	if h := opts.handlers.OnMessage; h != nil {
+		hooks.Message = func(m *message.Message) error {
+			return invokeHandler("OnMessage", func() error { return h(runCtx, direct, m) })
+		}
+	}
+	if h := opts.handlers.OnEvent; h != nil {
+		hooks.Event = func(e *sdkplugin.Event) error {
+			return invokeHandler("OnEvent", func() error { return h(runCtx, direct, e) })
+		}
+	}
+	return eventsync.RunEvents(runCtx, client, hooks)
 }

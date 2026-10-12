@@ -1,7 +1,8 @@
-# 插件 SDK
+# SDK
 
 SDK 是 Go 包集合，与 gateway 平行放在同一个仓库，共用根目录的 go.mod。
 插件导入 `github.com/we-clay/we-clay/sdk/...`，由 gateway 注入所需能力。
+应用直接接入时，通过 `gateway.Client` 的各能力字段调用相同接口，无需插件；见[直接接入](../docs/直接接入.md)。
 SDK 本身无需启动。当前 SDK 调用 gateway，不能直接把连接地址改成 core。
 
 - [插件开发](../docs/插件开发.md)

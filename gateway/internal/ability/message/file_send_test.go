@@ -127,3 +127,21 @@ func TestVoiceFormatDefaultAndExplicitZero(t *testing.T) {
 		}
 	}
 }
+
+type incompleteAPI struct{ api.MessageService }
+
+func (incompleteAPI) SendText(receiver, content, remind string) (*api.SendMessageResponse, error) {
+	return &api.SendMessageResponse{}, nil
+}
+func (incompleteAPI) Revoke(receiver string, newID, clientID, timestamp uint64) (*api.RevokeMessageResponse, error) {
+	return &api.RevokeMessageResponse{}, nil
+}
+func TestIncompleteMessageReceiptsDoNotReportSuccess(t *testing.T) {
+	a := &ability{api: incompleteAPI{}}
+	if _, err := a.Send(&sdk.Message{Type: sdk.TypeText, Receiver: &contact.Contact{Username: "test-peer"}, Content: "test"}); err == nil {
+		t.Fatal("empty send receipt accepted")
+	}
+	if _, err := a.Revoke("test-peer", 123); err == nil {
+		t.Fatal("empty revoke receipt accepted")
+	}
+}

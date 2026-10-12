@@ -57,10 +57,10 @@ func (w remote) ListMembers(chatroomID string) (*ListMembersResponse, error) {
 	return &resp, nil
 }
 
-// GetMemberDetail 获取群成员详情 GET /api/chatroom/members/{chatroom}
+// GetMemberDetail 获取群成员详情 POST /api/chatroom/members/detail/{chatroom}
 func (w remote) GetMemberDetail(chatroomID string, members []string) (*GetChatroomMembersResponse, error) {
 	var resp GetChatroomMembersResponse
-	if err := api.GetCore().Get("/api/chatroom/members/%s").Path(chatroomID).Body(members).DoProto(&resp); err != nil {
+	if err := api.GetCore().Post("/api/chatroom/members/detail/%s").Path(chatroomID).Body(members).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -8,7 +8,7 @@ import (
 	pluginsdk "github.com/we-clay/we-clay/sdk/plugin"
 )
 
-func handleUserInfo(infos []*messageapi.ModifyUserInfo, extends []*messageapi.UserInfoExtend) {
+func (p *processor) handleUserInfo(infos []*messageapi.ModifyUserInfo, extends []*messageapi.UserInfoExtend) error {
 	maxLen := len(infos)
 	if len(extends) > maxLen {
 		maxLen = len(extends)
@@ -28,7 +28,10 @@ func handleUserInfo(infos []*messageapi.ModifyUserInfo, extends []*messageapi.Us
 			continue
 		}
 		if event != nil {
-			publishChangeEvents([]*pluginsdk.ChangeEvent{event})
+			if err := p.publishChangeEvents([]*pluginsdk.ChangeEvent{event}); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }

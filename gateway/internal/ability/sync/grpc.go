@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	messageability "github.com/we-clay/we-clay/gateway/internal/ability/message"
 	"github.com/we-clay/we-clay/gateway/internal/api"
@@ -14,17 +15,30 @@ import (
 	"time"
 )
 
-func RunEvents(ctx context.Context, client *api.Client) error {
+func RunEvents(ctx context.Context, client *api.Client, hooks Hooks) error {
+	p := &processor{hooks: hooks}
 	return runEvents(ctx, client, func(result *messageapi.SyncResult) error {
 		if !messageability.OutboundReady() {
 			return fmt.Errorf("gateway 尚未完成初始化")
 		}
-		handle(result)
-		return nil
-	}, func(err error) { slog.Warn("core 事件流断开，等待重连", "code", status.Code(err)) })
+		return p.handle(result)
+	}, func(err error) { slog.Warn("core 事件流断开，等待重连", "code", status.Code(err)) }, hooks.Ready)
 }
 
-func runEvents(ctx context.Context, client *api.Client, consume func(*messageapi.SyncResult) error, report func(error)) error {
+func runEvents(ctx context.Context, client *api.Client, consume func(*messageapi.SyncResult) error, report func(error), ready ...func() error) error {
+	readyDone := false
+	onReady := func() error {
+		if readyDone {
+			return nil
+		}
+		if len(ready) > 0 && ready[0] != nil {
+			if err := ready[0](); err != nil {
+				return &callbackError{err}
+			}
+		}
+		readyDone = true
+		return nil
+	}
 	seen := make(map[string]bool)
 	var order []string
 	delay := time.Second
@@ -51,9 +65,13 @@ func runEvents(ctx context.Context, client *api.Client, consume func(*messageapi
 				order = order[1:]
 			}
 			return nil
-		})
+		}, onReady)
 		if ctx.Err() != nil {
 			return nil
+		}
+		var failed *callbackError
+		if errors.As(err, &failed) {
+			return failed.err
 		}
 		switch status.Code(err) {
 		case codes.Unauthenticated, codes.PermissionDenied, codes.Unimplemented, codes.FailedPrecondition:
@@ -76,7 +94,7 @@ func runEvents(ctx context.Context, client *api.Client, consume func(*messageapi
 	}
 	return nil
 }
-func eventSession(parent context.Context, client *api.Client, consume func(*corewire.CoreEvent) error) (int, error) {
+func eventSession(parent context.Context, client *api.Client, consume func(*corewire.CoreEvent) error, onReady ...func() error) (int, error) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 	stream, err := client.Events(ctx)
@@ -93,6 +111,11 @@ func eventSession(parent context.Context, client *api.Client, consume func(*core
 	if !ready.GetReady() {
 		return 0, fmt.Errorf("core event subscription missing ready frame")
 	}
+	if len(onReady) > 0 && onReady[0] != nil {
+		if err := onReady[0](); err != nil {
+			return 0, err
+		}
+	}
 	count := 0
 	for {
 		event, err := stream.Recv()
@@ -103,6 +126,9 @@ func eventSession(parent context.Context, client *api.Client, consume func(*core
 			return count, fmt.Errorf("unexpected ready frame")
 		}
 		if err = consume(event); err != nil {
+			return count, err
+		}
+		if err := ctx.Err(); err != nil {
 			return count, err
 		}
 		count++

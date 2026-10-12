@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"google.golang.org/protobuf/proto"
 	"log/slog"
 
 	messageability "github.com/we-clay/we-clay/gateway/internal/ability/message"
@@ -12,10 +13,10 @@ import (
 	pluginsdk "github.com/we-clay/we-clay/sdk/plugin"
 )
 
-func handleMessage(messages []*messageapi.NewMessage) {
+func (p *processor) handleMessage(messages []*messageapi.NewMessage) error {
 	if !messageability.OutboundReady() {
 		slog.Warn("基础数据初始化中，跳过新消息处理", "count", len(messages))
-		return
+		return nil
 	}
 
 	for _, msg := range messages {
@@ -23,29 +24,39 @@ func handleMessage(messages []*messageapi.NewMessage) {
 			slog.Error("构建消息失败", "err", err)
 		} else {
 			log(data)
-
-			if msg, ok := plugin.HandleCommand(data.GetContent(), data.GetSender(), data.GetMember()); ok {
-				if msg.Content != "" {
-					if _, err := messagesdk.Instance.Send(msg); err != nil {
-						slog.Warn("命令回复失败", "receiver", data.GetSender().GetUsername(), "err", err)
-					}
+			if p.hooks.Message != nil {
+				if err := p.hooks.Message(proto.Clone(data).(*messagesdk.Message)); err != nil {
+					return &callbackError{err}
 				}
-				continue
 			}
+			if !p.hooks.WithoutPlugins {
 
+				if msg, ok := plugin.HandleCommand(data.GetContent(), data.GetSender(), data.GetMember()); ok {
+					if msg.Content != "" {
+						if _, err := messagesdk.Instance.Send(msg); err != nil {
+							slog.Warn("命令回复失败", "receiver", data.GetSender().GetUsername(), "err", err)
+						}
+					}
+					continue
+				}
+
+			}
 			if data.Content == "无法显示此消息，你目前使用的微信版本暂时不支持此类型的信息。" {
 				continue
 			}
 
-			plugin.Publish(&pluginsdk.Event{
+			if err := p.publish(&pluginsdk.Event{
 				Topic:  data.GetType().GetTopic(),
 				Sender: data.GetSender().GetUsername(),
 				Payload: &pluginsdk.Event_Message{
 					Message: data,
 				},
-			})
+			}); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 func log(message *messagesdk.Message) {

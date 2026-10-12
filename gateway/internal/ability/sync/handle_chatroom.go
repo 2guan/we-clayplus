@@ -5,10 +5,10 @@ import (
 	messageapi "github.com/we-clay/we-clay/gateway/internal/api/message"
 )
 
-func handleChatroomMember(members []*messageapi.ModifyChatroomMember) {
-	publishChangeEvents(chatroomability.HandleModifyMembers(members))
+func (p *processor) handleChatroomMember(members []*messageapi.ModifyChatroomMember) error {
+	return p.publishChangeEvents(chatroomability.HandleModifyMembers(members))
 }
 
-func handleChatroomMemberDisplayName(displayNames []*messageapi.ModifyChatroomMemberDisplayName) {
-	publishChangeEvents(chatroomability.HandleModifyMemberDisplayNames(displayNames))
+func (p *processor) handleChatroomMemberDisplayName(displayNames []*messageapi.ModifyChatroomMemberDisplayName) error {
+	return p.publishChangeEvents(chatroomability.HandleModifyMemberDisplayNames(displayNames))
 }

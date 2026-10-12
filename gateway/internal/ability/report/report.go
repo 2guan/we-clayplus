@@ -5,6 +5,7 @@ import (
 	sdk "github.com/we-clay/we-clay/sdk/report"
 
 	reportapi "github.com/we-clay/we-clay/gateway/internal/api/report"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability 状态通知能力实现（直连型）。
@@ -28,5 +29,5 @@ func (a ability) StopTyping(receiver string) error {
 
 // ReadMessage 通知对方消息已读
 func (a ability) ReadMessage(receiver string) error {
-	return a.api.ReadMessage(receiver)
+	return sdkroot.NotImplemented("report.ReadMessage")
 }

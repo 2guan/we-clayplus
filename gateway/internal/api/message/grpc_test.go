@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/we-clay/we-clay/gateway/internal/api"
+	"github.com/we-clay/we-clay/gateway/internal/api/base"
 	"github.com/we-clay/we-clay/gateway/internal/coretest"
+	"google.golang.org/protobuf/proto"
 	"io"
 	"net/http"
 	"testing"
@@ -52,12 +54,19 @@ func TestGRPCMediaAdapters(t *testing.T) {
 			}
 			_, _ = io.WriteString(w, `{"code":0,"data":{}}`)
 		case "/api/message/download/file":
-			var q map[string]json.RawMessage
-			_ = json.NewDecoder(r.Body).Decode(&q)
-			if string(q["attach_id"]) != `"test-attach"` || string(q["chunk_size"]) != "32768" {
+			var q struct {
+				AttachID     string `json:"attach_id"`
+				Size, Offset uint32
+				ChunkSize    uint32 `json:"chunk_size"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+				t.Error(err)
+			}
+			if q.AttachID != "test-attach" || q.Size != 40000 || (q.Offset != 0 && q.Offset != 32768) || q.ChunkSize != min(uint32(32768), q.Size-q.Offset) {
 				t.Error("wrong attachment request")
 			}
-			_, _ = io.WriteString(w, `{"code":0,"data":{}}`)
+			data := bytes.Repeat([]byte{byte(q.Offset/32768 + 1)}, int(q.ChunkSize))
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": &DownloadFileResponse{Size: proto.Uint32(q.Size), Offset: proto.Uint32(q.Offset), ChunkSize: proto.Uint32(q.ChunkSize), Chunk: &baseapi.Buffer{Size: proto.Uint32(q.ChunkSize), Data: data}}})
 		case "/api/cdn/download/image", "/api/cdn/download/video":
 			if r.URL.Query().Get("id") != "test-file-id" || r.URL.Query().Get("key") != "test-key" {
 				t.Error("wrong CDN parameters")
@@ -91,8 +100,13 @@ func TestGRPCMediaAdapters(t *testing.T) {
 	if _, e = w.DownloadVoice("test-room", "9007199254740993", "", 123, 5); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = w.DownloadFile("test-peer", "test-attach", "", 40000); e != nil {
+	file, e := w.DownloadFile("test-peer", "test-attach", "", 40000)
+	if e != nil {
 		t.Fatal(e)
+	}
+	want := append(bytes.Repeat([]byte{1}, 32768), bytes.Repeat([]byte{2}, 7232)...)
+	if !bytes.Equal(file.GetChunk().GetData(), want) || file.GetOffset() != 0 {
+		t.Fatal("file chunks were not assembled")
 	}
 	i, e := w.DownloadImg("test-peer", "test-file-id", "test-key", 5)
 	if e != nil || string(i.GetChunk().GetData()) != "media" {
@@ -102,13 +116,13 @@ func TestGRPCMediaAdapters(t *testing.T) {
 	if e != nil || string(v.GetChunk().GetData()) != "media" {
 		t.Fatal(e)
 	}
-	if len(paths) != 8 {
+	if len(paths) != 9 {
 		t.Fatalf("unexpected request count %d", len(paths))
 	}
 	if _, e = w.DownloadFile("test-peer", "test-attach", "wrong-key", 5); e == nil {
 		t.Fatal("invalid attachment accepted")
 	}
-	if len(paths) != 8 {
+	if len(paths) != 9 {
 		t.Fatal("invalid input reached core")
 	}
 }

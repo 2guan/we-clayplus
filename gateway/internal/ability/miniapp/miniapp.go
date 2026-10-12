@@ -5,6 +5,7 @@ import (
 	sdk "github.com/we-clay/we-clay/sdk/miniapp"
 
 	miniappapi "github.com/we-clay/we-clay/gateway/internal/api/miniapp"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability 小程序能力实现（直连型）
@@ -18,157 +19,72 @@ func init() {
 
 // JSLogin 小程序 JS 登录授权
 func (a ability) JSLogin(appID string) (*sdk.JSLogin_Response, error) {
-	resp, err := a.api.JSLogin(appID)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return mapJSLogin(resp), nil
+	return nil, sdkroot.NotImplemented("miniapp.JSLogin")
 }
 
 // QrcodeAuthLogin 小程序扫码授权登录
 func (a ability) QrcodeAuthLogin(uuid string) (*sdk.QrcodeAuthLogin_Response, error) {
-	resp, err := a.api.QrcodeAuthLogin(uuid)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.QrcodeAuthLogin_Response{Value: &resp.Value}, nil
+	return nil, sdkroot.NotImplemented("miniapp.QrcodeAuthLogin")
 }
 
 // GetRuntimeSession 获取小程序运行时会话
 func (a ability) GetRuntimeSession(appID string) (*sdk.GetRuntimeSession_Response, error) {
-	resp, err := a.api.GetRuntimeSession(appID)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	sessionID := resp.GetSessionId()
-	expire := resp.GetExpire()
-	return &sdk.GetRuntimeSession_Response{SessionId: &sessionID, Expire: &expire}, nil
+	return nil, sdkroot.NotImplemented("miniapp.GetRuntimeSession")
 }
 
 // GetSessionQRCode 获取小程序会话二维码
 func (a ability) GetSessionQRCode(appID string) (*sdk.GetSessionQRCode_Response, error) {
-	resp, err := a.api.GetSessionQRCode(appID)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.GetSessionQRCode_Response{Value: &resp.Value}, nil
+	return nil, sdkroot.NotImplemented("miniapp.GetSessionQRCode")
 }
 
 // OperateWxData 操作小程序数据
 func (a ability) OperateWxData(appID string, data []byte, opt int32) (*sdk.OperateWxData_Response, error) {
-	resp, err := a.api.OperateWxData(appID, data, opt)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return mapOperateWxData(resp), nil
+	return nil, sdkroot.NotImplemented("miniapp.OperateWxData")
 }
 
 // CloudCallFunction 调用小程序云函数
 func (a ability) CloudCallFunction(appID string, data []byte) (*sdk.CloudCallFunction_Response, error) {
-	resp, err := a.api.CloudCallFunction(appID, data)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	op := mapOperateWxData(resp)
-	return &sdk.CloudCallFunction_Response{
-		JsapiResult:   op.JsapiResult,
-		Data:          op.Data,
-		ScopeInfo:     op.ScopeInfo,
-		AppName:       op.AppName,
-		AppIcon:       op.AppIcon,
-		CancelWording: op.CancelWording,
-		AllowWording:  op.AllowWording,
-		ApplyWording:  op.ApplyWording,
-	}, nil
+	return nil, sdkroot.NotImplemented("miniapp.CloudCallFunction")
 }
 
 // SendVerifyCode 发送手机验证码
 func (a ability) SendVerifyCode(appID, mobile string, opcode int) (*sdk.SendVerifyCode_Response, error) {
-	resp, err := a.api.SendVerifyCode(appID, mobile, opcode)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	status := resp.GetStatus()
-	return &sdk.SendVerifyCode_Response{Status: &status}, nil
+	return nil, sdkroot.NotImplemented("miniapp.SendVerifyCode")
 }
 
 // CheckVerifyCode 校验手机验证码
 func (a ability) CheckVerifyCode(appID, mobile, code string, opcode int) (*sdk.CheckVerifyCode_Response, error) {
-	resp, err := a.api.CheckVerifyCode(appID, mobile, code, opcode)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return mapCheckVerifyCode(resp), nil
+	return nil, sdkroot.NotImplemented("miniapp.CheckVerifyCode")
 }
 
 // AddMobile 绑定手机号
 func (a ability) AddMobile(appID, mobile, code string) (*sdk.AddMobile_Response, error) {
-	resp, err := a.api.AddMobile(appID, mobile, code)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	verify := mapCheckVerifyCode(resp)
-	return &sdk.AddMobile_Response{
-		Status:        verify.Status,
-		EncryptedData: verify.EncryptedData,
-		Iv:            verify.Iv,
-		ShowMobile:    verify.ShowMobile,
-		CloudId:       verify.CloudId,
-	}, nil
+	return nil, sdkroot.NotImplemented("miniapp.AddMobile")
 }
 
 // DelMobile 解绑手机号
 func (a ability) DelMobile(appID, mobile string) (*sdk.DelMobile_Response, error) {
-	resp, err := a.api.DelMobile(appID, mobile)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.DelMobile_Response{Code: resp.GetCode(), Message: resp.GetMessage()}, nil
+	return nil, sdkroot.NotImplemented("miniapp.DelMobile")
 }
 
 // GetAllMobile 获取已绑定手机号列表
 func (a ability) GetAllMobile(appID string) (*sdk.GetAllMobile_Response, error) {
-	resp, err := a.api.GetAllMobile(appID)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.GetAllMobile_Response{Code: resp.GetCode(), Message: resp.GetMessage()}, nil
+	return nil, sdkroot.NotImplemented("miniapp.GetAllMobile")
 }
 
 // GetRandomAvatar 获取随机头像
 func (a ability) GetRandomAvatar(appID string) (*sdk.GetRandomAvatar_Response, error) {
-	resp, err := a.api.GetRandomAvatar(appID)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	nickname := resp.GetNickname()
-	avatarURL := resp.GetAvatarUrl()
-	fileKey := resp.GetFileKey()
-	return &sdk.GetRandomAvatar_Response{
-		Nickname:  &nickname,
-		AvatarUrl: &avatarURL,
-		FileKey:   &fileKey,
-	}, nil
+	return nil, sdkroot.NotImplemented("miniapp.GetRandomAvatar")
 }
 
 // AddAvatar 设置头像
 func (a ability) AddAvatar(appID, nickname, afilekey string) (*sdk.AddAvatar_Response, error) {
-	resp, err := a.api.AddAvatar(appID, nickname, afilekey)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.AddAvatar_Response{Code: resp.GetCode(), Message: resp.GetMessage()}, nil
+	return nil, sdkroot.NotImplemented("miniapp.AddAvatar")
 }
 
 // UploadAvatarImg 上传自定义头像图片
 func (a ability) UploadAvatarImg(appID, jpglink string) (*sdk.UploadAvatarImg_Response, error) {
-	resp, err := a.api.UploadAvatarImg(appID, jpglink)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	fileKey := resp.GetFileKey()
-	cdnURL := resp.GetCdnUrl()
-	return &sdk.UploadAvatarImg_Response{FileKey: &fileKey, CdnUrl: &cdnURL}, nil
+	return nil, sdkroot.NotImplemented("miniapp.UploadAvatarImg")
 }
 
 // GetRecord 获取小程序使用记录
@@ -189,58 +105,22 @@ func (a ability) GetRecord() (*sdk.GetRecord_Response, error) {
 
 // AddRecord 添加小程序使用记录
 func (a ability) AddRecord(username string) (*sdk.AddRecord_Response, error) {
-	resp, err := a.api.AddRecord(username)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.AddRecord_Response{Code: resp.GetCode(), Message: resp.GetMessage()}, nil
+	return nil, sdkroot.NotImplemented("miniapp.AddRecord")
 }
 
 // GetUserOpenID 获取用户 OpenID
 func (a ability) GetUserOpenID(appID, username string) (*sdk.GetUserOpenID_Response, error) {
-	resp, err := a.api.GetUserOpenID(appID, username)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	openID := resp.GetOpenId()
-	nickname := resp.GetNickname()
-	avatarURL := resp.GetAvatarUrl()
-	signature := resp.GetSignature()
-	friendRelation := resp.GetFriendRelation()
-	return &sdk.GetUserOpenID_Response{
-		OpenId:         &openID,
-		Nickname:       &nickname,
-		AvatarUrl:      &avatarURL,
-		Signature:      &signature,
-		FriendRelation: &friendRelation,
-	}, nil
+	return nil, sdkroot.NotImplemented("miniapp.GetUserOpenID")
 }
 
 // OauthSdkApp SDK OAuth 确认授权
 func (a ability) OauthSdkApp(appID string, scope []string, operate uint32) (*sdk.OauthSdkApp_Response, error) {
-	resp, err := a.api.OauthSdkApp(appID, scope, operate)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	redirectURL := resp.GetRedirectUrl()
-	token := resp.GetToken()
-	userConfirmRedirectURL := resp.GetUserConfirmRedirectUrl()
-	userConfirmWording := resp.GetUserConfirmWording()
-	return &sdk.OauthSdkApp_Response{
-		RedirectUrl:            &redirectURL,
-		Token:                  &token,
-		UserConfirmRedirectUrl: &userConfirmRedirectURL,
-		UserConfirmWording:     &userConfirmWording,
-	}, nil
+	return nil, sdkroot.NotImplemented("miniapp.OauthSdkApp")
 }
 
 // ThirdAppGrant 第三方 APP OAuth 授权
 func (a ability) ThirdAppGrant(appID, oauthURL string) (*sdk.ThirdAppGrant_Response, error) {
-	resp, err := a.api.ThirdAppGrant(appID, oauthURL)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.ThirdAppGrant_Response{Value: &resp.Value}, nil
+	return nil, sdkroot.NotImplemented("miniapp.ThirdAppGrant")
 }
 
 func mapJSLogin(resp *miniappapi.JSLoginResponse) *sdk.JSLogin_Response {

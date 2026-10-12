@@ -9,6 +9,7 @@ import (
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
 	messageapi "github.com/we-clay/we-clay/gateway/internal/api/message"
 	userapi "github.com/we-clay/we-clay/gateway/internal/api/user"
+	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability 用户能力实现（缓存型）。
@@ -31,7 +32,6 @@ func (a *ability) GetProfile() (*sdk.GetProfile_Response, error) {
 		return nil, err
 	}
 	profile := mapProfile(resp.GetUserInfo(), resp.GetUserInfoExt())
-	a.profile = profile
 	return &sdk.GetProfile_Response{
 		BaseResult: mapBaseResult(resp.GetBaseResponse()),
 		Profile:    profile,
@@ -40,49 +40,12 @@ func (a *ability) GetProfile() (*sdk.GetProfile_Response, error) {
 
 // UpdateProfile 更新个人信息
 func (a *ability) UpdateProfile(params sdk.UpdateProfileParams) (*sdk.UpdateProfile_Response, error) {
-	resp, err := a.api.UpdateProfile(userapi.UpdateProfileParams{
-		NickName:  params.NickName,
-		Sex:       params.Sex,
-		Country:   params.Country,
-		Province:  params.Province,
-		City:      params.City,
-		Signature: params.Signature,
-	})
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	if a.profile != nil {
-		a.profile.Nickname = params.NickName
-		a.profile.Gender = params.Sex
-		a.profile.Country = params.Country
-		a.profile.Province = params.Province
-		a.profile.City = params.City
-		a.profile.Signature = params.Signature
-	}
-	return &sdk.UpdateProfile_Response{Result: mapOperateResponse(resp)}, nil
+	return nil, sdkroot.NotImplemented("user.UpdateProfile")
 }
 
 // UploadAvatar 上传头像
 func (a *ability) UploadAvatar(reader io.Reader) (*sdk.UploadAvatar_Response, error) {
-	resp, err := a.api.UploadAvatar(reader)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	avatar := &sdk.Avatar{
-		Size:           resp.GetSize(),
-		Offset:         resp.GetOffset(),
-		FinalMd5:       resp.GetFinalMd5(),
-		BigAvatarUrl:   resp.GetBigAvatarUrl(),
-		SmallAvatarUrl: resp.GetSmallAvatarUrl(),
-	}
-	if a.profile != nil {
-		a.profile.BigAvatarUrl = avatar.BigAvatarUrl
-		a.profile.SmallAvatarUrl = avatar.SmallAvatarUrl
-	}
-	return &sdk.UploadAvatar_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		Avatar:     avatar,
-	}, nil
+	return nil, sdkroot.NotImplemented("user.UploadAvatar")
 }
 
 // GetQRCode 获取个人二维码
@@ -104,97 +67,42 @@ func (a *ability) GetQRCode(style int32) (*sdk.GetQRCode_Response, error) {
 
 // SetPrivacy 设置隐私选项
 func (a *ability) SetPrivacy(function, value int32) (*sdk.SetPrivacy_Response, error) {
-	resp, err := a.api.SetPrivacy(function, value)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.SetPrivacy_Response{Result: mapOperateResponse(resp)}, nil
+	return nil, sdkroot.NotImplemented("user.SetPrivacy")
 }
 
 // SetAlias 设置微信号
 func (a *ability) SetAlias(alias string) (*sdk.SetAlias_Response, error) {
-	resp, err := a.api.SetAlias(alias)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	if a.profile != nil {
-		a.profile.Alias = alias
-	}
-	return &sdk.SetAlias_Response{BaseResult: mapBaseResult(resp.GetBaseResponse())}, nil
+	return nil, sdkroot.NotImplemented("user.SetAlias")
 }
 
 // VerifyPassword 验证密码
 func (a *ability) VerifyPassword(password string) (*sdk.VerifyPassword_Response, error) {
-	resp, err := a.api.VerifyPassword(password)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.VerifyPassword_Response{
-		Result: &sdk.VerifyPasswordResult{
-			BaseResult:      mapBaseResult(resp.GetBaseResponse()),
-			ImageSid:        resp.GetImageSid().GetValue(),
-			ImageBuffer:     mapBuffer(resp.GetImageBuffer()),
-			Ticket:          resp.GetTicket(),
-			ImageEncryptKey: resp.GetImageEncryptKey().GetValue(),
-			A2Key:           mapBuffer(resp.GetA2_Key()),
-			Ksid:            mapBuffer(resp.GetKsid()),
-			AuthKey:         resp.GetAuthKey(),
-		},
-	}, nil
+	return nil, sdkroot.NotImplemented("user.VerifyPassword")
 }
 
 // SetPassword 设置密码
 func (a *ability) SetPassword(password, ticket string) (*sdk.SetPassword_Response, error) {
-	resp, err := a.api.SetPassword(password, ticket)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.SetPassword_Response{
-		BaseResult:  mapBaseResult(resp.GetBaseResponse()),
-		AutoAuthKey: mapBuffer(resp.GetAutoAuthKey()),
-	}, nil
+	return nil, sdkroot.NotImplemented("user.SetPassword")
 }
 
 // SendVerifyMobile 发送手机验证码
 func (a *ability) SendVerifyMobile(mobile string, opcode uint32) (*sdk.SendVerifyMobile_Response, error) {
-	resp, err := a.api.SendVerifyMobile(mobile, opcode)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.SendVerifyMobile_Response{Result: mapMobileResult(resp)}, nil
+	return nil, sdkroot.NotImplemented("user.SendVerifyMobile")
 }
 
 // BindMobile 绑定手机号
 func (a *ability) BindMobile(mobile, verifyCode string) (*sdk.BindMobile_Response, error) {
-	resp, err := a.api.BindMobile(mobile, verifyCode)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	if a.profile != nil {
-		a.profile.Mobile = mobile
-	}
-	return &sdk.BindMobile_Response{Result: mapMobileResult(resp)}, nil
+	return nil, sdkroot.NotImplemented("user.BindMobile")
 }
 
 // BindEmail 绑定邮箱
 func (a *ability) BindEmail(email string) (*sdk.BindEmail_Response, error) {
-	resp, err := a.api.BindEmail(email)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	if a.profile != nil {
-		a.profile.Email = email
-	}
-	return &sdk.BindEmail_Response{BaseResult: mapBaseResult(resp.GetBaseResponse())}, nil
+	return nil, sdkroot.NotImplemented("user.BindEmail")
 }
 
 // SendVerifyEmail 发送验证邮件
 func (a *ability) SendVerifyEmail() (*sdk.SendVerifyEmail_Response, error) {
-	resp, err := a.api.SendVerifyEmail()
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.SendVerifyEmail_Response{BaseResult: mapBaseResult(resp.GetBaseResponse())}, nil
+	return nil, sdkroot.NotImplemented("user.SendVerifyEmail")
 }
 
 // GetSafetyInfo 获取安全设备列表
@@ -211,26 +119,12 @@ func (a *ability) GetSafetyInfo() (*sdk.GetSafetyInfo_Response, error) {
 
 // DelSafeDevice 删除安全设备
 func (a *ability) DelSafeDevice(uuid string) (*sdk.DelSafeDevice_Response, error) {
-	resp, err := a.api.DelSafeDevice(uuid)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.DelSafeDevice_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		RestCount:  resp.GetRestCount(),
-	}, nil
+	return nil, sdkroot.NotImplemented("user.DelSafeDevice")
 }
 
 // ReportMotion 上报运动步数
 func (a *ability) ReportMotion(deviceID, deviceType string, stepCount int64) (*sdk.ReportMotion_Response, error) {
-	resp, err := a.api.ReportMotion(deviceID, deviceType, stepCount)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	return &sdk.ReportMotion_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		DeviceInfo: mapSportDeviceInfo(resp.GetDeviceInfo()),
-	}, nil
+	return nil, sdkroot.NotImplemented("user.ReportMotion")
 }
 
 // GetBoundHardDevices 获取绑定的硬件设备列表
@@ -249,19 +143,7 @@ func (a *ability) GetBoundHardDevices() (*sdk.GetBoundHardDevices_Response, erro
 
 // GetCert 获取证书信息
 func (a *ability) GetCert(currentVersion uint32) (*sdk.GetCert_Response, error) {
-	resp, err := a.api.GetCert(currentVersion)
-	if resp == nil || err != nil {
-		return nil, err
-	}
-	cert := resp.GetCert()
-	return &sdk.GetCert_Response{
-		BaseResult: mapBaseResult(resp.GetBaseResponse()),
-		Cert: &sdk.Cert{
-			KeyN:        cert.GetKeyN(),
-			KeyE:        cert.GetKeyE(),
-			CertVersion: resp.GetCertVersion(),
-		},
-	}, nil
+	return nil, sdkroot.NotImplemented("user.GetCert")
 }
 
 func mapBaseResult(resp *baseapi.BaseResponse) *sdk.BaseResult {

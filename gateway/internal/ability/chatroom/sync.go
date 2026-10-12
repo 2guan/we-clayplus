@@ -15,6 +15,8 @@ import (
 
 // HandleModifyMembers 处理同步得到的群成员资料变更。
 func HandleModifyMembers(members []*messageapi.ModifyChatroomMember) []*pluginsdk.ChangeEvent {
+	instance.cacheMu.Lock()
+	defer instance.cacheMu.Unlock()
 	var events []*pluginsdk.ChangeEvent
 	for _, item := range members {
 		if item == nil || item.GetUsername().GetValue() == "" {
@@ -34,6 +36,8 @@ func HandleModifyMembers(members []*messageapi.ModifyChatroomMember) []*pluginsd
 
 // HandleModifyMemberDisplayNames 处理同步得到的群成员显示名称变更。
 func HandleModifyMemberDisplayNames(displayNames []*messageapi.ModifyChatroomMemberDisplayName) []*pluginsdk.ChangeEvent {
+	instance.cacheMu.Lock()
+	defer instance.cacheMu.Unlock()
 	var events []*pluginsdk.ChangeEvent
 	for _, item := range displayNames {
 		if item == nil || item.GetChatroom() == "" || item.GetUsername() == "" {
