@@ -1,0 +1,339 @@
+syntax = "proto3";
+
+package miniapp;
+
+option go_package = "github.com/we-clay/we-clay/sdk/miniapp";
+
+// ==================== 服务定义 ====================
+
+// MiniAppService 小程序服务
+service MiniAppService {
+  // JSLogin 小程序 JS 登录授权
+  rpc JSLogin(JSLogin.Request) returns (JSLogin.Response);
+  // QrcodeAuthLogin 小程序扫码授权登录
+  rpc QrcodeAuthLogin(QrcodeAuthLogin.Request) returns (QrcodeAuthLogin.Response);
+  // GetRuntimeSession 获取小程序运行时会话
+  rpc GetRuntimeSession(GetRuntimeSession.Request) returns (GetRuntimeSession.Response);
+  // GetSessionQRCode 获取小程序会话二维码
+  rpc GetSessionQRCode(GetSessionQRCode.Request) returns (GetSessionQRCode.Response);
+  // OperateWxData 操作小程序数据
+  rpc OperateWxData(OperateWxData.Request) returns (OperateWxData.Response);
+  // CloudCallFunction 调用小程序云函数
+  rpc CloudCallFunction(CloudCallFunction.Request) returns (CloudCallFunction.Response);
+  // SendVerifyCode 发送手机验证码
+  rpc SendVerifyCode(SendVerifyCode.Request) returns (SendVerifyCode.Response);
+  // CheckVerifyCode 校验手机验证码
+  rpc CheckVerifyCode(CheckVerifyCode.Request) returns (CheckVerifyCode.Response);
+  // AddMobile 绑定手机号
+  rpc AddMobile(AddMobile.Request) returns (AddMobile.Response);
+  // DelMobile 解绑手机号
+  rpc DelMobile(DelMobile.Request) returns (DelMobile.Response);
+  // GetAllMobile 获取已绑定手机号列表
+  rpc GetAllMobile(GetAllMobile.Request) returns (GetAllMobile.Response);
+  // GetRandomAvatar 获取随机头像
+  rpc GetRandomAvatar(GetRandomAvatar.Request) returns (GetRandomAvatar.Response);
+  // AddAvatar 设置头像
+  rpc AddAvatar(AddAvatar.Request) returns (AddAvatar.Response);
+  // UploadAvatarImg 上传自定义头像图片
+  rpc UploadAvatarImg(UploadAvatarImg.Request) returns (UploadAvatarImg.Response);
+  // GetRecord 获取小程序使用记录
+  rpc GetRecord(GetRecord.Request) returns (GetRecord.Response);
+  // AddRecord 添加小程序使用记录
+  rpc AddRecord(AddRecord.Request) returns (AddRecord.Response);
+  // GetUserOpenID 获取用户 OpenID
+  rpc GetUserOpenID(GetUserOpenID.Request) returns (GetUserOpenID.Response);
+  // OauthSdkApp SDK OAuth 确认授权
+  rpc OauthSdkApp(OauthSdkApp.Request) returns (OauthSdkApp.Response);
+  // ThirdAppGrant 第三方 APP OAuth 授权
+  rpc ThirdAppGrant(ThirdAppGrant.Request) returns (ThirdAppGrant.Response);
+}
+
+// ==================== 领域消息 ====================
+
+// Result 操作结果
+message Result {
+  int32 code = 1;   // 结果码
+  string error = 2; // 错误信息
+}
+
+// ScopeInfo 授权范围信息
+message ScopeInfo {
+  optional string scope = 1;            // 授权范围
+  optional string description = 2;      // 描述
+  optional int32 auth_state = 3;        // 授权状态
+  optional string extend_desc = 4;      // 扩展描述
+  optional string auth_description = 5; // 授权描述
+}
+
+// Item 小程序条目
+message Item {
+  optional string username = 1;    // 用户名
+  optional string nickname = 2;    // 昵称
+  optional string icon_url = 3;    // 图标URL
+  optional uint32 update_time = 4; // 更新时间
+}
+
+// AuthorizeResult 授权结果
+message AuthorizeResult {
+  optional string tag1 = 1; // 预留字段1
+  optional bytes tag2 = 2;  // 预留字段2
+  optional uint32 tag3 = 3; // 预留字段3
+}
+
+// ==================== RPC 消息 ====================
+
+// JSLogin 小程序 JS 登录授权
+message JSLogin {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+  }
+  message Response {
+    optional Result jsapi_result = 1;                   // JSAPI结果
+    optional string code = 2;                           // 授权码
+    optional ScopeInfo scope_info = 3;                  // 授权范围信息
+    optional string app_name = 4;                       // 应用名称
+    optional string app_icon = 5;                       // 应用图标
+    optional string openid = 6;                         // OpenID
+    optional string session_key = 7;                    // 会话密钥
+    optional string session_ticket = 8;                 // 会话票据
+    optional int32 lifespan = 9;                        // 有效期
+    optional string state = 10;                         // 状态
+    optional string signature = 11;                     // 签名
+  }
+}
+
+// QrcodeAuthLogin 小程序扫码授权登录
+message QrcodeAuthLogin {
+  message Request {
+    string uuid = 1; // 二维码 UUID
+  }
+  message Response {
+    optional string value = 1; // 响应值
+  }
+}
+
+// GetRuntimeSession 获取小程序运行时会话
+message GetRuntimeSession {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+  }
+  message Response {
+    optional string session_id = 1;                     // 会话ID
+    optional uint32 expire = 2;                         // 过期时间
+  }
+}
+
+// GetSessionQRCode 获取小程序会话二维码
+message GetSessionQRCode {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+  }
+  message Response {
+    optional string value = 1; // 响应值
+  }
+}
+
+// OperateWxData 操作小程序数据
+message OperateWxData {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+    bytes data = 2;    // 数据
+    int32 opt = 3;     // 操作类型
+  }
+  message Response {
+    optional Result jsapi_result = 1;                   // JSAPI结果
+    optional bytes data = 2;                            // 数据
+    optional ScopeInfo scope_info = 3;                  // 授权范围信息
+    optional string app_name = 4;                       // 应用名称
+    optional string app_icon = 5;                       // 应用图标
+    optional string cancel_wording = 8;                 // 取消文案
+    optional string allow_wording = 9;                  // 允许文案
+    optional string apply_wording = 10;                 // 申请文案
+  }
+}
+
+// CloudCallFunction 调用小程序云函数
+message CloudCallFunction {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+    bytes data = 2;    // 数据
+  }
+  message Response {
+    optional Result jsapi_result = 1;                   // JSAPI结果
+    optional bytes data = 2;                            // 数据
+    optional ScopeInfo scope_info = 3;                  // 授权范围信息
+    optional string app_name = 4;                       // 应用名称
+    optional string app_icon = 5;                       // 应用图标
+    optional string cancel_wording = 8;                 // 取消文案
+    optional string allow_wording = 9;                  // 允许文案
+    optional string apply_wording = 10;                 // 申请文案
+  }
+}
+
+// SendVerifyCode 发送手机验证码
+message SendVerifyCode {
+  message Request {
+    string app_id = 1;  // 小程序 AppID
+    string mobile = 2;  // 手机号
+    int32 opcode = 3;   // 操作码
+  }
+  message Response {
+    optional uint32 status = 1; // 状态
+  }
+}
+
+// CheckVerifyCode 校验手机验证码
+message CheckVerifyCode {
+  message Request {
+    string app_id = 1;  // 小程序 AppID
+    string mobile = 2;  // 手机号
+    string code = 3;    // 验证码
+    int32 opcode = 4;   // 操作码
+  }
+  message Response {
+    optional int32 status = 1;                          // 状态
+    optional string encrypted_data = 2;                 // 加密数据
+    optional string iv = 3;                             // 初始向量
+    optional string show_mobile = 4;                    // 展示手机号
+    optional string cloud_id = 5;                       // 云端ID
+  }
+}
+
+// AddMobile 绑定手机号
+message AddMobile {
+  message Request {
+    string app_id = 1;  // 小程序 AppID
+    string mobile = 2;  // 手机号
+    string code = 3;    // 验证码
+  }
+  message Response {
+    optional int32 status = 1;                          // 状态
+    optional string encrypted_data = 2;                 // 加密数据
+    optional string iv = 3;                             // 初始向量
+    optional string show_mobile = 4;                    // 展示手机号
+    optional string cloud_id = 5;                       // 云端ID
+  }
+}
+
+// DelMobile 解绑手机号
+message DelMobile {
+  message Request {
+    string app_id = 1;  // 小程序 AppID
+    string mobile = 2;  // 手机号
+  }
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// GetAllMobile 获取已绑定手机号列表
+message GetAllMobile {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+  }
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// GetRandomAvatar 获取随机头像
+message GetRandomAvatar {
+  message Request {
+    string app_id = 1; // 小程序 AppID
+  }
+  message Response {
+    optional string nickname = 1;                       // 昵称
+    optional string avatar_url = 2;                     // 头像URL
+    optional string file_key = 3;                       // 文件Key
+  }
+}
+
+// AddAvatar 设置头像
+message AddAvatar {
+  message Request {
+    string app_id = 1;    // 小程序 AppID
+    string nickname = 2;  // 昵称
+    string afilekey = 3;  // 头像文件Key
+  }
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// UploadAvatarImg 上传自定义头像图片
+message UploadAvatarImg {
+  message Request {
+    string app_id = 1;  // 小程序 AppID
+    string jpglink = 2; // 图片链接
+  }
+  message Response {
+    optional string file_key = 1;                       // 文件Key
+    optional string cdn_url = 2;                        // CDN URL
+  }
+}
+
+// GetRecord 获取小程序使用记录
+message GetRecord {
+  message Request {}
+  message Response {
+    optional string result = 1;                         // 结果
+    repeated Item star_list = 2;                        // 收藏列表
+    repeated Item history_list = 3;                     // 历史列表
+    optional uint32 status = 4;                         // 状态
+  }
+}
+
+// AddRecord 添加小程序使用记录
+message AddRecord {
+  message Request {
+    string username = 1; // 用户名
+  }
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// GetUserOpenID 获取用户 OpenID
+message GetUserOpenID {
+  message Request {
+    string app_id = 1;   // 小程序 AppID
+    string username = 2; // 用户名
+  }
+  message Response {
+    optional string open_id = 1;                        // OpenID
+    optional string nickname = 2;                       // 昵称
+    optional string avatar_url = 3;                     // 头像URL
+    optional string signature = 4;                      // 签名
+    optional uint32 friend_relation = 5;                // 好友关系
+  }
+}
+
+// OauthSdkApp SDK OAuth 确认授权
+message OauthSdkApp {
+  message Request {
+    string app_id = 1;           // 小程序 AppID
+    repeated string scope = 2;   // 授权范围列表
+    uint32 operate = 3;          // 操作类型
+  }
+  message Response {
+    optional string redirect_url = 1;                   // 重定向URL
+    optional string token = 2;                          // Token
+    optional string user_confirm_redirect_url = 3;      // 用户确认重定向URL
+    optional string user_confirm_wording = 4;           // 用户确认文案
+  }
+}
+
+// ThirdAppGrant 第三方 APP OAuth 授权
+message ThirdAppGrant {
+  message Request {
+    string app_id = 1;    // 小程序 AppID
+    string oauth_url = 2; // OAuth URL
+  }
+  message Response {
+    optional string value = 1; // 响应值
+  }
+}

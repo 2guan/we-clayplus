@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package login;
+
+option go_package = "github.com/we-clay/we-clay/sdk/login";
+
+// ==================== 数据类型 ====================
+
+// Login 登录
+message Login {
+  message Request {}
+
+  // Response 扫码登录结果
+  message Response {
+    string uuid = 1;         // 二维码 UUID
+    string data = 2;         // 二维码 Base64 数据
+    string url = 3;          // 二维码 URL
+    uint32 check_time = 4;   // 检查间隔时间（秒）
+    uint32 expired_time = 5; // 过期时间（秒）
+  }
+}
+
+// Init 初始化
+message Init {
+  message Request {}
+
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// Refresh 刷新登录状态
+message Refresh {
+  message Request {}
+
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// Wakeup 唤醒登录
+message Wakeup {
+  message Request {}
+
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// Logout 登出
+message Logout {
+  message Request {}
+
+  message Response {
+    int32 code = 1;     // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+// PasswordLogin 密码登录
+message PasswordLogin {
+  message Request {
+    string username = 1;    // 微信号/手机号
+    string password = 2;    // 密码（明文，会自动 MD5 加密）
+    string device_type = 3; // 设备类型：ipad/iphone，默认 ipad
+    string device_name = 4; // 设备名称
+    string device_id = 5;   // 设备 ID（62 数据），可选
+  }
+
+  // Response 密码登录结果
+  message Response {
+    uint32 uin = 1;      // UIN
+    string username = 2; // 用户名
+    string nickname = 3; // 昵称
+    string alias = 4;    // 微信号
+    string email = 5;    // 邮箱
+    string mobile = 6;   // 手机号
+  }
+}
+
+// ==================== 服务定义 ====================
+
+// LoginService 登录服务
+service LoginService {
+  // Login 执行扫码登录
+  rpc Login(Login.Request) returns (Login.Response);
+  // Init 首次登录后初始化
+  rpc Init(Init.Request) returns (Init.Response);
+  // Refresh 刷新登录状态
+  rpc Refresh(Refresh.Request) returns (Refresh.Response);
+  // Wakeup 唤醒登录
+  rpc Wakeup(Wakeup.Request) returns (Wakeup.Response);
+  // Logout 登出
+  rpc Logout(Logout.Request) returns (Logout.Response);
+  // PasswordLogin 使用账号密码登录
+  rpc PasswordLogin(PasswordLogin.Request) returns (PasswordLogin.Response);
+}

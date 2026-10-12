@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package api.login;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/login;loginapi";
+
+import "api/base/base.proto";
+
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  int32 code = 1;
+  string message = 2;
+}
+
+// ==================== 扫码登录 ====================
+
+// QRCodeResult 二维码结果（镜像 we-clay GetQRCodeResponse，移除 base_response）
+message QRCodeResult {
+  optional api.base.Buffer qrcode = 2;    // 二维码数据（对应 we-clay field 2）
+  optional string uuid = 3;               // 二维码 UUID（对应 we-clay field 3）
+  optional uint32 check_time = 4;         // 检查间隔时间（对应 we-clay field 4）
+  optional api.base.Buffer notify_key = 5; // 通知密钥（对应 we-clay field 5）
+  optional uint32 expired_time = 6;       // 过期时间（对应 we-clay field 6）
+}
+
+// ==================== 初始化 ====================
+
+// InitResponse 初始化响应
+message InitResponse {
+  int32 code = 1;
+  string message = 2;
+}
+
+// ==================== 心跳 ====================
+
+// HeartBeatResponse 心跳响应（镜像 we-clay HeartBeatResponse，移除 base_response）
+message HeartBeatResponse {
+  optional uint32 next_time = 2;                       // 对应 we-clay field 2
+  optional uint32 selector = 3;                        // 对应 we-clay field 3
+  optional api.base.Buffer bluetooth_broadcast_content = 4; // 对应 we-clay field 4
+}
+
+// ==================== 退出 ====================
+
+// LogoutResponse 退出响应（镜像 we-clay LogoutResponse，移除 base_response）
+message LogoutResponse {
+  optional string login_ticket = 2; // 对应 we-clay field 2
+}
+
+// ==================== 密码登录 ====================
+
+// PasswordLoginRequest 密码登录请求（API 层自定义，we-clay 无对应）
+message PasswordLoginRequest {
+  string username = 1;
+  string password = 2;
+  string device_type = 3;
+  string device_name = 4;
+  string device_id = 5;
+}
+
+// PasswordLoginResult 密码登录结果（API 层自定义，we-clay 无对应）
+message PasswordLoginResult {
+  uint32 uin = 1;
+  string username = 2;
+  string nickname = 3;
+  string alias = 4;
+  string email = 5;
+  string mobile = 6;
+}

@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package api.payment;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/payment;paymentapi";
+
+import "api/base/base.proto";
+import "google/protobuf/wrappers.proto";
+
+// CGICommand 支付 CGI 命令（镜像 we-clay.payment.CGICommand）
+enum CGICommand {
+  CGI_CMD_UNKNOWN = 0;
+  WEB_QUERY_CHECK_RECORD = 22;
+  PLATFORM_QUERY_CHECK_RECORD = 23;
+  WEB_QUERY_CHECK_RESULT = 24;
+  PLATFORM_QUERY_CHECK_RESULT = 25;
+  WEB_NOTIFY_CHECK_RESULT = 26;
+  PLATFORM_NOTIFY_CHECK_RESULT = 27;
+  PLATFORM_QUERY_BZJ_INFO = 34;
+  QUERY_NEW_PARTNER_ID = 55;
+  QUERY_BIZ_CHECK_RESULT = 56;
+}
+
+// TenPayResponse 腾讯支付响应（镜像 we-clay.payment.TenPayResponse）
+message TenPayResponse {
+  optional .api.base.BaseResponse base_response = 1;
+  optional google.protobuf.StringValue text = 2;
+  optional int32 code = 3;
+  optional string message = 4;
+  optional CGICommand cgi_cmd = 5;
+  optional int32 error_type = 6;
+  optional string error_message = 7;
+}
+
+// HongBaoResponse 红包通用响应（镜像 we-clay.payment.HongBaoResponse）
+message HongBaoResponse {
+  optional .api.base.BaseResponse base_response = 1;
+  optional .api.base.Buffer text = 2;
+  optional int32 code = 3;
+  optional string message = 4;
+  optional int32 cgi_command = 5;
+  optional int32 error_type = 6;
+  optional string error_message = 7;
+}
+
+// F2FQrcodeResponse F2F 支付二维码响应（镜像 we-clay.payment.F2FQrcodeResponse）
+message F2FQrcodeResponse {
+  optional .api.base.BaseResponse base_response = 1;
+  optional string qrcode_url = 2;
+  optional string qrcode_data = 3;
+  optional uint32 expire_time = 4;
+}

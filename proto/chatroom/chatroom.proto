@@ -1,0 +1,308 @@
+syntax = "proto3";
+
+package chatroom;
+
+option go_package = "github.com/we-clay/we-clay/sdk/chatroom";
+
+// Member 群成员信息（供缓存使用）
+message Member {
+  string username = 1; // 用户名
+  string nickname = 2; // 昵称
+  string remark = 3; // 备注
+  string alias = 4; // 微信号
+  string display_name = 5; // 群内显示名
+  string avatar = 6; // 头像 URL
+  uint32 flag = 7; // 成员标志
+  string inviter_username = 8; // 邀请人用户名
+  string gender = 9; // 性别
+  string country = 10; // 国家
+  string province = 11; // 省份
+  string city = 12; // 城市
+  string signature = 13; // 签名
+}
+
+// ==================== 服务定义 ====================
+
+// ChatroomService 群聊服务
+service ChatroomService {
+  // Create 创建群聊
+  rpc Create(Create.Request) returns (Create.Response);
+  // FacingCreate 面对面建群
+  rpc FacingCreate(FacingCreate.Request) returns (FacingCreate.Response);
+  // GetInfo 获取群信息
+  rpc GetInfo(GetInfo.Request) returns (GetInfo.Response);
+  // GetQRCode 获取群二维码
+  rpc GetQRCode(GetQRCode.Request) returns (GetQRCode.Response);
+  // AddMember 添加群成员
+  rpc AddMember(AddMember.Request) returns (AddMember.Response);
+  // InviteMember 邀请群成员
+  rpc InviteMember(InviteMember.Request) returns (InviteMember.Response);
+  // RemoveMember 移除群成员
+  rpc RemoveMember(RemoveMember.Request) returns (RemoveMember.Response);
+  // SetName 设置群名称
+  rpc SetName(SetName.Request) returns (SetName.Response);
+  // SetAnnouncement 设置群公告
+  rpc SetAnnouncement(SetAnnouncement.Request) returns (SetAnnouncement.Response);
+  // SetRemark 设置群备注
+  rpc SetRemark(SetRemark.Request) returns (SetRemark.Response);
+  // Save 保存到通讯录
+  rpc Save(Save.Request) returns (Save.Response);
+  // SetAdmin 设置群管理员
+  rpc SetAdmin(SetAdmin.Request) returns (SetAdmin.Response);
+  // RemoveAdmin 移除群管理员
+  rpc RemoveAdmin(RemoveAdmin.Request) returns (RemoveAdmin.Response);
+  // TransferOwner 转让群主
+  rpc TransferOwner(TransferOwner.Request) returns (TransferOwner.Response);
+  // Quit 退出群聊
+  rpc Quit(Quit.Request) returns (Quit.Response);
+  // ScanJoin 扫码进群
+  rpc ScanJoin(ScanJoin.Request) returns (ScanJoin.Response);
+  // ScanJoinEnterprise 企业微信扫码进群
+  rpc ScanJoinEnterprise(ScanJoin.Request) returns (ScanJoin.Response);
+  // ConsentJoin 同意入群邀请
+  rpc ConsentJoin(ConsentJoin.Request) returns (ConsentJoin.Response);
+  // GetMember 获取群成员
+  rpc GetMember(GetMember.Request) returns (GetMember.Response);
+  // ListMembers 获取群成员列表
+  rpc ListMembers(ListMembers.Request) returns (ListMembers.Response);
+  // GetMemberDetail 获取群成员详情
+  rpc GetMembersDetail(GetMemberDetail.Request) returns (GetMemberDetail.Response);
+}
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  int32 code = 1; // 状态码（0=成功）
+  string message = 2; // 提示信息
+}
+
+// ==================== 群聊创建 ====================
+
+// CreateChatroomRequest 创建群聊请求
+message Create {
+  message Request {
+    repeated string members = 1; // 初始成员用户名列表
+  }
+  message Response {
+    string chatroom = 1; // 群 ID
+    string name = 2; // 群名称
+    repeated Member members = 3; // 成员列表
+    string big_avatar_url = 4; // 大头像 URL
+    string small_avatar_url = 5; // 小头像 URL
+  }
+}
+
+message FacingCreate {
+  message Request {
+    string password = 1; // 面对面密码
+    float latitude = 2; // 纬度
+    float longitude = 3; // 经度
+    uint32 operate = 4; // 操作类型
+  }
+  message Member {
+    string username = 1; // 用户名
+    string nickname = 2; // 昵称
+    string display_name = 3; // 显示名
+    string avatar_url = 4; // 头像 URL
+    uint32 flag = 5; // 标志
+  }
+  message Response {
+    string chatroom = 1; // 群 ID
+    string ticket = 2; // 票据
+    uint32 member_count = 3; // 成员数量
+    repeated Member members = 4; // 成员列表
+  }
+}
+
+message GetInfo {
+  message Request {
+    string chatroom = 1; // 群 ID
+  }
+  message Response {
+    string username = 1; // wxid
+    string nickname = 2; // 昵称
+    string remark = 3; // 备注
+    string alias = 4; // 微信号
+    string avatar = 5; // 头像 URL
+    string owner = 6; // 群主 wxid
+    uint32 member_count = 7; // 群成员数量
+  }
+}
+
+message GetMemberDetail {
+  message Request {
+    string chatroom = 1; // 群 ID
+    repeated string members = 2; // 群成员id列表
+  }
+  message Response {
+    repeated Member members = 3; // 成员列表
+  }
+}
+
+message GetQRCode {
+  message Request {
+    string chatroom = 1; // 群 ID
+  }
+  message Response {
+    bytes qrcode = 1; // 二维码图片数据
+    string qrcode_url = 2; // 二维码 URL
+    string footer_wording = 3; // 底部文字
+  }
+}
+
+message AddMember {
+  message Request {
+    string chatroom = 1; // 群 ID
+    repeated string members = 2; // 成员用户名列表
+  }
+  message Response {
+    uint32 member_count = 1; // 成员数量
+    repeated Member members = 2; // 新增成员列表
+  }
+}
+
+message InviteMember {
+  message Request {
+    string chatroom = 1; // 群 ID
+    repeated string members = 2; // 成员用户名列表
+  }
+  message Response {
+    uint32 member_count = 1; // 成员数量
+    repeated Member members = 2; // 新增成员列表
+  }
+}
+
+message RemoveMember {
+  message Request {
+    string chatroom = 1; // 群 ID
+    repeated string members = 2; // 要移除的成员用户名列表
+  }
+  message Response {
+    uint32 member_count = 1; // 剩余成员数量
+    repeated Member members = 2; // 移除的成员列表
+  }
+}
+
+message SetName {
+  message Request {
+    string chatroom = 1; // 群 ID
+    string name = 2; // 新群名称
+  }
+  message Response {
+    int32 code = 1; // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+message SetAnnouncement {
+  message Request {
+    string chatroom = 1; // 群 ID
+    string content = 2; // 公告内容
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message SetRemark {
+  message Request {
+    string chatroom = 1; // 群 ID
+    string remark = 2; // 群备注
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message Save {
+  message Request {
+    string chatroom = 1; // 群 ID
+    bool save = 2; // true=保存，false=取消保存
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message SetAdmin {
+  message Request {
+    string chatroom = 1; // 群 ID
+    repeated string members = 2; // 管理员用户名列表
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message RemoveAdmin {
+  message Request {
+    string chatroom = 1; // 群 ID
+    repeated string members = 2; // 要移除的管理员用户名列表
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message TransferOwner {
+  message Request {
+    string chatroom = 1; // 群 ID
+    string new_owner = 2; // 新群主用户名
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message ScanJoin {
+  message Request {
+    string qrcode_url = 1; // 二维码 URL
+  }
+  message Response {
+    string chatroom = 1; // 群 ID
+    string message = 2; // 消息
+  }
+}
+
+message ConsentJoin {
+  message Request {
+    string invite_url = 1; // 邀请链接
+  }
+  message Response {
+    string chatroom = 1; // 群 ID
+    string message = 2; // 消息
+  }
+}
+
+message Quit {
+  message Request {
+    string chatroom = 1; // 群 ID
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message GetMember {
+  message Request {
+    string chatroom = 1; // 群 ID
+    string member = 2; // 群成员ID
+  }
+  message Response {
+    Member member = 1; // 成员
+  }
+}
+
+message ListMembers {
+  message Request {
+    string chatroom = 1; // 群ID
+  }
+  message Response {
+    repeated Member members= 1; // 群成员列表
+  }
+}

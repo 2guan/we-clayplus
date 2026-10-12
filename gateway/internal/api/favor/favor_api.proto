@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package api.favor;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/favor;favorapi";
+
+import "api/base/base.proto";
+
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  int32 code = 1;
+  string message = 2;
+}
+
+// ==================== 收藏信息 ====================
+
+// GetInfoResponse 获取收藏信息响应（镜像 we-clay GetInfoResponse）
+message GetInfoResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional uint64 used_size = 2;            // 已使用容量
+  optional uint64 total_size = 3;           // 总容量
+  optional uint64 max_file_size = 4;        // 最大文件大小
+  optional int32 max_auto_upload_size = 5;  // 最大自动上传大小
+  optional int32 max_auto_download_size = 6; // 最大自动下载大小
+}
+
+// ==================== 收藏项信息 ====================
+
+// FavorItem 收藏项信息（镜像 we-clay BatchGetItemResponse.Object，字段编号完全一致）
+message FavorItem {
+  optional uint32 id = 1;
+  optional int32 status = 2;
+  optional string object = 3;
+  optional uint32 flag = 4;
+  optional uint32 update_time = 5;
+  optional uint32 update_sequence = 6;
+}
+
+message SyncFavorItem {
+  optional .api.base.BaseRequest base_request = 1; // 基础请求
+  optional string client_id = 2; // 客户端ID
+  uint32 type = 3; // 收藏类型
+  uint32 source_type = 4; // 来源类型
+  optional string source_id = 5; // 来源ID
+  optional string object = 6; // 收藏对象
+}
+
+// ==================== 获取收藏项 ====================
+
+// GetFavItemResponse 获取收藏项详情响应
+message GetFavItemResponse {
+  repeated FavorItem items = 1;
+}
+
+// BatchGetFavItemsResponse 批量获取收藏项响应（镜像 we-clay BatchGetItemResponse，字段号从 2 开始）
+message BatchGetFavItemsResponse {
+  optional uint32 count = 2;          // 对应 we-clay field 2
+  repeated FavorItem objects = 3;     // 对应 we-clay field 3
+}
+
+// ==================== 删除收藏项 ====================
+
+// DeleteResult 删除结果（镜像 we-clay BatchDeleteItemResponse.Result，字段编号完全一致）
+message DeleteResult {
+  optional int32 code = 1;
+  optional uint32 id = 2; // 注意：we-clay 用 id，非 fav_id
+}
+
+// DeleteFavItemResponse 删除收藏项响应
+message DeleteFavItemResponse {
+  repeated DeleteResult results = 1;
+}
+
+// BatchDeleteFavItemsResponse 批量删除收藏项响应（镜像 we-clay BatchDeleteItemResponse，字段号从 2 开始）
+message BatchDeleteFavItemsResponse {
+  optional uint32 count = 2;           // 对应 we-clay field 2
+  repeated DeleteResult results = 3;   // 对应 we-clay field 3
+}
+
+// ==================== 同步收藏 ====================
+
+// SyncFavorResponse 同步收藏列表响应（镜像 we-clay SyncResponse，字段编号完全一致）
+message SyncFavorResponse {
+  repeated SyncFavorItem items = 1; // 收藏项列表
+  bytes key = 2;                // 下次同步 Key
+  bool has_more = 3;            // 是否还有更多数据
+}

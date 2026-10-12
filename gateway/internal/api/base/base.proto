@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package api.base;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/base;baseapi";
+
+import "google/protobuf/wrappers.proto";
+
+
+// BaseRequest 基础请求
+message BaseRequest {
+  optional bytes session_key = 1;                    // 会话密钥
+  optional uint32 uin = 2;                           // 用户唯一标识（需要显式编码零值）
+  optional bytes device_id = 3;                      // 设备 ID
+  optional int32 client_version = 4;                 // 客户端版本号
+  optional bytes device_type = 5;                    // 设备类型
+  optional uint32 scene = 6;                         // 场景值（需要显式编码零值）
+}
+
+// BaseResponse 基础响应
+message BaseResponse {
+  optional int32 code = 1;                           // 返回码，0 表示成功
+  optional google.protobuf.StringValue message = 2;  // 错误信息
+}
+
+// Buffer 字节缓冲区
+message Buffer {
+  optional uint32 size = 1;                          // 数据长度
+  optional bytes data = 2;                           // 数据内容
+}
+
+// 性别
+enum Gender {
+  GENDER_UNSPECIFIED = 0;
+  GENDER_MALE = 1;
+  GENDER_FEMALE = 2;
+}
+
+// Commands 命令列表
+message Commands {
+  optional uint32 count = 1;                         // 命令数量
+  repeated Item list = 2;                            // 命令列表
+
+  // Item 命令项
+  message Item {
+    optional int32 id = 1;                           // 命令 ID
+    optional Buffer buffer = 2;                      // 命令数据
+  }
+}
+
+// Hosts 主机列表
+message Hosts {
+  optional uint32 count = 1;                         // 主机数量
+  repeated Info list = 2;                            // 主机列表
+
+  // Info 主机信息
+  message Info {
+    optional string origin = 1;                      // 主机地址
+    optional string redirect = 2;                    // 重定向地址
+    optional uint32 priority = 3;                    // 优先级
+  }
+}
+
+// BuiltinIPList 内置 IP 列表
+message BuiltinIPList {
+  optional uint32 long_ip_count = 1;                 // 长连接 IP 数量
+  optional uint32 short_ip_count = 2;                // 短连接 IP 数量
+  repeated Info long_ip_list = 3;                    // 长连接 IP 列表
+  repeated Info short_ip_list = 4;                   // 短连接 IP 列表
+  optional uint32 sequence = 5;                      // 序列号
+
+  // Info IP 信息
+  message Info {
+    optional uint32 type = 1;                        // 类型
+    optional uint32 port = 2;                        // 端口
+    optional string ip = 3;                          // IP 地址
+    optional string domain = 4;                      // 主机名
+  }
+}
+
+// NetworkControl 网络控制
+message NetworkControl {
+  optional string port_list = 1;                     // 端口列表
+  optional string timeout_list = 2;                  // 超时列表
+  optional uint32 min_noop_interval = 3;             // 最小心跳间隔
+  optional uint32 max_noop_interval = 4;             // 最大心跳间隔
+  optional int32 typing_interval = 5;                // 输入状态通知间隔（秒）
+  optional int32 noop_interval_time = 7;             // 心跳间隔时间
+}
+
+// NetworkResult 网络响应
+message NetworkResult {
+  optional Hosts host_list = 1;                      // 新主机列表
+  optional NetworkControl network_control = 2;       // 网络控制配置
+  optional BuiltinIPList builtin_ip_list = 3;        // 内置 IP 列表
+}
+
+// OpLogRequest OpLog 请求
+message OperateRequest {
+  optional Commands commands = 1;         // 命令列表
+}
+
+// OperateResponse 操作响应
+message OperateResponse {
+  optional int32 code = 1;                           // 返回码
+  optional Result result = 2;                        // 操作返回结果
+
+  // Result 操作结果
+  message Result {
+    optional uint32 count = 1;                       // 操作结果数量
+    optional int32 code = 2;                         // 返回码
+    optional bytes message = 3;                      // 错误信息内容
+  }
+}

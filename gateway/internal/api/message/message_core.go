@@ -1,0 +1,294 @@
+// Package messageapi 提供消息服务的远程实现（通过 gRPC 调用 core）。
+package messageapi
+
+import (
+	"errors"
+	"fmt"
+	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
+	"google.golang.org/protobuf/proto"
+	"io"
+	"strconv"
+	"sync"
+
+	"github.com/we-clay/we-clay/gateway/internal/api"
+)
+
+// remote 消息服务 gRPC 实现
+type remote struct{}
+
+// Get 获取 MessageService 单例（gRPC 模式）
+var Get = sync.OnceValue(func() MessageService {
+	return &remote{}
+})
+
+// Sync 同步消息
+func (w remote) Sync(selector uint32) (*SyncResult, error) {
+	var resp SyncResult
+	if err := api.GetCore().Get("/api/message/sync").Query("selector", selector).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendText 发送文本消息
+func (w remote) SendText(receiver, content, remind string) (*SendMessageResponse, error) {
+	var resp SendMessageResponse
+	body := map[string]any{
+		"receiver": receiver,
+		"content":  content,
+		"remind":   remind,
+	}
+	if err := api.GetCore().Post("/api/message/text").Body(body).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendImage 发送图片消息（multipart/form-data）
+func (w remote) SendImage(receiver string, reader io.Reader) (*UploadImageResponse, error) {
+	imageData, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	var resp UploadImageResponse
+	if err := api.GetCore().Post("/api/message/image").Multipart(
+		map[string][]byte{"image": imageData},
+		map[string]string{"receiver": receiver},
+	).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendVideo 发送视频消息（multipart/form-data）
+func (w remote) SendVideo(receiver string, thumb, video io.Reader, duration uint32) (*UploadVideoResponse, error) {
+	videoData, err := io.ReadAll(video)
+	if err != nil {
+		return nil, err
+	}
+	files := map[string][]byte{"video": videoData}
+	if thumb != nil {
+		thumbData, err := io.ReadAll(thumb)
+		if err != nil {
+			return nil, err
+		}
+		files["thumb"] = thumbData
+	}
+	var resp UploadVideoResponse
+	if err := api.GetCore().Post("/api/message/video").Multipart(files,
+		map[string]string{
+			"receiver": receiver,
+			"duration": fmt.Sprintf("%d", duration),
+		},
+	).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendVoice 发送语音消息（multipart/form-data）
+func (w remote) SendVoice(receiver string, reader io.Reader, duration, format int32) (*UploadVoiceResponse, error) {
+	voiceData, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	var resp UploadVoiceResponse
+	if err := api.GetCore().Post("/api/message/voice").Multipart(
+		map[string][]byte{"voice": voiceData},
+		map[string]string{
+			"receiver": receiver,
+			"duration": fmt.Sprintf("%d", duration),
+			"format":   fmt.Sprintf("%d", format),
+		},
+	).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendEmoji 发送表情消息（multipart/form-data）
+func (w remote) SendEmoji(receiver, md5 string, data []byte) (*UploadEmojiResponse, error) {
+	var resp UploadEmojiResponse
+	if err := api.GetCore().Post("/api/message/emoji").Multipart(
+		map[string][]byte{"emoji": data},
+		map[string]string{"receiver": receiver, "md5": md5},
+	).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendApp 发送应用消息
+func (w remote) SendApp(receiver, xml, extendXML string, typ int32) (*SendAppMessageResponse, error) {
+	var resp SendAppMessageResponse
+	if err := api.GetCore().Post("/api/message/app").Body(map[string]any{
+		"receiver":   receiver,
+		"xml":        xml,
+		"type":       typ,
+		"extend_xml": extendXML,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendLink 发送链接消息
+func (w remote) SendLink(receiver, title, desc, url, thumbUrl string) (*SendAppMessageResponse, error) {
+	var resp SendAppMessageResponse
+	if err := api.GetCore().Post("/api/message/link").Body(map[string]any{
+		"receiver":  receiver,
+		"title":     title,
+		"desc":      desc,
+		"url":       url,
+		"thumb_url": thumbUrl,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendCard 发送名片消息
+func (w remote) SendCard(receiver, cardUsername, cardNickname, cardAlias string) (*SendMessageResponse, error) {
+	var resp SendMessageResponse
+	if err := api.GetCore().Post("/api/message/card").Body(map[string]any{
+		"receiver":      receiver,
+		"card_username": cardUsername,
+		"card_nickname": cardNickname,
+		"card_alias":    cardAlias,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendPosition 发送位置消息
+func (w remote) SendPosition(receiver, label, poiName string, lon, lat, scale float64) (*SendMessageResponse, error) {
+	var resp SendMessageResponse
+	if err := api.GetCore().Post("/api/message/position").Body(map[string]any{
+		"receiver": receiver,
+		"label":    label,
+		"poi_name": poiName,
+		"lon":      lon,
+		"lat":      lat,
+		"scale":    scale,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ForwardImage 转发 CDN 图片
+func (w remote) ForwardImage(receiver string, reader io.Reader) (*UploadImageResponse, error) {
+	b, err := io.ReadAll(io.LimitReader(reader, (4<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > 4<<20 {
+		return nil, errors.New("forward XML exceeds 4 MiB")
+	}
+	var resp UploadImageResponse
+	if err = api.GetCore().Post("/api/message/forward/image").Body(map[string]any{"receiver": receiver, "xml": string(b)}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ForwardVideo 转发 CDN 视频
+func (w remote) ForwardVideo(receiver string, reader io.Reader) (*UploadVideoResponse, error) {
+	b, err := io.ReadAll(io.LimitReader(reader, (4<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > 4<<20 {
+		return nil, errors.New("forward XML exceeds 4 MiB")
+	}
+	var resp UploadVideoResponse
+	if err = api.GetCore().Post("/api/message/forward/video").Body(map[string]any{"receiver": receiver, "xml": string(b)}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ForwardFile 转发文件
+func (w remote) ForwardFile(receiver, xml string) (*SendAppMessageResponse, error) {
+	var resp SendAppMessageResponse
+	if err := api.GetCore().Post("/api/message/forward/file").Body(map[string]any{"receiver": receiver, "xml": xml}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// Revoke 撤回消息
+func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64) (*RevokeMessageResponse, error) {
+	var resp RevokeMessageResponse
+	if err := api.GetCore().Post("/api/message/revoke").Body(map[string]any{
+		"receiver":    receiver,
+		"new_id":      newMsgId,
+		"client_id":   clientMsgId,
+		"create_time": timestamp,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DownloadImg 下载消息图片
+func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error) {
+	b, err := api.GetCore().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).Do()
+	if err != nil {
+		return nil, err
+	}
+	n := uint32(len(b))
+	return &DownloadImageResponse{Size: &n, Offset: proto.Uint32(0), ChunkSize: &n, Chunk: &baseapi.Buffer{Size: &n, Data: b}}, nil
+}
+
+// DownloadVideo 下载视频
+func (w remote) DownloadVideo(receiver, fileId, aesKey string, totalSize uint32) (*DownloadVideoResponse, error) {
+	b, err := api.GetCore().Get("/api/cdn/download/video").Query("id", fileId, "key", aesKey).Do()
+	if err != nil {
+		return nil, err
+	}
+	n := uint32(len(b))
+	return &DownloadVideoResponse{Size: &n, Offset: proto.Uint32(0), Chunk: &baseapi.Buffer{Size: &n, Data: b}}, nil
+}
+
+// DownloadVoice 下载语音
+func (w remote) DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceLength uint32) (*DownloadVoiceResponse, error) {
+	id, err := strconv.ParseUint(fileId, 10, 64)
+	if err != nil {
+		return nil, errors.New("voice fileId must be a numeric message ID")
+	}
+	var resp DownloadVoiceResponse
+	if err = api.GetCore().Post("/api/message/download/voice").Body(map[string]any{"new_id": id, "chatroom_id": receiver, "length": totalSize}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DownloadFile 下载文件附件
+func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) (*DownloadFileResponse, error) {
+	if aesKey != "" {
+		return nil, errors.New("attachment download requires an attach ID, not a CDN AES key")
+	}
+	var resp DownloadFileResponse
+	if err := api.GetCore().Post("/api/message/download/file").Body(map[string]any{"attach_id": fileId, "username": receiver, "size": totalSize, "chunk_size": min(totalSize, 32<<10)}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SendFile preserves the original filename in the multipart upload.
+func (w remote) SendFile(receiver, filename string, reader io.Reader) (*SendAppMessageResponse, error) {
+	b, err := io.ReadAll(io.LimitReader(reader, (32<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) == 0 || len(b) > 32<<20 {
+		return nil, errors.New("file must contain 1..32 MiB")
+	}
+	var resp SendAppMessageResponse
+	if err = api.GetCore().Post("/api/message/file").MultipartFiles([]api.FilePart{{Name: "file", Filename: filename, Data: b}}, map[string]string{"receiver": receiver}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

@@ -1,0 +1,27 @@
+# 本地配置、账号状态、日志与构建输出
+runtime/
+data/
+data-restored*/
+logs/
+bin/
+dist/
+plugins/
+config.local.toml
+.env
+.env.*
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.session
+*.sqlite*
+*.db
+session*.json
+device*.json
+*secrets-report*.json
+.DS_Store
+.idea/
+.vscode/
+go.work
+go.work.sum

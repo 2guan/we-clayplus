@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package api.report;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/report;reportapi";
+
+import "api/base/base.proto";
+import "google/protobuf/wrappers.proto";
+
+// StatusNotifyRequest 状态通知请求（镜像 we-clay.report.StatusNotifyRequest）
+message StatusNotifyRequest {
+  optional .api.base.BaseRequest base_request = 1;
+  optional uint32 code = 2;
+  optional string sender = 3;
+  optional string receiver = 4;
+  optional string client_msg_id = 5;
+  optional uint32 unread_chat_list_count = 6;
+  repeated UnreadChat unread_chat_list = 7;
+  optional UnreadFunction function = 8;
+  optional uint32 unread_function_count = 9;
+  repeated UnreadFunction unread_function_list = 10;
+
+  // UnreadChat 未读会话信息（镜像 we-clay.report.StatusNotifyRequest.UnreadChat）
+  message UnreadChat {
+    optional string username = 1;
+    optional uint32 last_read_time = 2;
+  }
+
+  // UnreadFunction 未读功能项（镜像 we-clay.report.StatusNotifyRequest.UnreadFunction）
+  message UnreadFunction {
+    optional string name = 1;
+    optional string arg = 2;
+  }
+}
+
+// StatusNotifyResponse 状态通知响应（镜像 we-clay.report.StatusNotifyResponse）
+message StatusNotifyResponse {
+  optional .api.base.BaseResponse base_response = 1;
+  optional uint32 msg_id = 2;
+  optional uint64 new_id = 3;
+  optional uint32 chat_contact_count = 4;
+  repeated google.protobuf.StringValue chat_contact_list = 5;
+}

@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package cdn;
+
+option go_package = "github.com/we-clay/we-clay/sdk/cdn";
+
+// ==================== 服务定义 ====================
+
+// CDNService CDN 文件上传/下载服务
+service CDNService {
+  // 客户端流式上传聊天图片
+  rpc UploadImage(stream UploadImage.Chunk) returns (UploadImage.Response);
+  // 客户端流式上传聊天视频
+  rpc UploadVideo(stream UploadVideo.Chunk) returns (UploadVideo.Response);
+
+  // 服务端流式下载高清图片
+  rpc DownloadImage(DownloadImage.Request) returns (stream DownloadImage.Chunk);
+  // 服务端流式下载聊天视频
+  rpc DownloadVideo(DownloadVideo.Request) returns (stream DownloadVideo.Chunk);
+
+  // 非流式接口（小文件）
+  // CDN 上传朋友圈图片
+  rpc UploadMomentsImage(UploadMomentsImage.Request) returns (UploadMomentsImage.Response);
+  // CDN 上传朋友圈视频
+  rpc UploadMomentsVideo(UploadMomentsVideo.Request) returns (UploadMomentsVideo.Response);
+  // CDN 下载视频封面
+  rpc DownloadVideoCover(DownloadVideoCover.Request) returns (DownloadVideoCover.Response);
+  // CDN 下载朋友圈视频
+  rpc DownloadMomentsVideo(DownloadMomentsVideo.Request) returns (DownloadMomentsVideo.Response);
+}
+
+// ==================== 流式传输消息 ====================
+
+message UploadImage {
+  message Chunk {
+    string receiver = 1; // 接收者 wxid
+    bytes data = 2; // 后续包携带数据
+  }
+  message Response {
+    optional string aes_key = 1; // 图片加密 AES 密钥（hex编码）
+    optional string file_id = 2; // CDN 文件ID
+    optional uint64 new_msg_id = 3; // 新消息ID
+    optional uint32 create_time = 4; // 创建时间
+    optional uint32 file_size = 5; // 文件大小
+    optional string file_md5 = 6; // 文件MD5
+    optional uint32 file_width = 7; // 图片宽度
+    optional uint32 file_height = 8; // 图片高度
+    optional uint32 thumb_size = 9; // 缩略图大小
+    optional string thumb_md5 = 10; // 缩略图MD5
+    optional uint32 thumb_width = 11; // 缩略图宽度
+    optional uint32 thumb_height = 12; // 缩略图高度
+  }
+}
+
+message UploadVideo {
+  message Chunk {
+    string receiver = 1; // 第一个包携带元数据
+    uint32 duration = 2; // 视频时长（秒）
+    bytes thumb = 3; // 缩略图数据
+    bytes data = 4; // 后续包携带数据
+  }
+  message Response {
+    optional string aes_key = 1; // 视频加密 AES 密钥（hex编码）
+    optional string file_id = 2; // CDN 文件ID
+    optional uint32 file_size = 3; // 视频文件大小
+    optional uint32 thumb_size = 4; // 缩略图大小
+    optional string file_md5 = 5; // 视频MD5
+  }
+}
+
+message DownloadImage {
+  message Request {
+    string file_id = 1; // CDN 文件ID
+    string aes_key = 2; // AES 密钥（hex编码）
+  }
+  message Chunk {
+    bytes data = 1; // 图片数据块
+  }
+}
+
+message DownloadVideo {
+  message Request {
+    string file_id = 1; // CDN 文件ID
+    string aes_key = 2; // AES 密钥（hex编码）
+  }
+  message Chunk {
+    bytes data = 1; // 视频数据块
+  }
+}
+
+message UploadMomentsImage {
+  message Request {
+    bytes data = 1; // 图片二进制数据
+  }
+  message Response {
+    optional string file_url = 1; // CDN 文件URL
+    optional string thumb_url = 2; // CDN 缩略图URL
+    optional string file_key = 3; // 文件Key
+    optional string file_md5 = 4; // 文件MD5
+    optional uint32 image_width = 5; // 图片宽度
+    optional uint32 image_height = 6; // 图片高度
+  }
+}
+
+message UploadMomentsVideo {
+  message Request {
+    bytes video_data = 1; // 视频二进制数据
+    bytes thumb_data = 2; // 缩略图二进制数据
+  }
+  message Response {
+    optional string file_url = 1; // CDN 视频URL
+    optional string thumb_url = 2; // CDN 缩略图URL
+    optional string file_id = 3; // 文件ID
+    optional string file_key = 4; // 文件Key
+  }
+}
+
+message DownloadVideoCover {
+  message Request {
+    string file_id = 1; // CDN 文件ID
+    string aes_key = 2; // AES 密钥（hex编码）
+  }
+  message Response {
+    bytes data = 1;
+  }
+}
+
+message DownloadMomentsVideo {
+  message Request {
+    string video_url = 1; // 加密视频 URL
+    uint64 enc_key = 2; // 解密密钥
+  }
+  message Response {
+    bytes data = 1;
+  }
+}

@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package favor;
+
+option go_package = "github.com/we-clay/we-clay/sdk/favor";
+
+// ==================== 通用消息 ====================
+
+// FavorItem 收藏项信息（供插件使用）
+message Item {
+  uint32 id = 1; // 收藏 ID
+  int32 status = 2; // 状态
+  string object = 3; // 收藏对象（JSON 格式）
+  uint32 flag = 4; // 标志
+  uint32 update_time = 5; // 更新时间（Unix 时间戳）
+  uint32 update_seq = 6; // 更新序列号
+}
+
+// ==================== 服务定义 ====================
+
+// FavorService 收藏服务
+service FavorService {
+  // GetInfo 获取收藏容量信息
+  rpc GetInfo(GetInfo.Request) returns (GetInfo.Response);
+  // GetItem 获取收藏项详情
+  rpc GetItem(GetItem.Request) returns (GetItem.Response);
+  // Delete 删除收藏项
+  rpc Delete(Delete.Request) returns (Delete.Response);
+  // Sync 同步收藏列表
+  rpc Sync(Sync.Request) returns (Sync.Response);
+}
+
+message GetInfo {
+  message Request {}
+  message Info {
+    uint64 used_size = 1; // 已使用容量（字节）
+    uint64 total_size = 2; // 总容量（字节）
+    uint64 max_file_size = 3; // 单文件大小上限（字节）
+    int32 max_auto_upload = 4; // 自动上传大小上限
+    int32 max_auto_download = 5; // 自动下载大小上限
+  }
+  message Response {
+    Info info = 1; // 收藏容量信息
+  }
+}
+
+message GetItem {
+  message Request {
+    int32 fav_id = 1; // 收藏项 ID
+  }
+  message Response {
+    repeated Item items = 1; // 收藏项列表
+  }
+}
+
+message Delete {
+  message Request {
+    int32 fav_id = 1; // 收藏项 ID
+  }
+  message Result {
+    int32 code = 1; // 返回码
+    uint32 fav_id = 2; // 收藏 ID
+  }
+  message Response {
+    repeated Result results = 1; // 删除结果列表
+  }
+}
+
+message Sync {
+  message Request {
+    bytes key = 1; // 同步 Key（为空时从头同步，否则增量同步）
+  }
+  message Response {
+    repeated Item items = 1; // 收藏项列表
+    bytes key = 2; // 下次同步 Key
+    bool has_more = 3; // 是否还有更多数据
+  }
+}

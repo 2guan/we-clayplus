@@ -1,0 +1,362 @@
+syntax = "proto3";
+
+package api.contact;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/contact;contactapi";
+
+import "api/base/base.proto";
+import "google/protobuf/wrappers.proto";
+
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  optional int32 code = 1; // 返回码
+  optional Result result = 2; // 操作返回结果
+
+  message Result {
+    optional uint32 count = 1;
+    optional int32 code = 2;
+    optional bytes message = 3;
+  }
+}
+
+// ==================== 联系人信息 ====================
+
+// ModifyContact 联系人详情（镜像 we-clay message.ModifyContact，字段编号完全一致）
+message ModifyContact {
+  optional google.protobuf.StringValue username = 1;
+  optional google.protobuf.StringValue nickname = 2;
+  optional google.protobuf.StringValue nickname_jianpin = 3;
+  optional google.protobuf.StringValue nickname_quanpin = 4;
+  optional api.base.Gender gender = 5;
+  optional api.base.Buffer avatar_buffer = 6;
+  optional uint32 bit_mask = 7;
+  optional uint32 bit_value = 8;
+  optional uint32 image_flag = 9;
+  optional google.protobuf.StringValue remark = 10;
+  optional google.protobuf.StringValue remark_jianpin = 11;
+  optional google.protobuf.StringValue remark_quanpin = 12;
+  optional uint32 contact_type = 13;
+  optional uint32 chatroom_info_count = 14;
+  repeated ModifyContact.ChatroomInfo chatroom_info_list = 15;
+  repeated google.protobuf.StringValue domain_list = 16;
+  optional uint32 chatroom_notify = 17;
+  optional uint32 add_contact_scene = 18;
+  optional string province = 19;
+  optional string city = 20;
+  optional string signature = 21;
+  optional uint32 personal_card = 22;
+  optional uint32 has_hd_avatar = 23;
+  optional uint32 verify_flag = 24;
+  optional string verify_info = 25;
+  optional int32 level = 26;
+  optional uint32 source = 27;
+  optional string weibo = 28;
+  optional string verify_content = 29;
+  optional string alias = 30;
+  optional string chatroom_owner = 31;
+  optional string weibo_nickname = 32;
+  optional uint32 weibo_flag = 33;
+  optional int32 album_style = 34;
+  optional int32 album_flag = 35;
+  optional string album_bg_image_id = 36;
+  optional ModifyContact.SnsUserInfo sns_user_info = 37;
+  optional string country = 38;
+  optional string big_avatar_url = 39;
+  optional string small_avatar_url = 40;
+  optional string brand_list = 41;
+  optional ModifyContact.CustomizedInfo customized_info = 42;
+  optional string chatroom_data = 43;
+  optional string avatar_md5 = 44;
+  optional string encrypt_username = 45;
+  optional string id_card_num = 46;
+  optional string real_name = 47;
+  optional string mobile_hash = 48;
+  optional string mobile_full_hash = 49;
+  optional ModifyContact.AdditionalContactList additional_contact_list = 50;
+  optional uint32 chatroom_version = 53;
+  optional string extend_info = 54;
+  optional uint32 chatroom_max_count = 55;
+  optional uint32 chatroom_access_type = 56;
+  optional ModifyContact.ChatroomMemberData members = 57;
+  optional int32 delete_flag = 58;
+  optional string description = 59;
+  optional string card_image_url = 60;
+  optional string label_id_list = 61;
+  optional ModifyContact.MobileInfo mobile_info = 62;
+  optional string micro_store_info = 63;
+  optional int32 chatroom_info_version = 64;
+  optional int32 delete_contact_scene = 65;
+  optional int32 chatroom_status = 66;
+  optional int32 extend_flag = 67;
+  optional string source_extend_info = 70;
+  optional uint32 chatroom_business_type = 71;
+
+  message ChatroomInfo {
+    optional google.protobuf.StringValue username = 1;
+    optional google.protobuf.StringValue nickname = 2;
+  }
+
+  message SnsUserInfo {
+    optional uint32 flag = 1;
+    optional string bg_image_id = 2;
+    optional uint64 bg_object_id = 3;
+    optional uint32 flag_extend = 4;
+  }
+
+  message CustomizedInfo {
+    optional uint32 brand_flag = 1;
+    optional string extend_info = 2;
+    optional string brand_info = 3;
+    optional string brand_icon_url = 4;
+  }
+
+  message AdditionalContactList {
+    optional LinkedinItem item = 1;
+    message LinkedinItem {
+      optional string name = 1;
+      optional string member_id = 2;
+      optional string public_url = 3;
+    }
+  }
+
+  message MobileInfo {
+    optional uint32 count = 1;
+    repeated string list = 2;
+  }
+
+  message ChatroomMemberData {
+    optional uint32 count = 1;
+    repeated MemberInfo list = 2;
+    optional uint32 info_mask = 3;
+    message MemberInfo {
+      optional string username = 1;
+      optional string nickname = 2;
+      optional string display_name = 3;
+      optional string big_avatar_url = 4;
+      optional string small_avatar_url = 5;
+      optional uint32 chatroom_member_flag = 6;
+      optional string inviter_username = 7;
+      optional string extend_xml = 20;
+    }
+  }
+}
+
+// ContactInfo 联系人基础信息
+message ContactInfo {
+  optional string username = 1;
+  optional string nickname = 2;
+  optional string remark = 3;
+}
+
+// ==================== 联系人列表 ====================
+
+// ListContactsResponse 获取联系人列表响应
+message ListContactsResponse {
+  optional int32 contact_sequence = 1;
+  optional int32 chatroom_sequence = 2;
+  optional int32 continue_flag = 3;
+  repeated string usernames = 4;
+}
+
+// ListAllContactsResponse 获取全部联系人响应
+message ListAllContactsResponse {
+  repeated ContactInfo contacts = 1;
+}
+
+// ==================== 联系人详情 ====================
+
+// GetContactDetailResponse 获取联系人详情响应
+message GetContactDetailResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional int32 contact_count = 2; // 联系人数量
+  repeated ModifyContact contact_list = 3; // 对应 we-clay field 3
+  repeated int32 code = 4; // 返回码列表
+  repeated VerifyUserValidTicket ticket = 5; // 验证用户票据
+  repeated bytes send_message_ticket_list = 6; // 发消息票据列表
+
+  message VerifyUserValidTicket {
+    optional string username = 1;
+    optional string ticket = 2;
+  }
+}
+
+// ==================== 搜索联系人 ====================
+
+// SearchContactResponse 搜索联系人响应
+message SearchContactResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional google.protobuf.StringValue username = 2;
+  optional google.protobuf.StringValue nickname = 3;
+  optional google.protobuf.StringValue nickname_jianpin = 4;
+  optional google.protobuf.StringValue nickname_quanpin = 5;
+  optional api.base.Gender gender = 6;
+  optional api.base.Buffer avatar_buffer = 7;
+  optional string province = 8;
+  optional string city = 9;
+  optional string signature = 10;
+  optional uint32 personal_card = 11;
+  optional int32 verify_flag = 12;
+  optional string verify_info = 13;
+  optional string weibo = 14;
+  optional string alias = 15;
+  optional string weibo_nickname = 16;
+  optional int32 weibo_flag = 17;
+  optional int32 album_style = 18;
+  optional int32 album_flag = 19;
+  optional string album_bg_image_id = 20;
+  optional SearchContactResponse.SnsUserInfo sns_user_info = 21;
+  optional string country = 22;
+  optional string brand_list = 23;
+  optional SearchContactResponse.CustomizedInfo customized_info = 24;
+  optional uint32 contact_count = 25;
+  repeated SearchContactResponse.SearchContactItem contact_list = 26;
+  optional string big_avatar_url = 27;
+  optional string small_avatar_url = 28;
+  optional api.base.Buffer response_buffer = 29;
+  optional string antispam_ticket = 30;
+  optional string kf_worker_id = 31;
+  optional uint32 match_type = 32;
+  optional string popup_info_msg = 33;
+  optional uint32 open_im_contact_count = 34;
+  repeated SearchContactResponse.OpenIMContact open_im_contact_list = 35;
+
+  message SnsUserInfo {
+    optional uint32 flag = 1;
+    optional string bg_image_id = 2;
+    optional uint64 bg_object_id = 3;
+    optional uint32 flag_extend = 4;
+  }
+
+  message CustomizedInfo {
+    optional uint32 brand_flag = 1;
+    optional string extend_info = 2;
+    optional string brand_info = 3;
+    optional string brand_icon_url = 4;
+  }
+
+  message SearchContactItem {
+    optional google.protobuf.StringValue username = 1;
+    optional google.protobuf.StringValue nickname = 2;
+    optional google.protobuf.StringValue nickname_jianpin = 3;
+    optional google.protobuf.StringValue nickname_quanpin = 4;
+    optional api.base.Gender gender = 5;
+    optional api.base.Buffer avatar_buffer = 6;
+    optional string province = 7;
+    optional string city = 8;
+    optional string signature = 9;
+    optional uint32 personal_card = 10;
+    optional uint32 verify_flag = 11;
+    optional string verify_info = 12;
+    optional string weibo = 13;
+    optional string alias = 14;
+    optional string weibo_nickname = 15;
+    optional uint32 weibo_flag = 16;
+    optional int32 album_style = 17;
+    optional int32 album_flag = 18;
+    optional string album_bg_image_id = 19;
+    optional SearchContactResponse.SnsUserInfo sns_user_info = 20;
+    optional string country = 21;
+    optional string brand_list = 22;
+    optional SearchContactResponse.CustomizedInfo customized_info = 23;
+    optional string big_avatar_url = 24;
+    optional string small_avatar_url = 25;
+    optional string antispam_ticket = 26;
+    optional uint32 match_type = 27;
+  }
+
+  message OpenIMContact {
+    optional string username = 1;
+    optional string nickname = 2;
+    optional uint32 type = 3;
+    optional string remark = 4;
+    optional string big_avatar = 5;
+    optional string small_avatar = 6;
+    optional uint32 source = 7;
+    optional string nickname_jianpin = 8;
+    optional string nickname_quanpin = 9;
+    optional string remark_jianpin = 10;
+    optional string remark_quanpin = 11;
+    optional OpenIMContact.CustomInfo custom_info = 12;
+    optional string antispam_ticket = 13;
+    optional string app_id = 14;
+    optional api.base.Gender gender = 15;
+    optional string desc_wording_id = 16;
+
+    message CustomInfo {
+      optional uint32 detail_visible = 1;
+      optional string detail = 2;
+    }
+  }
+}
+
+// ==================== 好友验证 ====================
+
+// VerifyUserResponse 好友验证响应
+message VerifyUserResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional string username = 2;
+}
+
+// ==================== 附近的人 ====================
+
+// LbsResponse 附近的人响应
+message LbsResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 count = 2;
+  repeated LbsResponse.LbsInfo list = 3;
+  optional uint32 state = 4;
+  optional uint32 flush_time = 5;
+  optional uint32 is_show_chatroom = 6;
+  optional uint32 chatroom_member_count = 7;
+
+  // LbsInfo 附近的人用户信息（镜像 we-clay LbsResponse.LbsInfo，字段编号完全一致）
+  message LbsInfo {
+    optional string username = 1;
+    optional string nickname = 2;
+    optional string province = 3;
+    optional string city = 4;
+    optional string signature = 5;
+    optional string distance = 6;
+    optional api.base.Gender gender = 7;
+    optional uint32 image_status = 8;
+    optional uint32 verify_flag = 9;
+    optional string verify_info = 10;
+    optional string verify_content = 11;
+    optional string alias = 12;
+    optional string weibo = 13;
+    optional string weibo_nickname = 14;
+    optional uint32 weibo_flag = 15;
+    optional uint32 avatar_version = 16;
+    optional LbsInfo.SnsUserInfo sns_user_info = 20;
+    optional string country = 21;
+    optional string big_avatar_url = 22;
+    optional string small_avatar_url = 23;
+    optional string brand_list = 24;
+    optional LbsInfo.CustomizedInfo customized_info = 25;
+    optional string anti_spam_ticket = 26;
+
+    message SnsUserInfo {
+      optional uint32 flag = 1;
+      optional string bg_image_id = 2;
+      optional uint64 bg_object_id = 3;
+      optional uint32 flag_extend = 4;
+    }
+
+    message CustomizedInfo {
+      optional uint32 brand_flag = 1;
+      optional string extend_info = 2;
+      optional string brand_info = 3;
+      optional string brand_icon_url = 4;
+    }
+  }
+}
+
+// ==================== 上传通讯录 ====================
+
+// UploadContactResponse 上传通讯录响应
+message UploadContactResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+}

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="520" viewBox="0 0 1440 520" fill="none">
+  <title>we-clay — 把微信能力接入你的 Go 程序</title>
+  <desc>深绿色背景上的 we-clay 标识与模块示意。你的应用通过 gateway.Run 连接独立 core，并加载插件。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1440" y2="520" gradientUnits="userSpaceOnUse"><stop stop-color="#101F1C"/><stop offset="1" stop-color="#073B30"/></linearGradient>
+    <linearGradient id="tile" x1="24" y1="0" x2="100" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="#C9F8A4"/><stop offset="1" stop-color="#70DCB6"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#AEEDC4" fill-opacity=".12"/></pattern>
+  </defs>
+  <rect width="1440" height="520" rx="24" fill="url(#bg)"/>
+  <rect x="730" width="710" height="520" rx="24" fill="url(#grid)"/>
+  <path d="M724 0V520" stroke="#C5F4D7" stroke-opacity=".08"/>
+  <g transform="translate(72 68)">
+    <path d="M0 61L42 36L84 61L42 86L0 61Z" fill="#3B9679"/>
+    <path d="M0 43L42 18L84 43L42 68L0 43Z" fill="#63C7A0"/>
+    <path d="M0 25L42 0L84 25L42 50L0 25Z" fill="url(#tile)"/>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+    <text x="180" y="111" fill="#BCE5CD" font-size="18" font-weight="600" letter-spacing="3">GO · WECHAT · PLUGINS</text>
+    <text x="68" y="265" fill="#F3F9EF" font-size="106" font-weight="650" letter-spacing="-5">we-clay</text>
+    <text x="74" y="334" fill="#E3F2DF" font-size="34" font-weight="500">把微信能力，接入你的 Go 程序。</text>
+    <text x="75" y="394" fill="#8FB6A4" font-size="21">一个模块，连接你的应用与微信。</text>
+    <rect x="74" y="445" width="32" height="3" rx="1.5" fill="#B9ED96"/>
+    <text x="121" y="453" fill="#A4C6B5" font-size="15" letter-spacing="2">为插件开发而设计</text>
+
+    <rect x="798" y="79" width="566" height="290" rx="18" fill="#102923" stroke="#446A57"/>
+    <path d="M798 130H1364" stroke="#355344"/>
+    <circle cx="824" cy="105" r="5" fill="#63806E"/>
+    <circle cx="843" cy="105" r="5" fill="#63806E"/>
+    <circle cx="862" cy="105" r="5" fill="#A7D784"/>
+    <text x="893" y="111" fill="#AEC6B8" font-size="16">你的 Go 应用</text>
+    <text x="828" y="180" fill="#7FAD96" font-size="16">导入 gateway，调用运行入口</text>
+    <g font-family="'SFMono-Regular', Consolas, 'Liberation Mono', monospace" font-size="24">
+      <text x="828" y="232"><tspan fill="#B8ED97">gateway</tspan><tspan fill="#E9F5E4">.Run(ctx, cfg)</tspan></text>
+    </g>
+    <path d="M830 267H1332" stroke="#304E40"/>
+    <text x="828" y="305" fill="#C8DECB" font-size="18">插件管理</text>
+    <circle cx="939" cy="299" r="2" fill="#6B9A80"/>
+    <text x="956" y="305" fill="#C8DECB" font-size="18">事件分发</text>
+    <circle cx="1067" cy="299" r="2" fill="#6B9A80"/>
+    <text x="1084" y="305" fill="#C8DECB" font-size="18">权限配置</text>
+    <text x="828" y="339" fill="#7EAA93" font-size="15">由你的程序掌握启动与退出</text>
+
+    <path d="M930 369V408M1232 369V408" stroke="#86B699" stroke-width="2"/>
+    <path d="M925 401L930 408L935 401M1227 401L1232 408L1237 401" stroke="#86B699" stroke-width="2"/>
+    <rect x="798" y="410" width="264" height="62" rx="12" fill="#16392E" stroke="#446A57"/>
+    <rect x="1100" y="410" width="264" height="62" rx="12" fill="#16392E" stroke="#446A57"/>
+    <text x="826" y="449" fill="#D7EBD6" font-size="21">插件 · SDK</text>
+    <text x="1003" y="448" fill="#8EB39C" font-size="14">gRPC</text>
+    <text x="1128" y="449" fill="#D7EBD6" font-size="21">core</text>
+    <text x="1305" y="448" fill="#8EB39C" font-size="14">gRPC</text>
+  </g>
+</svg>

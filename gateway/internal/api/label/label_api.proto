@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package api.label;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/label;labelapi";
+
+import "api/base/base.proto";
+
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+}
+
+// ==================== 数据类型 ====================
+
+// Pair 标签对（镜像 we-clay label.Pair，字段编号完全一致）
+message Pair {
+  optional string name = 1;
+  optional uint32 id = 2;
+}
+
+// ==================== 获取标签列表 ====================
+
+// ListLabelsResponse 获取标签列表响应（镜像 we-clay GetContactListResponse，字段号从 2 开始）
+message ListLabelsResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 count = 2;  // 对应 we-clay field 2
+  repeated Pair list = 3;     // 对应 we-clay field 3
+}
+
+// ==================== 添加标签 ====================
+
+// AddLabelResponse 添加标签响应（镜像 we-clay AddContactResponse，字段号从 2 开始）
+message AddLabelResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 count = 2;  // 对应 we-clay field 2
+  optional Pair list = 3;     // 对应 we-clay field 3
+}
+
+// ==================== 更新标签 ====================
+
+// ==================== 修改联系人标签 ====================

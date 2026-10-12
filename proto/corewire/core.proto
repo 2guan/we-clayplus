@@ -1,0 +1,38 @@
+syntax = "proto3";
+package weclay.core.v1;
+option go_package = "github.com/we-clay/we-clay/sdk/corewire";
+
+// Host 与 core 的进程间协议。插件仍使用原有业务 SDK。
+service CoreService {
+  // 保留已有参数与响应编码，core 在进程内调用共用的业务处理器。
+  // 每次请求独立返回结果；业务请求不自动重试。
+  rpc Invoke(CallRequest) returns (CallResponse);
+  // 首帧订阅，之后 gateway 发送确认；core 发送就绪帧和待确认事件。
+  rpc Events(stream EventControl) returns (stream CoreEvent);
+}
+message CallRequest {
+  string method = 1;
+  string path = 2;
+  string query = 3;
+  string content_type = 4;
+  bytes body = 5;
+}
+message CallResponse {
+  int32 status = 1;
+  string content_type = 2;
+  bytes body = 3;
+}
+message Subscribe { uint32 version = 1; }
+message Ack { string event_id = 1; }
+message EventControl {
+  oneof control {
+    Subscribe subscribe = 1;
+    Ack ack = 2;
+  }
+}
+message CoreEvent {
+  string event_id = 1;
+  // 同 HTTP 回调的 SyncResult protojson；64 位 ID 不经过浮点转换。
+  bytes sync_json = 2;
+  bool ready = 3;
+}

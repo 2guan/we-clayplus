@@ -1,0 +1,259 @@
+syntax = "proto3";
+
+package plugin;
+
+option go_package = "github.com/we-clay/we-clay/sdk/plugin";
+
+import "message/types.proto";
+import "plugin/command.proto";
+import "google/protobuf/struct.proto";
+
+
+// metadata 插件元数据
+message Metadata {
+  string name = 1; // 名称
+  string author = 2; // 作者
+  string version = 3; // 版本
+  string description = 4; // 描述
+  int32 priority = 5; // 插件优先级
+
+  bool next = 6; // 插件执行成功后，是否继续执行后续插件
+  bool always_run = 7; // 一直运行，忽略会话劫持
+}
+
+// Event 事件
+message Event {
+  string topic = 1; // 事件主题
+  string sender = 2; // 事件发送者username
+  oneof payload {
+    string error = 3; // 错误消息
+    string system = 4; // 系统消息
+    message.Message message = 5; // 消息
+    SessionExpired session_expired = 6; // 会话到期
+    ChangeEvent change = 7; // 通用变更事件
+  }
+}
+
+// ChangeEvent 通用变更事件
+message ChangeEvent {
+  string domain = 1; // 变更域：contact/user/chatroom_member/chatroom_member_display_name
+  string action = 2; // 操作：create/modify/delete
+  string subject = 3; // 变更主体ID
+  string parent = 4; // 父级主体ID，例如群ID
+  repeated FieldChange changes = 5; // 字段变更列表
+  bytes old_value = 6; // 旧对象JSON
+  bytes new_value = 7; // 新对象JSON
+}
+
+// FieldChange 字段变更
+message FieldChange {
+  string path = 1; // proto json_name 路径
+  string action = 2; // create/modify/delete
+  google.protobuf.Value old_value = 3; // 旧值
+  google.protobuf.Value new_value = 4; // 新值
+}
+
+// SessionExpired 会话到期事件
+message SessionExpired {
+  string plugin_id = 1; // 劫持会话的插件ID
+  string session_id = 2; // 关联的发送者(username)
+  string reason = 3; // 到期原因: timeout
+}
+
+// HostService 宿主提供的插件相关服务
+service HostService {
+  // 会话劫持接口
+  rpc SessionHold(SessionHold.Request) returns (SessionHold.Response); // 劫持会话
+  rpc SessionRelease(SessionRelease.Request) returns (SessionRelease.Response); // 释放会话
+
+  // 调用其他插件
+  rpc CallPlugin(CallPlugin.Request) returns (CallPlugin.Response);
+
+  // 配置管理
+  rpc SaveConfig(SaveConfig.Request) returns (SaveConfig.Response); // 保存插件配置
+}
+
+// PluginService 插件服务
+service PluginService {
+  // 插件核心接口
+  rpc GetMetadata(GetMetadata.Request) returns (GetMetadata.Response); // 获取插件元数据
+  rpc OnCall(OnCall.Request) returns (OnCall.Response); // 处理调用请求
+  rpc OnEvent(OnEvent.Request) returns (OnEvent.Response); // 处理事件请求
+  rpc OnCommand(OnCommand.Request) returns (OnCommand.Response); // 处理命令请求
+  rpc GetCapabilities(GetCapabilities.Request) returns (GetCapabilities.Response); // 获取插件能力
+  rpc GetSubscriptions(GetSubscriptions.Request) returns (GetSubscriptions.Response); // 获取订阅事件列表
+  rpc GetCommands(GetCommands.Request) returns (GetCommands.Response); // 获取命令列表与schema
+
+  // 插件生命周期接口
+  rpc OnLoad(OnLifecycle.Request) returns (OnLifecycle.Response); // 插件加载时调用
+  rpc OnUnload(OnLifecycle.Request) returns (OnLifecycle.Response); // 插件卸载时调用
+  rpc OnEnabled(OnLifecycle.Request) returns (OnLifecycle.Response); // 插件启用时调用
+  rpc OnDisabled(OnLifecycle.Request) returns (OnLifecycle.Response); // 插件禁用时调用
+
+  // 能力注入接口
+  rpc GetAbilities(GetAbilities.Request) returns (GetAbilities.Response); // 获取插件需要哪些能力
+  rpc InjectAbilities(InjectAbility.Request) returns (InjectAbility.Response); // 注入能力
+
+  // 配置管理接口
+  rpc GetDefaultConfig(GetDefaultConfig.Request) returns(GetDefaultConfig.Response); // 获取插件默认配置
+  rpc SetConfig(SetConfig.Request) returns (SetConfig.Response); // 注入插件配置
+}
+
+message GetMetadata{
+  message Request{ }
+  message Response {
+    Metadata value = 1;
+  }
+}
+
+message OnCall{
+  message Request {
+    string capability = 1; // 调用能力
+    bytes args = 2; // 参数(JSON编码的map[string]string)
+  }
+  message Response {
+    string mime = 1; // 返回数据类型
+    bytes data = 2; // 返回数据
+    string message = 3; // 错误信息
+  }
+}
+
+message OnEvent{
+  message Request {
+    Event value = 1;
+  }
+  message Response {
+    bool result = 1; // 结果
+    string message = 2; // 错误信息
+  }
+}
+
+message OnCommand{
+  message Request {
+    Command value = 1;
+  }
+  message Response {
+    string result = 1; // 结果
+    string message = 2; // 错误信息
+  }
+}
+
+message GetCapabilities{
+  message Request { }
+  message Response {
+    repeated string values = 1;
+  }
+}
+
+message GetSubscriptions{
+  message Request { }
+  message Response {
+    repeated string values = 1;
+  }
+}
+
+message GetCommands{
+  message Request { }
+  message Response {
+    repeated string values = 1;
+    repeated CommandSchema schemas = 2;
+  }
+}
+
+message OnLifecycle{
+  message Request { }
+  message Response {
+    string value = 1; // 错误信息
+  }
+}
+
+message SessionHold{
+  message Request {
+    string plugin_id = 1; // 插件ID
+    string sender = 2; // 会话关联的发送者(username)
+    uint32 duration = 3; // 保持时长(秒)
+  }
+  message Response {
+    string value = 1; // 错误信息
+  }
+}
+
+message SessionRelease{
+  message Request {
+    string plugin_id = 1; // 插件ID
+    string sender = 2; // 会话关联的发送者(username)
+  }
+  message Response {
+    string value = 1; // 错误信息
+  }
+}
+
+message CallPlugin{
+  message Request {
+    string capability = 1; // 调用能力
+    bytes args = 2; // 参数(JSON编码的map[string]string)
+  }
+  message Response {
+    string mime = 1; // 返回数据类型
+    bytes data = 2; // 返回数据
+    string message = 3; // 错误信息
+  }
+}
+
+message GetAbilities {
+  message Request{}
+  message Response {
+    repeated string values = 1; // 插件的需要能力列表
+  }
+}
+
+message InjectAbility{
+  message Request {
+    uint32 cdn = 1;
+    uint32 contact = 2; // 联系人管理服务地址
+    uint32 message = 3; // 消息发送服务地址
+    uint32 chatroom = 4; // 群组管理服务地址
+    uint32 session = 5; // 会话管理服务地址
+    uint32 caller = 6; // 插件调用服务地址
+    uint32 config = 7; // 配置管理服务地址
+    uint32 favor = 8; // 收藏服务地址
+    uint32 label = 9; // 标签服务地址
+    uint32 login = 10; // 登录服务地址
+    uint32 miniapp = 11; // 小程序服务地址
+    uint32 moments = 12; // 朋友圈服务地址
+    uint32 official = 13; // 公众号服务地址
+    uint32 payment = 14; // 支付服务地址
+    uint32 report = 15; // 状态通知服务地址
+    uint32 user = 16; // 用户服务地址
+  }
+  message Response {
+    string value = 1; // 错误信息
+  }
+}
+
+
+message GetDefaultConfig {
+  message Request {}
+  message Response {
+    optional bytes data = 1; // 插件配置数据二进制
+  }
+}
+
+message SetConfig {
+  message Request {
+    optional bytes data = 1; // 插件配置数据二进制
+  }
+  message Response {
+    bool result = 1; // 配置注入结果
+  }
+}
+
+message SaveConfig {
+  message Request {
+    string plugin_id = 1; // 插件ID
+    bytes data = 2;       // 插件配置数据(JSON)
+  }
+  message Response {
+    string message = 1; // 错误信息
+  }
+}

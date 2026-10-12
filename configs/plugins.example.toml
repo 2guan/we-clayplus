@@ -1,0 +1,10 @@
+# 示例二进制默认只放在 bin/，复制到 runtime/gateway/plugins 后才会被加载。
+[example]
+enable = false
+mode = "whitelist"
+limits = []
+
+[example.config]
+echo_prefix = "[Echo] "
+reply_enabled = false
+max_length = 500

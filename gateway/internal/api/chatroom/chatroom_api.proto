@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package api.chatroom;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/chatroom;chatroomapi";
+
+import "api/base/base.proto";
+import "api/contact/contact_api.proto";
+import "google/protobuf/wrappers.proto";
+
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  optional int32 code = 1; // 返回码
+  optional Result result = 2; // 操作返回结果
+
+  message Result {
+    optional uint32 count = 1;
+    optional int32 code = 2;
+    optional bytes message = 3;
+  }
+}
+
+// ==================== 群成员信息 ====================
+
+// Member 群成员（镜像 we-clay contact.Member，字段编号完全一致）
+message Member {
+  optional google.protobuf.StringValue username = 1;
+  optional uint32 status = 2;
+  optional google.protobuf.StringValue nickname = 3;
+  optional google.protobuf.StringValue nickname_jianpin = 4;
+  optional google.protobuf.StringValue nickname_quanpin = 5;
+  optional api.base.Gender gender = 6;
+  // 注意：field 7-8 在 we-clay 中跳过
+  optional google.protobuf.StringValue remark = 9;
+  optional google.protobuf.StringValue remark_jianpin = 10;
+  optional google.protobuf.StringValue remark_quanpin = 11;
+  optional uint32 contact_type = 12;
+  optional string province = 13;
+  optional string city = 14;
+  optional string signature = 15;
+  optional uint32 personal_card = 16;
+  optional uint32 verify_flag = 17;
+  optional string verify_info = 18;
+  optional string country = 19;
+}
+
+// FacingMember 面对面建群成员（镜像 we-clay FacingCreateChatroomResponse.FacingMember，字段编号完全一致）
+message FacingMember {
+  optional string username = 1;
+  optional string nickname = 2;
+  optional string display_name = 3;
+  optional string avatar_url = 4;
+  optional uint32 flag = 5;
+}
+
+// ==================== 创建群聊 ====================
+
+// CreateChatroomResponse 创建群聊响应（镜像 we-clay CreateChatroomResponse，字段号从 2 开始）
+message CreateChatroomResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional string topic = 2;                     // 对应 we-clay field 2
+  optional string topic_jianpin = 3;             // 对应 we-clay field 3
+  optional string topic_quanpin = 4;             // 对应 we-clay field 4
+  optional uint32 member_count = 5;              // 对应 we-clay field 5
+  repeated Member member_list = 6;               // 对应 we-clay field 6
+  optional string chatroom = 7;                     // 对应 we-clay field 7
+  optional bytes avatar_buffer = 8;              // 对应 we-clay field 8
+  optional string big_avatar_url = 9;            // 对应 we-clay field 9
+  optional string small_avatar_url = 10;         // 对应 we-clay field 10
+}
+
+// FacingCreateChatroomResponse 面对面建群响应（镜像 we-clay，字段号从 2 开始）
+message FacingCreateChatroomResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional string ticket = 2;                       // 对应 we-clay field 2
+  optional uint32 member_count = 3;                 // 对应 we-clay field 3
+  repeated FacingMember member_list = 4;            // 对应 we-clay field 4
+  optional string chatroom = 5;                        // 对应 we-clay field 5
+}
+
+// ==================== 群信息获取 ====================
+
+// GetChatroomInfoDetailResponse 获取群详细信息响应（镜像 we-clay，字段号从 2 开始）
+message GetChatroomInfoDetailResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional string announcement = 2;                 // 对应 we-clay field 2
+  optional int32 info_version = 3;                  // 对应 we-clay field 3
+  optional string announcement_editor = 4;          // 对应 we-clay field 4
+  optional int32 announcement_publish_time = 5;     // 对应 we-clay field 5
+  optional int32 status = 6;                        // 对应 we-clay field 6
+  optional int32 business_type = 7;                 // 对应 we-clay field 7
+  optional Tools tools = 8;                         // 对应 we-clay field 8
+
+  // Tools 群工具
+  message Tools {
+    optional int32 app_count = 1;
+    repeated Todo app_list = 2;
+    message Todo {
+      optional string id = 1;
+      optional string username = 2;
+      optional string path = 3;
+      optional int32 time = 4;
+      optional bytes custom_info = 5;
+      optional string title = 6;
+      optional string creator = 7;
+      optional uint64 related_msg_id = 8;
+      optional string manager = 9;
+    }
+  }
+}
+
+message GetChatroomMembersResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional int32 contact_count = 2; // 联系人数量
+  repeated contact.ModifyContact contact_list = 3; // 对应 we-clay field 3
+  repeated int32 code = 4; // 返回码列表
+  repeated VerifyUserValidTicket ticket = 5; // 验证用户票据
+  repeated bytes send_message_ticket_list = 6; // 发消息票据列表
+
+  message VerifyUserValidTicket {
+    optional string username = 1;
+    optional string ticket = 2;
+  }
+}
+
+// ListMembersResponse 获取群成员列表（镜像 we-clay，嵌套 Result 结构）
+message ListMembersResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional string chatroom = 2;                        // 对应 we-clay field 2
+  optional int32 server_version = 3;                // 对应 we-clay field 3
+  optional Result result = 4;                       // 对应 we-clay field 4
+
+  // Result 成员查询结果
+  message Result {
+    optional uint32 count = 1;
+    repeated MemberInfo list = 2;
+    optional uint32 info_mask = 3;
+
+    // MemberInfo 群成员详情
+    message MemberInfo {
+      optional string username = 1;
+      optional string nickname = 2;
+      optional string display_name = 3;
+      optional string big_avatar_url = 4;
+      optional string small_avatar_url = 5;
+      optional uint32 flag = 6;
+      optional string inviter_username = 7;
+    }
+  }
+}
+
+// GetChatroomQRCodeResponse 获取群二维码响应（镜像 we-clay，字段号从 2 开始）
+message GetChatroomQRCodeResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional api.base.Buffer qrcode_buffer = 2;  // 对应 we-clay field 2
+  optional string footer_wording = 3;          // 对应 we-clay field 3
+  optional uint32 revoke_qrcode = 4;           // 对应 we-clay field 4
+  optional string notify_wording = 5;          // 对应 we-clay field 5
+  optional string qrcode_url = 6;              // 对应 we-clay field 6
+}
+
+// ==================== 群成员管理 ====================
+
+// AddChatroomMemberResponse 添加群成员响应（镜像 we-clay，字段号从 2 开始）
+message AddChatroomMemberResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 member_count = 2;         // 对应 we-clay field 2
+  repeated Member member_list = 3;          // 对应 we-clay field 3
+}
+
+// InviteChatroomMemberResponse 邀请群成员响应（镜像 we-clay AddChatroomMemberResponse）
+message InviteChatroomMemberResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 member_count = 2;         // 对应 we-clay field 2
+  repeated Member member_list = 3;          // 对应 we-clay field 3
+}
+
+// RemoveChatroomMemberResponse 移除群成员响应（镜像 we-clay DeleteChatroomMemberResponse，字段号从 2 开始）
+message RemoveChatroomMemberResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 member_count = 2;         // 对应 we-clay field 2
+  repeated Member member_list = 3;          // 对应 we-clay field 3
+}
+
+// ==================== 群设置 ====================
+
+// SetAnnouncementResponse 设置群公告响应
+message SetAnnouncementResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+}
+
+// ==================== 群管理员 ====================
+
+message ChatroomAdminResponse {
+  optional base.BaseResponse base_response = 1; // 基础响应
+}
+
+// ==================== 进群与退群 ====================
+
+// JoinResult 进群结果
+message JoinResult {
+  string chatroom_id = 1;
+  string message = 2;
+}

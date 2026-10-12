@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package label;
+
+option go_package = "github.com/we-clay/we-clay/sdk/label";
+
+// LabelPair 标签信息
+message LabelPair {
+  uint32 id = 1; // 标签 ID
+  string name = 2; // 标签名称
+}
+
+// ==================== 服务定义 ====================
+
+// LabelService 标签服务
+service LabelService {
+  // List 获取标签列表
+  rpc List(List.Request) returns (List.Response);
+  // Add 添加标签
+  rpc Add(Add.Request) returns (Add.Response);
+  // Delete 删除标签
+  rpc Delete(Delete.Request) returns (Delete.Response);
+  // Update 更新标签名称
+  rpc Update(Update.Request) returns (Update.Response);
+  // ModifyContactLabels 修改联系人标签
+  rpc ModifyContactLabels(ModifyContact.Request) returns (ModifyContact.Response);
+}
+
+
+// ListLabelsRequest 获取标签列表请求
+message List {
+  message Request {}
+  message Response {
+    repeated LabelPair labels = 1; // 标签列表
+  }
+}
+
+message Add {
+  message Request {
+    string name = 1; // 标签名称
+  }
+  message Response {
+    LabelPair label = 1; // 新创建的标签
+  }
+}
+
+message Delete {
+  message Request {
+    string label_ids = 1; // 标签 ID 列表（逗号分隔，如 "1,2,3"）
+  }
+  message Response {
+    int32 code = 1; // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+message Update {
+  message Request {
+    uint32 label_id = 1; // 标签 ID
+    string name = 2; // 新标签名称
+  }
+  message Response {
+    int32 code = 1; // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}
+
+message ModifyContact {
+  message Request {
+    repeated string usernames = 1; // 联系人用户名列表
+    string label_ids = 2; // 标签 ID 列表（逗号分隔）
+  }
+  message Response {
+    int32 code = 1; // 状态码（0=成功）
+    string message = 2; // 提示信息
+  }
+}

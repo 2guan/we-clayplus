@@ -1,0 +1,203 @@
+syntax = "proto3";
+
+package payment;
+
+option go_package = "github.com/we-clay/we-clay/sdk/payment";
+
+// PaymentService 支付服务
+service PaymentService {
+  // GeneratePayQCode 生成支付收款二维码
+  rpc GeneratePayQCode(GeneratePayQCode.Request) returns (GeneratePayQCode.Response);
+  // GetBandCardList 获取已绑定银行卡及余额
+  rpc GetBandCardList(GetBandCardList.Request) returns (GetBandCardList.Response);
+  // CreateHongBao 创建红包
+  rpc CreateHongBao(CreateHongBao.Request) returns (CreateHongBao.Response);
+  // ReceiveHongBao 接收红包
+  rpc ReceiveHongBao(ReceiveHongBao.Request) returns (ReceiveHongBao.Response);
+  // OpenHongBao 打开红包
+  rpc OpenHongBao(OpenHongBao.Request) returns (OpenHongBao.Response);
+  // GrabHongBao 抢红包
+  rpc GrabHongBao(GrabHongBao.Request) returns (GrabHongBao.Response);
+  // QueryHongBaoDetail 查询红包领取详情
+  rpc QueryHongBaoDetail(QueryHongBaoDetail.Request) returns (QueryHongBaoDetail.Response);
+  // QueryHongBaoList 查询红包领取列表
+  rpc QueryHongBaoList(QueryHongBaoList.Request) returns (QueryHongBaoList.Response);
+  // CreatePreTransfer 创建转账
+  rpc CreatePreTransfer(CreatePreTransfer.Request) returns (CreatePreTransfer.Response);
+  // ConfirmPreTransfer 确认转账
+  rpc ConfirmPreTransfer(ConfirmPreTransfer.Request) returns (ConfirmPreTransfer.Response);
+  // CollectMoney 确认收款
+  rpc CollectMoney(CollectMoney.Request) returns (CollectMoney.Response);
+}
+
+// BaseResult 通用结果
+message BaseResult {
+  int32 code = 1; // 返回码
+  string message = 2; // 返回消息
+}
+
+// Buffer 字节缓冲区
+message Buffer {
+  uint32 size = 1; // 数据长度
+  bytes data = 2; // 数据内容
+}
+
+// CGICommand 支付 CGI 命令
+enum CGICommand {
+  CGI_CMD_UNKNOWN = 0; // 未知
+  WEB_QUERY_CHECK_RECORD = 22; // Web 查询检查记录
+  PLATFORM_QUERY_CHECK_RECORD = 23; // 平台查询检查记录
+  WEB_QUERY_CHECK_RESULT = 24; // Web 查询检查结果
+  PLATFORM_QUERY_CHECK_RESULT = 25; // 平台查询检查结果
+  WEB_NOTIFY_CHECK_RESULT = 26; // Web 通知检查结果
+  PLATFORM_NOTIFY_CHECK_RESULT = 27; // 平台通知检查结果
+  PLATFORM_QUERY_BZJ_INFO = 34; // 平台查询保证金信息
+  QUERY_NEW_PARTNER_ID = 55; // 查询新合作伙伴 ID
+  QUERY_BIZ_CHECK_RESULT = 56; // 查询业务检查结果
+}
+
+// TenPayResponse 腾讯支付响应
+message TenPayResponse {
+  BaseResult base_result = 1; // 基础结果
+  string text = 2; // 响应文本
+  int32 code = 3; // 平台返回码
+  string message = 4; // 平台消息
+  CGICommand cgi_cmd = 5; // CGI 命令 ID
+  int32 error_type = 6; // 支付错误类型
+  string error_message = 7; // 支付错误消息
+}
+
+// HongBaoResponse 红包通用响应
+message HongBaoResponse {
+  BaseResult base_result = 1; // 基础结果
+  Buffer text = 2; // 返回文本（JSON 字符串）
+  int32 code = 3; // 平台返回码
+  string message = 4; // 平台消息
+  int32 cgi_command = 5; // CGI 命令 ID
+  int32 error_type = 6; // 错误类型
+  string error_message = 7; // 错误消息
+}
+
+// F2FQrcodeResponse F2F 支付二维码响应
+message F2FQrcodeResponse {
+  BaseResult base_result = 1; // 基础结果
+  string qrcode_url = 2; // 二维码 URL
+  string qrcode_data = 3; // 二维码数据
+  uint32 expire_time = 4; // 过期时间
+}
+
+message GeneratePayQCode {
+  message Request {}
+  message Response {
+    F2FQrcodeResponse value = 1; // 支付二维码响应
+  }
+}
+
+message GetBandCardList {
+  message Request {}
+  message Response {
+    TenPayResponse value = 1; // 支付响应
+  }
+}
+
+message CreateHongBao {
+  message Request {
+    int32 hb_type = 1; // 红包类型（0=普通红包 1=拼手气红包）
+    string username = 2; // 接收者（wxid 或群 ID）
+    int32 in_way = 3; // 来源（0=群红包 1=个人红包）
+    int32 count = 4; // 红包个数
+    int32 amount = 5; // 每个红包金额（单位分）
+    string wishing = 6; // 祝福语
+  }
+  message Response {
+    HongBaoResponse value = 1; // 红包响应
+  }
+}
+
+message ReceiveHongBao {
+  message Request {
+    string native_url = 1; // 红包原始 URL
+    int32 in_way = 2; // 来源（0=群红包 1=个人红包）
+  }
+  message Response {
+    HongBaoResponse value = 1; // 红包响应
+  }
+}
+
+message OpenHongBao {
+  message Request {
+    string native_url = 1; // 红包原始 URL
+    string timing_identifier = 2; // 接收红包返回的 timingIdentifier
+    string send_username = 3; // 红包发送者用户名
+  }
+  message Response {
+    HongBaoResponse value = 1; // 红包响应
+  }
+}
+
+message GrabHongBao {
+  message Request {
+    string native_url = 1; // 红包原始 URL
+    int32 in_way = 2; // 来源（0=群红包 1=个人红包）
+  }
+  message Response {
+    HongBaoResponse value = 1; // 红包响应
+  }
+}
+
+message QueryHongBaoDetail {
+  message Request {
+    string native_url = 1; // 红包原始 URL
+    string send_username = 2; // 红包发送者用户名
+  }
+  message Response {
+    HongBaoResponse value = 1; // 红包响应
+  }
+}
+
+message QueryHongBaoList {
+  message Request {
+    string native_url = 1; // 红包原始 URL
+    string send_username = 2; // 红包发送者用户名
+    int32 offset = 3; // 偏移量
+    int32 limit = 4; // 每页数量
+  }
+  message Response {
+    HongBaoResponse value = 1; // 红包响应
+  }
+}
+
+message CreatePreTransfer {
+  message Request {
+    string to_username = 1; // 转账目标用户 wxid
+    uint32 fee = 2; // 转账金额（单位分）
+    string description = 3; // 转账备注
+  }
+  message Response {
+    TenPayResponse value = 1; // 支付响应
+  }
+}
+
+message ConfirmPreTransfer {
+  message Request {
+    string bank_type = 1; // 付款方式类型
+    string bank_serial = 2; // 付款方式序列号
+    string req_key = 3; // 创建转账返回的 ReqKey
+    string pay_password = 4; // 支付密码
+  }
+  message Response {
+    TenPayResponse value = 1; // 支付响应
+  }
+}
+
+message CollectMoney {
+  message Request {
+    string invalid_time = 1; // 失效时间
+    string transfer_id = 2; // 转账 ID
+    string transaction_id = 3; // 交易 ID
+    string to_username = 4; // 付款方用户名
+  }
+  message Response {
+    TenPayResponse value = 1; // 支付响应
+  }
+}

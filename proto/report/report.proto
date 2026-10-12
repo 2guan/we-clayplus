@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package report;
+
+option go_package = "github.com/we-clay/we-clay/sdk/report";
+
+// ReportService 状态通知服务
+service ReportService {
+  // StartTyping 通知对方正在输入
+  rpc StartTyping(StartTyping.Request) returns (StartTyping.Response);
+  // StopTyping 通知对方停止输入
+  rpc StopTyping(StopTyping.Request) returns (StopTyping.Response);
+  // ReadMessage 通知对方消息已读
+  rpc ReadMessage(ReadMessage.Request) returns (ReadMessage.Response);
+}
+
+message StartTyping {
+  message Request {
+    string receiver = 1; // 接收者 wxid
+  }
+  message Response {}
+}
+
+message StopTyping {
+  message Request {
+    string receiver = 1; // 接收者 wxid
+  }
+  message Response {}
+}
+
+message ReadMessage {
+  message Request {
+    string receiver = 1; // 接收者 wxid
+  }
+  message Response {}
+}

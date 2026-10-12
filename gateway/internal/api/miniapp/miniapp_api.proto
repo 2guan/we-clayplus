@@ -1,0 +1,158 @@
+syntax = "proto3";
+
+package api.miniapp;
+
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/miniapp;miniappapi";
+
+import "api/base/base.proto";
+import "google/protobuf/wrappers.proto";
+
+// ==================== 通用响应 ====================
+
+// OperateResponse 通用操作响应
+message OperateResponse {
+  int32 code = 1;
+  string message = 2;
+}
+
+// StringResponse 字符串响应
+message StringResponse {
+  string value = 1;
+}
+
+// ==================== 数据类型 ====================
+
+// Result 操作结果
+message Result {
+  int32 code = 1;
+  string error = 2;
+}
+
+// ScopeInfo 授权范围信息
+message ScopeInfo {
+  optional string scope = 1;
+  optional string description = 2;
+  optional int32 auth_state = 3;
+  optional string extend_desc = 4;
+  optional string auth_description = 5;
+}
+
+// Item 小程序条目
+message Item {
+  optional string username = 1;
+  optional string nickname = 2;
+  optional string icon_url = 3;
+  optional uint32 update_time = 4;
+}
+
+// AuthorizeResult 授权结果
+message AuthorizeResult {
+  optional string tag1 = 1;
+  optional bytes tag2 = 2;
+  optional uint32 tag3 = 3;
+}
+
+// ==================== 响应消息 ====================
+
+// JSLoginResponse 小程序 JS 登录响应（镜像 we-clay.miniapp.JSLoginResponse）
+message JSLoginResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional Result jsapi_result = 2;                 // JSAPI 结果
+  optional string code = 3;                         // 授权码
+  optional ScopeInfo scope_info = 4;                // 授权范围信息
+  optional string app_name = 5;                     // 应用名称
+  optional string app_icon = 6;                     // 应用图标
+  optional string openid = 7;                       // OpenID
+  optional string session_key = 8;                  // 会话密钥
+  optional string session_ticket = 9;               // 会话票据
+  optional int32 lifespan = 10;                     // 有效期
+  optional string state = 11;                       // 状态
+  optional string signature = 12;                   // 签名
+}
+
+// JSOperateResponse 小程序 JS 操作响应（镜像 we-clay.miniapp.JSOperateResponse）
+message JSOperateResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional Result jsapi_result = 2;                 // JSAPI 结果
+  optional bytes data = 3;                          // 数据
+  optional ScopeInfo scope_info = 4;                // 授权范围信息
+  optional string app_name = 5;                     // 应用名称
+  optional string app_icon = 6;                     // 应用图标
+  optional string cancel_wording = 9;               // 取消文案
+  optional string allow_wording = 10;               // 允许文案
+  optional string apply_wording = 11;               // 申请文案
+}
+
+// SDKOAuthAuthorizeResponse SDK OAuth授权响应（镜像 we-clay.miniapp.SDKOAuthAuthorizeResponse）
+message SDKOAuthAuthorizeResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional AuthorizeResult result = 2;              // 授权结果
+  optional string app_image = 5;                    // 应用图标
+  optional string code = 6;                         // 授权码
+}
+
+// SDKOAuthAuthorizeConfirmResponse SDK OAuth确认授权响应（镜像 we-clay.miniapp.SDKOAuthAuthorizeConfirmResponse）
+message SDKOAuthAuthorizeConfirmResponse {
+  optional .api.base.BaseResponse base_response = 1;          // 基础响应
+  optional string redirect_url = 2;                          // 重定向URL
+  optional string token = 3;                                 // Token
+  optional string user_confirm_redirect_url = 4;             // 用户确认重定向URL
+  optional string user_confirm_wording = 5;                  // 用户确认文案
+}
+
+// BizJsApiGetUserOpenIdResponse 获取用户OpenId响应（镜像 we-clay.miniapp.BizJsApiGetUserOpenIdResponse）
+message BizJsApiGetUserOpenIdResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional string open_id = 2;                      // OpenID
+  optional string nickname = 3;                     // 昵称
+  optional string avatar_url = 4;                   // 头像URL
+  optional string signature = 5;                    // 签名
+  optional uint32 friend_relation = 6;              // 好友关系
+}
+
+// GetRuntimeSessionResponse 获取运行时会话响应（镜像 we-clay.miniapp.GetRuntimeSessionResponse）
+message GetRuntimeSessionResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional string session_id = 2;                   // 会话ID
+  optional uint32 expire = 3;                       // 过期时间
+}
+
+// GetUsageRecordResponse 获取小程序使用记录响应（镜像 we-clay.miniapp.GetUsageRecordResponse）
+message GetUsageRecordResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional google.protobuf.StringValue result = 2;  // 结果
+  repeated Item star_list = 3;                      // 收藏列表
+  repeated Item history_list = 4;                   // 历史列表
+  optional uint32 status = 5;                       // 状态
+}
+
+// CheckVerifyCodeResponse 验证手机验证码响应（镜像 we-clay.miniapp.CheckVerifyCodeResponse）
+message CheckVerifyCodeResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional int32 status = 2;                        // 状态
+  optional string encrypted_data = 3;               // 加密数据
+  optional string iv = 4;                           // 初始向量
+  optional string show_mobile = 5;                  // 展示手机号
+  optional string cloud_id = 6;                     // 云端ID
+}
+
+// PostVerifyCodeResponse 发送手机验证码响应（镜像 we-clay.miniapp.PostVerifyCodeResponse）
+message PostVerifyCodeResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional uint32 status = 2;                       // 状态
+}
+
+// OAuthGetRandomAvatarResponse 获取随机头像响应（镜像 we-clay.miniapp.OAuthGetRandomAvatarResponse）
+message OAuthGetRandomAvatarResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional string nickname = 2;                     // 昵称
+  optional string avatar_url = 3;                   // 头像URL
+  optional string file_key = 4;                     // 文件Key
+}
+
+// OAuthAddAvatarImageResponse 上传头像图片响应（镜像 we-clay.miniapp.OAuthAddAvatarImageResponse）
+message OAuthAddAvatarImageResponse {
+  optional .api.base.BaseResponse base_response = 1; // 基础响应
+  optional string file_key = 2;                     // 文件Key
+  optional string cdn_url = 3;                      // CDN URL
+}

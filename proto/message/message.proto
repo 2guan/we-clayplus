@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package message;
+
+option go_package = "github.com/we-clay/we-clay/sdk/message";
+
+import "message/types.proto";
+
+// ==================== 服务定义 ====================
+
+// MessageService 消息服务
+service MessageService {
+  // GetSendCapabilities 查询发送扩展；旧 gateway 不提供此方法。
+  rpc GetSendCapabilities(SendCapabilities.Request) returns (SendCapabilities.Response);
+  // Send 发送消息（client-stream：首包消息元数据 + 后续二进制数据块）
+  rpc Send(stream Send.Request) returns (Send.Response);
+  // Forward 转发消息
+  rpc Forward(Forward.Request) returns (Forward.Response);
+  // Revoke 撤回消息
+  rpc Revoke(Revoke.Request) returns (Revoke.Response);
+  // Download 下载媒体资源（server-stream：流式返回二进制数据）
+  rpc Download(Download.Request) returns (stream Download.Response);
+}
+
+// ==================== RPC 消息 ====================
+
+message Send {
+  // Request 发送消息请求（client-stream 首包）
+  message Request {
+    Message message = 1; // 消息元数据，只能出现在首包；兼容旧版内联媒体
+    bytes data = 2; // 后续包：媒体数据块
+    bytes thumb = 3; // 后续包：视频缩略图数据块
+    uint64 data_size = 4; // 首包声明的媒体字节数
+    uint64 thumb_size = 5; // 首包声明的缩略图字节数
+    bool chunked = 6; // 首包标识分块模式；必须先查询能力
+  }
+  // Data 发送媒体数据（client-stream 后续包）
+  message Data {
+    bytes data = 1; // 二进制数据块
+  }
+  // Response 发送消息响应
+  message Response {
+    uint64 new_id = 1; // 新消息 ID
+    uint32 create_time = 2; // 创建时间
+    Media media = 3;
+  }
+}
+
+message Forward {
+  message Request {
+    string receiver = 1; // 新接收者 wxid
+    Message message = 2; // 要转发的消息
+  }
+  message Response {
+    uint64 new_id = 1; // 新消息 ID
+    uint32 create_time = 2; // 创建时间
+  }
+}
+
+message Revoke {
+  message Request {
+    string receiver = 1; // 会话 wxid
+    uint64 new_id = 2; // 消息 ID
+  }
+  message Response {
+    int32 code = 1; // 状态码
+    string message = 2; // 提示信息
+  }
+}
+
+message Download {
+  message Request {
+    Message message = 1; // 包含媒体信息的消息
+  }
+  message Response {
+    bytes data = 1; // 二进制数据块
+  }
+}
+
+// SendCapabilities 描述传输能力，不触发微信消息发送。
+message SendCapabilities {
+  message Request {}
+  message Response {
+    bool chunked_send = 1;
+    uint32 max_chunk_bytes = 2;
+    uint64 max_media_bytes = 3;
+    uint64 max_thumb_bytes = 4;
+    bool file_send = 5;
+  }
+}
