@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.2 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.3 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.5.2
+go get github.com/we-clay/we-clay@v0.5.3
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -76,7 +76,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ```sh
 go mod init example.com/my-wechat-bot
-go get github.com/we-clay/we-clay@v0.5.2
+go get github.com/we-clay/we-clay@v0.5.3
 ```
 
 ### 2 · 调用 Run
@@ -211,7 +211,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.2
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.3
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -285,9 +285,9 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 ## 当前状态
 
-**v0.5.2 补充检查接口回执、好友申请票据、收藏同步字段和媒体返回值**，详见[接口契约核对](docs/接口契约核对.md)。完成离线回归，尚未逐项真机复验。
+**v0.5.3 接通头像上传**，提供[上传与非关键错误处理示例](docs/直接接入.md#上传当前账号头像)。头像上传已完成离线契约验证，待真机验收；此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
-**13 个能力域，128 个 SDK 方法：52 个已接通，76 个仅保留占位。**
+**13 个能力域，128 个 SDK 方法：53 个已接通，75 个仅保留占位。**
 另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。
 
 - **历史真机记录**：Mac 模式下，核心链路已测试消息媒体、联系人、群聊、标签、朋友圈等操作，具体范围见下表后的说明。
@@ -313,7 +313,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | `Official` · 公众号 | — | `Follow`、`Quit`、`MpGetA8Key`、`JSAPIPreVerify`、`OauthAuthorize`、`ReadArticle`、`LikeArticle` |
 | `Payment` · 支付 | — | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CreatePreTransfer`、`ConfirmPreTransfer`、`CollectMoney` |
 | `Report` · 状态通知 | `StartTyping`、`StopTyping` | `ReadMessage` |
-| `User` · 当前账号 | `GetProfile`、`GetQRCode`、`GetSafetyInfo`、`GetBoundHardDevices` | `UpdateProfile`、`UploadAvatar`、`SetPrivacy`、`SetAlias`、`VerifyPassword`、`SetPassword`、`SendVerifyMobile`、`BindMobile`、`BindEmail`、`SendVerifyEmail`、`DelSafeDevice`、`ReportMotion`、`GetCert` |
+| `User` · 当前账号 | `GetProfile`、`GetQRCode`、`GetSafetyInfo`、`GetBoundHardDevices`、`UploadAvatar` | `UpdateProfile`、`SetPrivacy`、`SetAlias`、`VerifyPassword`、`SetPassword`、`SendVerifyMobile`、`BindMobile`、`BindEmail`、`SendVerifyEmail`、`DelSafeDevice`、`ReportMotion`、`GetCert` |
 <!-- capabilities:end -->
 
 </details>
@@ -334,7 +334,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | 公众号 | 没有完整真实验收，保留占位。 |
 | 支付 | 没有真实验收，保留占位。 |
 | 状态通知 | 开始/停止输入仅收到成功回执，未手机观察；已读通知未测。 |
-| 当前账号 | 资料、个人二维码、安全设备/绑定硬件查询通过；资料/安全写操作未完整测试。 |
+| 当前账号 | 资料、个人二维码、安全设备/绑定硬件查询有历史验收；头像上传已接通并完成离线验证，待真机验收；其他资料/安全写操作保留占位。 |
 
 **消息类型也有边界：**
 

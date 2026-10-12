@@ -32,7 +32,7 @@ func (c Client) UpdateProfile(params UpdateProfileParams) (*UpdateProfile_Respon
 
 // UploadAvatar 上传头像
 func (c Client) UploadAvatar(reader io.Reader) (*UploadAvatar_Response, error) {
-	data, err := io.ReadAll(reader)
+	data, err := readAvatar(reader)
 	if err != nil {
 		return nil, err
 	}

@@ -55,6 +55,32 @@ func (s *directCore) Invoke(ctx context.Context, req *corewire.CallRequest) (*co
 	return s.fakeCore.Invoke(ctx, req)
 }
 
+func TestHandledReadyUploadErrorKeepsReceivingMessages(t *testing.T) {
+	_, cfg := directFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var handled, received bool
+	err := gateway.Run(ctx, cfg, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{
+		OnReady: func(_ context.Context, c *gateway.Client) error {
+			// 模拟调用方将非关键上传失败记录下来，不向 Run 返回该错误。
+			_, err := c.User.UploadAvatar(nil)
+			handled = err != nil
+			return nil
+		},
+		OnMessage: func(_ context.Context, _ *gateway.Client, _ *message.Message) error {
+			received = true
+			cancel()
+			return nil
+		},
+	}))
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if !handled || !received {
+		t.Fatal("handled upload failure stopped message processing")
+	}
+}
+
 func (s *directCore) Events(stream grpc.BidiStreamingServer[corewire.EventControl, corewire.CoreEvent]) error {
 	s.connections.Add(1)
 	if _, err := stream.Recv(); err != nil {

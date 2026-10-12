@@ -207,11 +207,11 @@
       "GetProfile",
       "GetQRCode",
       "GetSafetyInfo",
-      "GetBoundHardDevices"
+      "GetBoundHardDevices",
+      "UploadAvatar"
     ],
     "placeholder": [
       "UpdateProfile",
-      "UploadAvatar",
       "SetPrivacy",
       "SetAlias",
       "VerifyPassword",
@@ -224,6 +224,6 @@
       "ReportMotion",
       "GetCert"
     ],
-    "evidence": "资料、个人二维码、安全设备/绑定硬件查询通过；资料/安全写操作未完整测试"
+    "evidence": "资料、个人二维码、安全设备/绑定硬件查询有历史验证；头像上传于 v0.5.3 接通并完成离线契约验证，待真机验收；其他资料/安全写操作保留占位"
   }
 }

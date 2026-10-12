@@ -8,7 +8,8 @@ type Ability interface {
 	GetProfile() (*GetProfile_Response, error)
 	// UpdateProfile 更新个人信息
 	UpdateProfile(params UpdateProfileParams) (*UpdateProfile_Response, error)
-	// UploadAvatar 上传头像
+	// UploadAvatar 上传当前账号头像（1 字节至 MaxAvatarSize），会修改微信资料。
+	// 返回 core 原始回执；当前完成离线契约验证，仍待真机验收。失败时不要自动重传。
 	UploadAvatar(reader io.Reader) (*UploadAvatar_Response, error)
 	// GetQRCode 获取个人二维码
 	GetQRCode(style int32) (*GetQRCode_Response, error)

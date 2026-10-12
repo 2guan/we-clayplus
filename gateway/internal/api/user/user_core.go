@@ -2,11 +2,13 @@
 package userapi
 
 import (
+	"errors"
 	"io"
 	"strconv"
 	"sync"
 
 	"github.com/we-clay/we-clay/gateway/internal/api"
+	usersdk "github.com/we-clay/we-clay/sdk/user"
 )
 
 // remote 用户服务 远程实现（通过 gRPC 调用 core）。
@@ -42,15 +44,26 @@ func (w remote) UpdateProfile(params UpdateProfileParams) (*OperateResponse, err
 
 // UploadAvatar 上传头像
 func (w remote) UploadAvatar(reader io.Reader) (*UploadAvatarResponse, error) {
-	data, err := io.ReadAll(reader)
+	if reader == nil {
+		return nil, errors.New("头像 reader 不能为空")
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, usersdk.MaxAvatarSize+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(data) == 0 || len(data) > usersdk.MaxAvatarSize {
+		return nil, errors.New("头像数据必须为 1 字节至 16 MiB")
 	}
 	var resp UploadAvatarResponse
 	if err := api.GetCore().Post("/api/user/avatar").Multipart(map[string][]byte{
 		"avatar": data,
 	}, nil).DoProto(&resp); err != nil {
 		return nil, err
+	}
+	// core 在内部分块上传，回执中的 offset（如有）应为最终完成位置。
+	// 字段可选，不能凭缺省 0 判断，也不能用请求长度填造服务器回执。
+	if resp.Size != nil && resp.GetSize() != uint32(len(data)) || resp.Offset != nil && resp.GetOffset() != uint32(len(data)) {
+		return nil, errors.New("头像上传回执长度或完成位置不匹配，结果未确认，请勿自动重试")
 	}
 	return &resp, nil
 }

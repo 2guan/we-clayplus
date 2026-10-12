@@ -49,7 +49,23 @@ func (a *ability) UpdateProfile(params sdk.UpdateProfileParams) (*sdk.UpdateProf
 
 // UploadAvatar 上传头像
 func (a *ability) UploadAvatar(reader io.Reader) (*sdk.UploadAvatar_Response, error) {
-	return nil, sdkroot.NotImplemented("user.UploadAvatar")
+	resp, err := a.api.UploadAvatar(reader)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("头像上传回执缺失，结果未确认，请勿自动重试")
+	}
+	return &sdk.UploadAvatar_Response{
+		BaseResult: mapBaseResult(resp.GetBaseResponse()),
+		Avatar: &sdk.Avatar{
+			Size:           resp.GetSize(),
+			Offset:         resp.GetOffset(),
+			FinalMd5:       resp.GetFinalMd5(),
+			BigAvatarUrl:   resp.GetBigAvatarUrl(),
+			SmallAvatarUrl: resp.GetSmallAvatarUrl(),
+		},
+	}, nil
 }
 
 // GetQRCode 获取个人二维码
