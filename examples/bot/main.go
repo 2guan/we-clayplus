@@ -45,7 +45,7 @@ func main() {
 		"core_version", coreVersion,
 		"plugins_dir", pluginsDir)
 	slog.Info("💡 提示：Core 启动后请在浏览器打开 http://127.0.0.1:8086 完成微信 Mac 扫码登录")
-	slog.Info("💡 提示：登录成功后 Dashboard 控制台将托管在 http://127.0.0.1:8080")
+	slog.Info("💡 提示：登录成功后 Dashboard 控制台将托管在 http://127.0.0.1:8899")
 
 	err := gateway.Run(ctx, cfg, gateway.WithHandlers(gateway.Handlers{
 		OnReady: func(ctx context.Context, client *gateway.Client) error {
@@ -55,7 +55,7 @@ func main() {
 				name = self.Nickname
 			}
 			slog.Info("🎉 微信已登录就绪！", "nickname", name)
-			slog.Info("🚀 控制台已就绪：请访问 http://127.0.0.1:8080 查看高仿微信控制台与AI插件")
+			slog.Info("🚀 控制台已就绪：请访问 http://127.0.0.1:8899 查看高仿微信控制台与AI插件")
 			return nil
 		},
 	}))
