@@ -419,9 +419,11 @@ func (s *Store) GetSessionMessages(sessionID string, limit int) ([]ChatMessage, 
 	for rows.Next() {
 		var m ChatMessage
 		var isSelf int
-		if err := rows.Scan(&m.MsgID, &m.SessionID, &m.SenderID, &m.SenderName, &m.MsgType, &m.Content, &m.MediaPath, &isSelf, &m.CreatedAt); err != nil {
+		var rawTime any
+		if err := rows.Scan(&m.MsgID, &m.SessionID, &m.SenderID, &m.SenderName, &m.MsgType, &m.Content, &m.MediaPath, &isSelf, &rawTime); err != nil {
 			return nil, err
 		}
+		m.CreatedAt = parseFlexibleTime(rawTime)
 		m.IsSelf = isSelf == 1
 		m.IsOutgoing = m.IsSelf
 		list = append(list, m)
@@ -460,12 +462,46 @@ func (s *Store) GetRecentChatSessions() (map[string]RecentSessionInfo, error) {
 	res := make(map[string]RecentSessionInfo)
 	for rows.Next() {
 		var info RecentSessionInfo
-		if err := rows.Scan(&info.SessionID, &info.LastMessage, &info.LastTime); err != nil {
-			return nil, err
+		var rawTime any
+		if err := rows.Scan(&info.SessionID, &info.LastMessage, &rawTime); err != nil {
+			continue
 		}
+		info.LastTime = parseFlexibleTime(rawTime)
 		res[info.SessionID] = info
 	}
 	return res, nil
+}
+
+func parseFlexibleTime(raw any) time.Time {
+	if raw == nil {
+		return time.Time{}
+	}
+	switch v := raw.(type) {
+	case time.Time:
+		return v
+	case string:
+		v = strings.TrimSpace(v)
+		if idx := strings.Index(v, " m="); idx != -1 {
+			v = v[:idx]
+		}
+		formats := []string{
+			"2006-01-02 15:04:05 -0700 MST",
+			"2006-01-02 15:04:05.999999999 -0700 MST",
+			time.RFC3339,
+			time.RFC3339Nano,
+			"2006-01-02 15:04:05",
+			"2006-01-02T15:04:05",
+			"2006-01-02",
+		}
+		for _, f := range formats {
+			if t, err := time.Parse(f, v); err == nil {
+				return t
+			}
+		}
+	case []byte:
+		return parseFlexibleTime(string(v))
+	}
+	return time.Time{}
 }
 
 // CountTotalMessages 统计已记录入库的微信消息总数

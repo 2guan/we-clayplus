@@ -41,12 +41,11 @@ func Initial(dataDir string) {
 	instance.cache = map[string]*sdk.Contact{}
 	// 从文件读取联系人信息
 	if file, err := os.ReadFile(filepath.Join(cacheDir, "contact.json")); err == nil {
-		if err := json.Unmarshal(file, &instance.cache); err != nil {
-			slog.Warn("[contact ability] 反序列化联系人信息失败", "err", err)
+		if err := json.Unmarshal(file, &instance.cache); err == nil && len(instance.cache) > 0 {
+			slog.Info("[contact ability] 从文件加载联系人信息成功", "count", len(instance.cache))
 			return
 		}
-		slog.Info("[contact ability] 从文件加载联系人信息成功", "count", len(instance.cache))
-		return
+		slog.Warn("[contact ability] 从文件加载联系人失败，转为通过 API 获取", "err", err)
 	}
 
 	// 通过api获取联系人信息

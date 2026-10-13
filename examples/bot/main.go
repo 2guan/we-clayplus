@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -18,6 +19,11 @@ func main() {
 	// 捕获系统中断信号 (Ctrl+C / SIGTERM)，支持优雅退出并清理子进程
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// 支持 -mock 或 -offline 命令行参数启动免扫码脱机模式
+	mockFlag := flag.Bool("mock", false, "以脱机/Mock 模式启动（免扫码、免 Core、零风控风险）")
+	offlineFlag := flag.Bool("offline", false, "以脱机/Mock 模式启动（免扫码、免 Core、零风控风险）")
+	flag.Parse()
 
 	coreVersion := os.Getenv("WE_CLAY_CORE_VERSION")
 	if coreVersion == "" {
@@ -41,11 +47,22 @@ func main() {
 		Owner:      owner,
 	}
 
-	slog.Info("正在启动 we-clayplus 网关服务...",
-		"core_version", coreVersion,
-		"plugins_dir", pluginsDir)
-	slog.Info("💡 提示：Core 启动后请在浏览器打开 http://127.0.0.1:8086 完成微信 Mac 扫码登录")
-	slog.Info("💡 提示：登录成功后 Dashboard 控制台将托管在 http://127.0.0.1:8899")
+	isMock := *mockFlag || *offlineFlag || os.Getenv("WE_CLAY_MOCK") == "true" || os.Getenv("WE_CLAY_OFFLINE") == "true"
+	if isMock {
+		cfg.Offline = true
+		cfg.Core = nil
+		slog.Info("🚀 正在以【脱机 Mock 预览模式】启动 we-clayplus 服务...",
+			"mode", "offline_mock",
+			"plugins_dir", pluginsDir)
+		slog.Info("💡 提示：脱机模式跳过 Core 进程与微信扫码，直接使用本地缓存与 Mock 数据，零风控风险")
+		slog.Info("💡 提示：Dashboard 控制台将托管在 http://127.0.0.1:8899")
+	} else {
+		slog.Info("正在启动 we-clayplus 网关服务...",
+			"core_version", coreVersion,
+			"plugins_dir", pluginsDir)
+		slog.Info("💡 提示：Core 启动后请在浏览器打开 http://127.0.0.1:8086 完成微信 Mac 扫码登录")
+		slog.Info("💡 提示：登录成功后 Dashboard 控制台将托管在 http://127.0.0.1:8899")
+	}
 
 	err := gateway.Run(ctx, cfg, gateway.WithHandlers(gateway.Handlers{
 		OnReady: func(ctx context.Context, client *gateway.Client) error {
@@ -54,7 +71,11 @@ func main() {
 			if self != nil && self.Nickname != "" {
 				name = self.Nickname
 			}
-			slog.Info("🎉 微信已登录就绪！", "nickname", name)
+			if isMock {
+				slog.Info("🎉 脱机 Mock 服务已就绪！", "nickname", name, "mode", "offline_preview")
+			} else {
+				slog.Info("🎉 微信已登录就绪！", "nickname", name)
+			}
 			slog.Info("🚀 控制台已就绪：请访问 http://127.0.0.1:8899 查看高仿微信控制台与AI插件")
 			return nil
 		},

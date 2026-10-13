@@ -23,9 +23,15 @@ var specials = []string{
 func Build(data *contactapi.ModifyContact) (*contact.Contact, error) {
 	var result contact.Contact
 
-	result.Username = data.Username.Value
-	result.Nickname = data.Nickname.Value
-	result.Remark = data.Remark.Value
+	if data.Username != nil {
+		result.Username = data.Username.Value
+	}
+	if data.Nickname != nil {
+		result.Nickname = data.Nickname.Value
+	}
+	if data.Remark != nil {
+		result.Remark = data.Remark.Value
+	}
 	result.Alias = data.GetAlias()
 	result.Avatar = data.GetBigAvatarUrl()
 	result.Type = getType(data)
@@ -64,7 +70,7 @@ func getType(data *contactapi.ModifyContact) contact.ContactType {
 		return contact.ContactType_CONTACT_TYPE_SPECIAL
 	}
 	// 群组
-	if data.GetChatroomOwner() != "" {
+	if data.GetChatroomOwner() != "" || (data.Username != nil && strings.HasSuffix(data.Username.Value, "@chatroom")) {
 		return contact.ContactType_CONTACT_TYPE_CHATROOM
 	}
 	// 公众号

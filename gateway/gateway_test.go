@@ -214,3 +214,34 @@ func TestRunLoadsPluginAndStopsItsProcess(t *testing.T) {
 	}
 	// 第二次成功加载同名插件还检查了 SDK 客户端注册表清理。
 }
+
+func TestRunOfflineMockMode(t *testing.T) {
+	root := t.TempDir()
+	cfg := gateway.Config{
+		Offline:    true,
+		DataDir:    filepath.Join(root, "data"),
+		PluginsDir: filepath.Join(root, "plugins"),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var readyCalled bool
+	err := gateway.Run(ctx, cfg, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{
+		OnReady: func(_ context.Context, c *gateway.Client) error {
+			readyCalled = true
+			self := c.Contact.GetSelf()
+			if self == nil || self.Nickname == "" {
+				t.Errorf("expected self nickname in offline mode")
+			}
+			cancel()
+			return nil
+		},
+	}))
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("offline run failed: %v", err)
+	}
+	if !readyCalled {
+		t.Fatal("OnReady was not called in offline mode")
+	}
+}
+

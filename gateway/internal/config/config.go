@@ -21,10 +21,19 @@ type Config struct {
 	PluginsDir   string      `toml:"plugins_dir"`    // 插件及 config.toml 目录，默认 ./runtime/gateway/plugins。
 	Owner        string      `toml:"owner"`          // 管理员微信 ID。
 	Forbidden    string      `toml:"forbidden"`      // 无权限操作的回复文案。
+	Offline      bool        `toml:"offline"`        // 脱机/Mock 预览模式：不启动独立 core 与网络连接，直接加载本地缓存与 Mock 数据。
 }
 
 // Resolve 补齐默认值，固定目录绝对路径，不改变进程工作目录。
 func (c Config) Resolve() (Config, error) {
+	if !c.Offline {
+		if os.Getenv("WE_CLAY_OFFLINE") == "true" || os.Getenv("WE_CLAY_MOCK") == "true" {
+			c.Offline = true
+		}
+	}
+	if c.Offline {
+		c.Core = nil
+	}
 	if c.CoreAddress == "" {
 		c.CoreAddress = "127.0.0.1:8088"
 	}
@@ -49,6 +58,9 @@ func (c Config) Resolve() (Config, error) {
 	}
 	if c.PluginsDir, err = filepath.Abs(c.PluginsDir); err != nil {
 		return c, err
+	}
+	if c.Offline {
+		return c, nil
 	}
 	if c.Core != nil {
 		managed, err := c.Core.Resolve()

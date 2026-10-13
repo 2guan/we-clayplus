@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -55,7 +56,26 @@ func (s *Server) Start(addr string) error {
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return err
+		// 端口被占用时自动尝试顺延端口（例如 8899 -> 8900 ...）
+		host, portStr, splitErr := net.SplitHostPort(addr)
+		if splitErr == nil {
+			if portNum, convErr := strconv.Atoi(portStr); convErr == nil {
+				for delta := 1; delta <= 10; delta++ {
+					nextAddr := net.JoinHostPort(host, strconv.Itoa(portNum+delta))
+					l, nErr := net.Listen("tcp", nextAddr)
+					if nErr == nil {
+						listener = l
+						addr = nextAddr
+						err = nil
+						slog.Warn("[dashboard] 原监听端口被占用，已自动切换至备用端口", "old_port", portStr, "new_addr", nextAddr)
+						break
+					}
+				}
+			}
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	go func() {

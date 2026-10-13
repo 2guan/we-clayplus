@@ -24,6 +24,7 @@ type Handlers struct {
 type runOptions struct {
 	handlers       Handlers
 	withoutPlugins bool
+	offline        bool
 }
 
 // Option 配置直接接入行为，不写入 TOML。
@@ -38,6 +39,16 @@ func WithHandlers(handlers Handlers) Option {
 // 不传此项时保留原来的插件行为，也可与直接回调共用。
 func WithoutPlugins() Option {
 	return func(o *runOptions) { o.withoutPlugins = true }
+}
+
+// WithOffline 开启脱机/Mock 预览模式，不启动独立 core 与真实微信连接，使用本地缓存与 Mock 数据。
+func WithOffline() Option {
+	return func(o *runOptions) { o.offline = true }
+}
+
+// WithMock 是 WithOffline 的别名，便于开发者调用。
+func WithMock() Option {
+	return WithOffline()
 }
 
 func invokeHandler(name string, fn func() error) (err error) {

@@ -21,6 +21,7 @@ import (
 	userapi "github.com/we-clay/we-clay/gateway/internal/api/user"
 	"github.com/we-clay/we-clay/gateway/internal/config"
 	"github.com/we-clay/we-clay/gateway/internal/coreprocess"
+	"github.com/we-clay/we-clay/gateway/internal/offline"
 	"github.com/we-clay/we-clay/gateway/internal/plugin"
 	sdkcontact "github.com/we-clay/we-clay/sdk/contact"
 	"github.com/we-clay/we-clay/sdk/message"
@@ -78,6 +79,19 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	cfg, err = cfg.Resolve()
 	if err != nil {
 		return err
+	}
+	if opts.offline {
+		cfg.Offline = true
+	}
+	if cfg.Offline {
+		offlineServer, offlineErr := offline.Start(runCtx, cfg.DataDir)
+		if offlineErr != nil {
+			return fmt.Errorf("启动脱机 Mock 服务失败: %w", offlineErr)
+		}
+		defer offlineServer.Close()
+		cfg.Core = nil
+		cfg.CoreAddress = offlineServer.Address
+		cfg.CoreToken = offlineServer.Token
 	}
 	if cfg.Core != nil {
 		binary, downloadErr := coreprocess.Ensure(runCtx, *cfg.Core)
