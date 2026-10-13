@@ -367,6 +367,8 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 	}
 	receiver := msg.GetSender().GetUsername()
 	switch msg.GetType().GetCode() {
+	case sdk.TypeEmoji.Code:
+		return downloadEmoji(coreapi.GetCore().Context(), msg.GetEmoji().GetMedia().GetUrl())
 	case sdk.TypeImage.Code:
 		media := msg.GetImage().GetMedia()
 		if media.GetUrl() == "" || media.GetKey() == "" {
