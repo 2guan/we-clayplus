@@ -15,6 +15,7 @@ import (
 type CoreConfig struct {
 	Repository       string        `toml:"repository"` // 默认 we-clay/core-release。
 	Version          string        `toml:"version"`
+	KeepAlive        bool          `toml:"keep_alive"`        // 独立运行：Run 退出保留 core，后续 Run 复用。
 	CacheDir         string        `toml:"cache_dir"`         // 默认 ./runtime/core-bin，按仓库/版本/平台隔离。
 	DataDir          string        `toml:"data_dir"`          // 默认 ./runtime/core，保存账号状态及 core.log。
 	LoginAddress     string        `toml:"login_address"`     // 默认 127.0.0.1:8086；"-" 关闭页面。
@@ -30,6 +31,9 @@ var versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
 var envPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func (c CoreConfig) Resolve() (CoreConfig, error) {
+	if c.KeepAlive && !filepath.IsAbs(c.DataDir) {
+		return c, fmt.Errorf("keep_alive 模式必须显式填写固定的绝对 core.data_dir")
+	}
 	if c.Repository == "" {
 		c.Repository = "we-clay/core-release"
 	}

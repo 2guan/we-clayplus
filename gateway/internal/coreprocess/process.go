@@ -23,7 +23,7 @@ type Process struct {
 	stopOnce sync.Once
 }
 
-// Start 仅启动当前 Run 拥有的子进程；不会接管端口上的其他进程。
+// Start 启动本机 core；KeepAlive 时子进程脱离当前终端和 Run 的生命周期。
 func Start(ctx context.Context, binary string, cfg config.Config) (*Process, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -50,11 +50,14 @@ func Start(ctx context.Context, binary string, cfg config.Config) (*Process, err
 	if loginAddress == "-" {
 		loginAddress = ""
 	}
-	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", "mac", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
+	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", "mac", "-update-version=false", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
 	if c.StorageEncrypted {
 		args = append(args, "-storage-encrypt")
 	}
 	p := &Process{cmd: exec.Command(binary, args...), done: make(chan struct{}), logPath: filepath.Join(c.DataDir, "core.log")}
+	if c.KeepAlive {
+		detach(p.cmd)
+	}
 	log, err := os.OpenFile(p.logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
@@ -67,6 +70,9 @@ func Start(ctx context.Context, binary string, cfg config.Config) (*Process, err
 	}
 	go func() { p.err = p.cmd.Wait(); log.Close(); close(p.done) }()
 	go func() {
+		if c.KeepAlive {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			p.Stop()

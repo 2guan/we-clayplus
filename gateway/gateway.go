@@ -80,24 +80,36 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 		return err
 	}
 	if cfg.Core != nil {
-		binary, downloadErr := coreprocess.Ensure(runCtx, *cfg.Core)
-		if downloadErr != nil {
-			return downloadErr
-		}
-		process, startErr := coreprocess.Start(runCtx, binary, cfg)
-		if startErr != nil {
-			return startErr
-		}
-		defer func() { cancel(); process.Stop() }()
-		go func() {
-			select {
-			case <-process.Done():
-				if runCtx.Err() == nil {
-					cancelCause(process.ExitError())
-				}
-			case <-runCtx.Done():
+		if cfg.Core.KeepAlive {
+			cfg, err = coreprocess.EnsureIndependent(runCtx, cfg)
+			if err != nil {
+				return err
 			}
-		}()
+			go func() {
+				if err := coreprocess.WaitIndependent(runCtx, cfg); runCtx.Err() == nil {
+					cancelCause(err)
+				}
+			}()
+		} else {
+			binary, downloadErr := coreprocess.Ensure(runCtx, *cfg.Core)
+			if downloadErr != nil {
+				return downloadErr
+			}
+			process, startErr := coreprocess.Start(runCtx, binary, cfg)
+			if startErr != nil {
+				return startErr
+			}
+			defer func() { cancel(); process.Stop() }()
+			go func() {
+				select {
+				case <-process.Done():
+					if runCtx.Err() == nil {
+						cancelCause(process.ExitError())
+					}
+				case <-runCtx.Done():
+				}
+			}()
+		}
 	}
 	oldConfig := config.Get
 	config.Get = func() *config.Config { return &cfg }

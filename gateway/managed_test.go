@@ -29,6 +29,10 @@ import (
 
 // 用本测试程序充当 core 子进程，真实启动/退出但不连接微信。
 func TestMain(m *testing.M) {
+	if len(os.Args) == 3 && os.Args[1] == "--fixture-gateway-parent" {
+		independentParentMain(os.Args[2])
+		os.Exit(0)
+	}
 	if os.Getenv("WE_CLAY_TEST_MANAGED_CORE") != "" {
 		mockCoreMain()
 		os.Exit(0)
@@ -82,12 +86,13 @@ func mockCoreMain() {
 	f.String("listen", "", "")
 	f.String("api-token-env", "", "")
 	f.Bool("storage-encrypt", false, "")
+	updateVersion := f.Bool("update-version", true, "")
 	f.Parse(os.Args[1:])
 	mode := os.Getenv("WE_CLAY_TEST_MANAGED_CORE")
 	if mode == "exit" {
 		os.Exit(7)
 	}
-	if *device != "mac" || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
+	if *updateVersion || *device != "mac" || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
 		os.Exit(8)
 	}
 	os.WriteFile(filepath.Join(*data, "fixture-stage"), []byte(*stage), 0600)

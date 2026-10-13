@@ -46,10 +46,18 @@ gateway 与 core 复用连接完成业务调用和事件订阅，支持事件确
 </td>
 <td width="50%" valign="top">
 <h3>运行在自己的环境</h3>
-Run 自动下载、校验并启动指定版本的 core。数据保留在本地，context 控制完整运行周期。
+Run 自动下载、校验并启动指定版本的 core。数据保留在本地。可让 core 独立常驻，应用重启后复用微信连接。
 </td>
 </tr>
 </table>
+
+## 应用重启，保留微信连接
+
+> 本节及表情 CDN 下载为当前源码的新能力，尚未发布到上方安装命令中的模块版本。
+
+配置 `CoreConfig.KeepAlive: true` 和固定的绝对 `DataDir`，首次运行自动下载并启动 core，后续运行复用同一进程。取消 `Run` 只断开应用；需要维护时显式调用 `gateway.StopCore(ctx, cfg)`。
+
+完整示例与停止方法见[独立 core](docs/独立core.md)。不设置 `KeepAlive` 时，保持原来随 `Run` 退出的行为。
 
 ## 能力概览
 

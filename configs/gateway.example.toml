@@ -10,6 +10,7 @@ plugins_dir = "./runtime/gateway/plugins"
 # [core]
 # repository = "we-clay/core-release"
 # version = "<已发布的 core tag>"
+# keep_alive = false # true 时必须将 data_dir 改为固定的绝对账号目录
 # cache_dir = "./runtime/core-bin"
 # data_dir = "./runtime/core"
 # login_address = "127.0.0.1:8086"

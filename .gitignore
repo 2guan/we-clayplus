@@ -25,3 +25,8 @@ device*.json
 .vscode/
 go.work
 go.work.sum
+
+# 独立 core 的本机进程记录，可能含 API 令牌
+gateway-core.json
+gateway-core.lock
+.gateway-core-*
