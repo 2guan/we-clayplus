@@ -261,7 +261,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 	case sdk.TypeAppLink.Code:
 		data := msg.GetApp()
 		if data == nil {

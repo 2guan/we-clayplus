@@ -315,9 +315,9 @@ core v0.3.1 的接受群邀请接口仍为占位，自动通过插件**只处理
 
 ## 本机真实微信验收
 
-执行 `make run` 启动 core v0.3.2（Mac 模式）与真实控制台。后台访问 `http://127.0.0.1:8208`，core 登录 HTTP 监听 `127.0.0.1:8201`；gRPC 仍为 `127.0.0.1:8088`。普通 `go test` 不会启动真实验收。
+执行 `make run` 从私有 OSS 下载并校验 core v0.4.2（Mac 模式），启动真实控制台。运行前通过受信任的本机环境配置提供 `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`（可选 `OSS_SESSION_TOKEN`）和 `WE_CLAY_AUTH_KEY`，不要把凭据写入仓库。可用 `WE_CLAY_CORE_VERSION` 指定其他已发布的固定版本。后台访问 `http://127.0.0.1:8208`，core 登录 HTTP 监听 `127.0.0.1:8201`；gRPC 仍为 `127.0.0.1:8088`。普通 `go test` 不会启动真实验收。
 
-首次在后台直接创建管理员账号，无需初始化凭据。真实控制台数据保存在 `runtime/console/`，微信会话保存在 `runtime/core/`，与 `make mock` 的 `runtime/mock-console/` 隔离。不需要重新编译前端即可切换运行模式。
+首次在后台直接创建管理员账号，无需初始化凭据。真实控制台数据保存在 `runtime/console/`，微信会话默认沿用 `runtime/core/`；已有其他账号目录时，设置 `WE_CLAY_DATA_DIR` 为其绝对路径，升级时不得换新目录。真实数据与 `make mock` 的 `runtime/mock-console/` 隔离。不需要重新编译前端即可切换运行模式。`make attach` 只连接已登录的独立 core，不下载或重启 core。
 
 直接在浏览器打开 `http://127.0.0.1:8201/` 扫码，无需额外浏览器参数。终止 `make run` 会关闭本次启动的服务并保留真实会话，不执行微信退出登录。
 
@@ -375,7 +375,7 @@ core v0.3.1 的接受群邀请接口仍为占位，自动通过插件**只处理
 
 脱机 Mock 支持相同的上传、编辑与发送流程，数据在独立的 Mock 数据库；不会调用真实微信发送。正式库不会注入演示表情。图片链接失效时会提示预览不可用，可以上传同一表情原文件恢复本地预览与发送。
 
-当前 core v0.3.2 的 `/api/message/emoji` 接受 `receiver`、`md5` 与可选 `emoji` 文件，不接受 `productid`；专辑信息用于归档分类，不能保证发送后保留专辑归属。表情回执没有撤回所需的完整客户端 ID 和时间，继续沿用原有缺失回执禁止撤回规则，不伪造字段。已核对 core 实际参数并完成脱机测试；真实账号的表情发送及对端显示需人工验证。
+core v0.4.2 的 `/api/message/emoji` 接受 `receiver`、`md5` 与可选 `emoji` 文件，不接受 `productid`；专辑信息用于归档分类，不能保证发送后保留专辑归属。新版 core 返回 `revoke_client_id` 与 `revoke_create_time`，控制台归档原始回执后支持撤回；回执缺失时仍禁止撤回，不伪造字段。图片、语音、文件和引用消息的字符串回执保存在现有 `original_client_id` 归档字段中，调用 core 时映射为 `string_client_id`。已对照 core v0.4.2 参数校验并验证发送→归档→清空缓存→撤回及拒绝传播；离线结果不代表本次已完成真实账号写操作验收。
 
 
 ### 人工收红包与确认收款

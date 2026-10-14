@@ -12,6 +12,7 @@ import (
 	"github.com/we-clay/we-clay/gateway/internal/coretest"
 	"github.com/we-clay/we-clay/sdk/contact"
 	sdk "github.com/we-clay/we-clay/sdk/message"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
@@ -26,6 +27,7 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 		{"video", "video", "1789890000", false, true, &sdk.Message{Type: sdk.TypeVideo, Data: &sdk.Message_Video{Video: &sdk.VideoData{Media: &sdk.Media{Data: []byte("video")}, Thumb: []byte("thumb"), Duration: 1}}}},
 		{"file", "file", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeFile, Data: &sdk.Message_File{File: &sdk.FileData{Filename: "test.txt", Media: &sdk.Media{Data: []byte("file")}}}}},
 		{"link", "link", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppLink, Data: &sdk.Message_App{App: &sdk.AppData{Title: "test", Url: "https://example.invalid"}}}},
+		{"quote", "app", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppQuote, Data: &sdk.Message_App{App: &sdk.AppData{SubType: 57, Xml: `<appmsg><type>57</type><title>回复</title><refermsg><svrid>123</svrid></refermsg></appmsg>`}}}},
 		{"emoji", "emoji", "1789890000", false, true, &sdk.Message{Type: sdk.TypeEmoji, Data: &sdk.Message_Emoji{Emoji: &sdk.EmojiData{Media: &sdk.Media{Data: []byte("emoji"), Md5: "synthetic"}}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -76,9 +78,9 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 			}
 			defer conn.Close()
 			a := &ability{api: messageapi.New(conn)}
-			copy := *tc.msg
+			copy := proto.Clone(tc.msg).(*sdk.Message)
 			copy.Receiver = &contact.Contact{Username: "synthetic_peer"}
-			sent, err := a.Send(&copy)
+			sent, err := a.Send(copy)
 			if err != nil {
 				t.Fatal(err)
 			}

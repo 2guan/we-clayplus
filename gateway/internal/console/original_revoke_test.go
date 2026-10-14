@@ -34,7 +34,7 @@ func TestRevokeOriginalReceipt(t *testing.T) {
 			w.WriteHeader(400)
 			return
 		}
-		if q["original_client_id"] != want || q["client_id"] != "" || q["create_time"] != created || q["new_id"] != "9007199254740993" || q["receiver"] != "synthetic-peer" {
+		if q["string_client_id"] != want || q["original_client_id"] != "" || q["client_id"] != "" || q["create_time"] != created || q["new_id"] != "9007199254740993" || q["receiver"] != "synthetic-peer" {
 			t.Error("原始回执被修改")
 			w.WriteHeader(400)
 			return

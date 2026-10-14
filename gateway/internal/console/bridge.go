@@ -189,18 +189,14 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 			return nil, err
 		}
 		out := map[string]string{"id": strconv.FormatUint(receipt.GetNewId(), 10), "duration": strconv.FormatFloat(float64(duration)/1000, 'f', -1, 64)}
-		if client, created, ok := messageability.ReceiptFields(c.Target, receipt.GetNewId()); ok {
-			out["client_id"] = strconv.FormatUint(client, 10)
+		if client, original, created, ok := messageability.ReceiptFields(c.Target, receipt.GetNewId()); ok {
+			if original != "" {
+				out["original_client_id"] = original
+			} else {
+				out["client_id"] = strconv.FormatUint(client, 10)
+			}
 			out["create_time"] = strconv.FormatUint(created, 10)
 			out["account"] = contact.Instance.GetSelf().GetUsername()
-		} else {
-			// 老 core 没有此接口时仍保留发送成功，绝不为补回执重发消息。
-			var original control.RevokeReceipt
-			if err := api.GetCore().Get("/api/message/receipt").WithContext(ctx).Query("receiver", c.Target, "new_id", out["id"]).DoJson(&original); err == nil && original.Account == contact.Instance.GetSelf().GetUsername() && original.OriginalClientID != "" && original.Created != "" {
-				out["original_client_id"] = original.OriginalClientID
-				out["create_time"] = original.Created
-				out["account"] = original.Account
-			}
 		}
 		return out, nil
 	case "revoke":
@@ -226,7 +222,7 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 			if receipt.OriginalClientID != "" {
 				// 字符串 ID 走专用协议字段，不用消息 ID 或当前时间补造回执。
 				var response messageapi.RevokeMessageResponse
-				err := api.GetCore().Post("/api/message/revoke").WithContext(ctx).Body(map[string]any{"receiver": c.Target, "new_id": c.ID, "original_client_id": receipt.OriginalClientID, "create_time": receipt.Created}).DoProto(&response)
+				err := api.GetCore().Post("/api/message/revoke").WithContext(ctx).Body(map[string]any{"receiver": c.Target, "new_id": c.ID, "string_client_id": receipt.OriginalClientID, "create_time": receipt.Created}).DoProto(&response)
 				if err != nil {
 					return nil, err
 				}
