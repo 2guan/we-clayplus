@@ -3,6 +3,7 @@
 // 作者：2guan
 import { useRef, useState } from "react";
 import type { Message } from "./types";
+import { wechatEmojiPaths } from "./wechatEmoji";
 
 // 微信文字表情保留中文可访问名称，用 Unicode 对应表情显示；未识别代码原样保留。
 const faces: Record<string, string> = {
@@ -114,6 +115,18 @@ export function WechatText({ text }: { text: string }) {
     <>
       {text.split(/(\[[^\]\n]{1,12}\])/g).map((part, i) => {
         const name = part.slice(1, -1);
+        if (part.startsWith("[") && wechatEmojiPaths[part]) {
+          return (
+            <img
+              key={i}
+              src={wechatEmojiPaths[part]}
+              alt={part}
+              title={part}
+              className="wechat-inline-emoji"
+              loading="lazy"
+            />
+          );
+        }
         return part.startsWith("[") && faces[name] ? (
           <span
             key={i}

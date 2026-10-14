@@ -4285,6 +4285,8 @@ button.workspace { width: 100%; }
 @media(prefers-reduced-motion:reduce){.voice-message.playing .wechat-voice-waves{animation:none;color:var(--accent)}}
 .wechat-media-unavailable{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-height:52px;padding:8px}
 .wechat-inline-face{font-size:1.2em;vertical-align:middle}
+.wechat-inline-emoji{width:1.35em;height:1.35em;vertical-align:-0.2em;display:inline-block;margin:0 1px;object-fit:contain}
+.wechat-picker-emoji{width:24px;height:24px;object-fit:contain;vertical-align:middle}
 @media(max-width:767px){
   .wechat-payment,.wechat-location{width:min(250px,65vw)}
   .wechat-payment{padding:11px 11px 7px;column-gap:10px}

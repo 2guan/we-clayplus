@@ -6,9 +6,26 @@ import { X, Paperclip, MagnifyingGlass } from "@phosphor-icons/react";
 import type { Contact, PageProps } from "./types";
 import { Modal } from "./ui";
 import { request } from "./api";
+import { wechatEmojiPaths } from "./wechatEmoji";
+
+type EmojiItem = {
+  emoji: string;
+  name: string;
+  path?: string;
+};
+
+// 微信原生表情：使用内置切图，选中后插入如 [微笑] 等微信标准中文表情码。
+const wechatEmojiGroup: { name: string; items: EmojiItem[] } = {
+  name: "微信",
+  items: Object.entries(wechatEmojiPaths).map(([code, path]) => ({
+    emoji: code,
+    name: code.slice(1, -1),
+    path,
+  })),
+};
 
 // 表情数据随前端内嵌，不访问第三方表情服务；选择结果为标准 Unicode 文本。
-const emojiGroups = [
+const unicodeEmojiGroups: { name: string; items: EmojiItem[] }[] = [
   {
     name: "表情",
     items:
@@ -30,12 +47,14 @@ const emojiGroups = [
       "☀️太阳 🌙月亮 ⭐星星 🌈彩虹 🌸花朵 🌹玫瑰 🍀幸运 🌻向日葵 🐱猫 🐶狗 🐼熊猫 🦊狐狸 ☕咖啡 🍵茶 🍰蛋糕 🍎苹果 🍉西瓜 🍻干杯 🎂生日 🎁礼物 📚读书 🎵音乐 🏃跑步 ✈️旅行",
   },
 ].map((group) => ({
-  ...group,
+  name: group.name,
   items: group.items.split(" ").map((item) => {
     const split = item.search(/[\u4e00-\u9fff]/);
     return { emoji: item.slice(0, split), name: item.slice(split) };
   }),
 }));
+
+const emojiGroups = [wechatEmojiGroup, ...unicodeEmojiGroups];
 
 export function EmojiPicker({
   onSelect,
@@ -55,8 +74,14 @@ export function EmojiPicker({
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [onClose]);
-  const items = emojiGroups
-    .filter((group) => query || group.name === category)
+
+  const isWechat = category === "微信" || query.trim().startsWith("[");
+  const searchGroups = isWechat ? [wechatEmojiGroup] : unicodeEmojiGroups;
+  const targetGroups = query
+    ? searchGroups
+    : emojiGroups.filter((group) => group.name === category);
+
+  const items = targetGroups
     .flatMap((group) => group.items)
     .filter(
       (item) =>
@@ -118,7 +143,16 @@ export function EmojiPicker({
             title={item.name}
             onClick={() => onSelect(item.emoji)}
           >
-            {item.emoji}
+            {item.path ? (
+              <img
+                src={item.path}
+                alt={item.name}
+                className="wechat-picker-emoji"
+                loading="lazy"
+              />
+            ) : (
+              item.emoji
+            )}
           </button>
         ))}
       </div>

@@ -83,12 +83,19 @@ test("表情可分类搜索并插入光标，私聊与群聊使用同一列表",
   await expect(picker.locator(".emoji-grid button")).toHaveCount(1);
   await picker.getByRole("button", { name: "表情：咖啡" }).click();
   await expect(input).toHaveValue("你好👍☕世界");
+  await page.getByRole("button", { name: "插入表情" }).click();
+  await picker.getByRole("button", { name: "微信", exact: true }).click();
+  await picker.getByRole("button", { name: "表情：微笑", exact: true }).click();
+  await expect(input).toHaveValue("你好👍☕[微笑]世界");
   expect(await input.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(
     "none",
   );
   await page.getByRole("button", { name: "发送", exact: true }).click();
   await expect(
-    page.locator(".message.self").filter({ hasText: "你好👍☕世界" }),
+    page.locator(".message.self").filter({ hasText: "你好👍☕" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".message.self img.wechat-inline-emoji[alt='[微笑]']"),
   ).toBeVisible();
   const state = await (await request.get("/api/state")).json();
   const group = state.contacts.find(
