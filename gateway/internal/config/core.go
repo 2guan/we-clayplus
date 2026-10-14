@@ -13,6 +13,7 @@ import (
 // CoreConfig 开启由 Run 管理的 core；不设置 Config.Core 则连接外部 core。
 // Version 必须固定为实际发布的 tag；不会自动升级到 latest。
 type CoreConfig struct {
+	OSS              *OSSConfig    `toml:"oss"`        // 非 nil 时从私有 OSS 下载；不回退 GitHub。
 	Repository       string        `toml:"repository"` // 默认 we-clay/core-release。
 	Version          string        `toml:"version"`
 	DeviceName       string        `toml:"device_name"`       // 可选：启动 core 时设置显示名称；留空沿用保存值。
@@ -66,10 +67,22 @@ func (c CoreConfig) Resolve() (CoreConfig, error) {
 	if c.DataDir, err = filepath.Abs(c.DataDir); err != nil {
 		return c, err
 	}
+	if c.OSS != nil {
+		resolved, e := c.OSS.Resolve()
+		if e != nil {
+			return c, e
+		}
+		c.OSS = &resolved
+	}
 	return c, c.Validate()
 }
 
 func (c CoreConfig) Validate() error {
+	if c.OSS != nil {
+		if err := c.OSS.Validate(); err != nil {
+			return err
+		}
+	}
 	if !repositoryPattern.MatchString(c.Repository) {
 		return fmt.Errorf("core.repository 必须为 owner/repo")
 	}

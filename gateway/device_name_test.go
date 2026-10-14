@@ -14,6 +14,8 @@ import (
 func TestIndependentCoreDeviceNameArgumentAndRestartRequirement(t *testing.T) {
 	cfg := managedFixture(t, "normal")
 	cfg.Core.KeepAlive = true
+	cfg.Core.StartupTimeout = 15 * time.Second
+	cfg.Core.LoginTimeout = 15 * time.Second
 	cfg.Core.DeviceName = "我的 Mac - 机器人"
 	cleanupIndependent(t, cfg)
 	independentRound(t, cfg)

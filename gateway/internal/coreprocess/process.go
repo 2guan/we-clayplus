@@ -108,7 +108,7 @@ func childEnv(env []string, token, githubEnv string) []string {
 	out := make([]string, 0, len(env)+1)
 	for _, entry := range env {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(key, "WE_CLAY_GATEWAY_CORE_TOKEN") || strings.EqualFold(key, githubEnv) || strings.EqualFold(key, "GH_TOKEN") || strings.EqualFold(key, "GITHUB_TOKEN") {
+		if strings.EqualFold(key, "OSS_ACCESS_KEY_ID") || strings.EqualFold(key, "OSS_ACCESS_KEY_SECRET") || strings.EqualFold(key, "OSS_SESSION_TOKEN") || strings.EqualFold(key, "SDK_SOURCE_TOKEN") || strings.EqualFold(key, "WE_CLAY_GATEWAY_CORE_TOKEN") || strings.EqualFold(key, githubEnv) || strings.EqualFold(key, "GH_TOKEN") || strings.EqualFold(key, "GITHUB_TOKEN") {
 			continue
 		}
 		out = append(out, entry)

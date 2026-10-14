@@ -33,6 +33,9 @@ type Config = config.Config
 // CoreConfig 指定下载版本和本地目录；设置 Config.Core 后由 Run 管理 core 生命周期。
 type CoreConfig = config.CoreConfig
 
+// OSSConfig 指定私有 OSS 中的 core 下载位置。
+type OSSConfig = config.OSSConfig
+
 // ConnectionState 只反映 core 的登录状态；不代表 gateway 缓存与插件已就绪。
 type ConnectionState = coreprocess.ConnectionState
 

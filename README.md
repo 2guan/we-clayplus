@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.5.5 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.6.0 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.5.5
+go get github.com/we-clay/we-clay@v0.6.0
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -73,8 +73,8 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ## 快速开始
 
-**准备：** Go 1.26+，以及 `core-release` 中已发布的版本。
-本模块公开，可直接通过 `go get` 安装；core 源码保持私有，接入时不需要它。
+**准备：** Go 1.26+、私有 we-clay 仓库读取权限，以及已发布 core 的 OSS 只读凭据。接入时不需要 core 源码。
+安装私有模块前设置 `GOPRIVATE=github.com/we-clay/*` 并配置 GitHub 的 Git 读取凭据；凭据不要写进 go.mod 或仓库。
 
 ### 1 · 添加依赖
 
@@ -82,7 +82,8 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ```sh
 go mod init example.com/my-wechat-bot
-go get github.com/we-clay/we-clay@v0.5.5
+go env -w GOPRIVATE=github.com/we-clay/*
+go get github.com/we-clay/we-clay@v0.6.0
 ```
 
 ### 2 · 调用 Run
@@ -112,6 +113,7 @@ func main() {
     err := gateway.Run(ctx, gateway.Config{
         Core: &gateway.CoreConfig{
             Version: os.Getenv("WE_CLAY_CORE_VERSION"),
+            OSS: &gateway.OSSConfig{Bucket: "weclay", Region: "cn-beijing", Prefix: "core"},
             DataDir: os.Getenv("WE_CLAY_DATA_DIR"), // 必填：固定绝对路径；升级填写原账号目录
         },
     }, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{
@@ -140,11 +142,12 @@ func main() {
 }
 ```
 
-将 `WE_CLAY_CORE_VERSION` 设为 [core-release](https://github.com/we-clay/core-release/releases) 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
+将 `WE_CLAY_CORE_VERSION` 设为私有 OSS 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
 
 ```sh
-# macOS / Linux：固定使用已发布的 core v0.3.0
-export WE_CLAY_CORE_VERSION='v0.3.0'
+# macOS / Linux：先确认 Actions 已完成发布 core v0.3.3
+export WE_CLAY_CORE_VERSION='v0.3.3'
+# 通过本机受信任的环境配置提供 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（只读权限）
 # 填你已有账号目录的绝对路径；新部署才选择新目录
 export WE_CLAY_DATA_DIR='/absolute/path/to/existing/core-data'
 go run .
@@ -158,9 +161,9 @@ go run .
 <summary>缓存、私有附件与已有 core</summary>
 
 - 二进制保存在 `runtime/core-bin/`，账号状态和 core 日志保存在显式指定的 `Core.DataDir`，均应排除 Git。
-- Release 仓库为私有时，通过 `WE_CLAY_GITHUB_TOKEN` 提供读取权限；不要把令牌写进配置文件。
+- 私有 OSS 使用只读环境凭据；详细配置见 [OSS 下载](docs/OSS下载.md)。旧 GitHub 下载方式仍使用 `WE_CLAY_GITHUB_TOKEN`。
 - 已独立运行 core 时，省略 `Core`，改填 `CoreAddress`；该模式要求 core 先完成登录，Run 不管理其进程。
-- 版本必须已经发布，不能填 `latest`。Release 未发布时，Run 会明确返回下载错误。
+- 版本必须已经发布，不能填 `latest`。OSS 清单尚未发布时，Run 会明确返回下载错误。
 - 附件格式与发布步骤见 [core 发布指南](docs/core发布.md)。
 
 </details>
@@ -220,7 +223,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.5.5
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.6.0
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -251,6 +254,14 @@ flowchart LR
 
 gateway 与 core 统一使用 gRPC，默认端口 `8088`。浏览器登录页面由 core 的 HTTP `8086` 提供。
 协议、确认语义及重连策略见[gRPC 通信](docs/gRPC通信.md)。
+
+## 多套独立运行
+
+同一个程序可以启动多次，每套各用独立的 core gRPC 端口、登录页端口和账号/gateway 数据目录。8086/8088 只是默认值，无需新增实例管理 API。见[两套完整配置与启动示例](docs/多套运行.md)。
+
+## 私有 OSS 分发
+
+`Core.OSS` 指定私有 Bucket，Run 自动签名下载固定版本并验证 SHA-256；凭据仅从环境读取。见[OSS 配置、权限与升级](docs/OSS下载.md)。
 
 ## 文档
 
@@ -296,7 +307,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **v0.5.5 增加独立 core 与表情包下载**：`KeepAlive` 保留 core 进程，`StopCore` 显式停止；`Message.Download` 统一处理微信表情 CDN。见[独立 core](docs/独立core.md)与[媒体下载](docs/媒体下载.md)。
 
-**源码待发布变更：** 托管模式现在要求 `Core.DataDir` 为固定绝对路径，支持结构化 core 错误，系统发送者缓存未命中时仍保留用户名。设备/限制修正需要配套新 core，旧 Release 不会自动升级。见[设备与限制处理](docs/设备与限制处理.md)。
+**v0.6.0 更新：** 支持私有 OSS 下载、设备名称配置和会话失效通知/显式重登。多套程序通过不同端口与目录独立运行。 托管模式现在要求 `Core.DataDir` 为固定绝对路径，支持结构化 core 错误，系统发送者缓存未命中时仍保留用户名。设备/限制修正需要配套新 core，旧 Release 不会自动升级。见[设备与限制处理](docs/设备与限制处理.md)。
 
 **v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
@@ -371,8 +382,8 @@ core v0.3.0 的 macOS ARM64 附件已验证下载、校验、启动、gRPC 鉴�
 
 ## 掉线通知与重新登录
 
-`Handlers.OnConnectionChanged` 接收 core 的登录状态变化；微信会话离线后，Run 返回 `gateway.ErrLoginRequired`，旧 Client 停用。重新连接时由 gateway 请求 core 完成重登，应用无需实现微信认证。详见[三层职责与完整流程](docs/掉线通知与重新登录.md)。当前为本地开发改动，尚未发布到 Go 模块版本。
+`Handlers.OnConnectionChanged` 接收 core 的登录状态变化；微信会话离线后，Run 返回 `gateway.ErrLoginRequired`，旧 Client 停用。重新连接时由 gateway 请求 core 完成重登，应用无需实现微信认证。详见[三层职责与完整流程](docs/掉线通知与重新登录.md)。需要 we-clay v0.6.0 与 core v0.3.3 配套使用。
 
-## 自定义设备名称（开发中）
+## 自定义设备名称
 
-通过 `gateway.CoreConfig.DeviceName` 或 `[core].device_name` 指定名称，例如“我的 Mac 机器人”。留空沿用已有设备名称；更改后重启 core 生效，设备 ID 与账号目录保持不变。此配置尚未发布，需使用配套的新 gateway/core 构建。见[设备名称配置](docs/运行指南.md#自定义设备名称)。
+通过 `gateway.CoreConfig.DeviceName` 或 `[core].device_name` 指定名称，例如“我的 Mac 机器人”。留空沿用已有设备名称；更改后重启 core 生效，设备 ID 与账号目录保持不变。需使用 we-clay v0.6.0 与 core v0.3.3 配套构建。见[设备名称配置](docs/运行指南.md#自定义设备名称)。

@@ -23,6 +23,7 @@ type independentRecord struct {
 	PID          int    `json:"pid"`
 	Stamp        string `json:"process_stamp"`
 	Token        string `json:"token"`
+	Source       string `json:"source,omitempty"`
 	Repository   string `json:"repository"`
 	Version      string `json:"version"`
 	Address      string `json:"address"`
@@ -134,7 +135,7 @@ func probe(ctx context.Context, cfg config.Config) error {
 }
 
 func matchIndependent(r *independentRecord, cfg config.Config) error {
-	if r.Repository != cfg.Core.Repository || r.Version != cfg.Core.Version || r.Address != cfg.CoreAddress || r.LoginAddress != cfg.Core.LoginAddress || r.Encrypted != cfg.Core.StorageEncrypted {
+	if r.Source != ossSource(*cfg.Core) || r.Repository != cfg.Core.Repository || r.Version != cfg.Core.Version || r.Address != cfg.CoreAddress || r.LoginAddress != cfg.Core.LoginAddress || r.Encrypted != cfg.Core.StorageEncrypted {
 		return errors.New("已有独立 core 的版本或地址配置不同；请先用原配置显式 StopCore，再启动新配置")
 	}
 	if cfg.CoreToken != "" && cfg.CoreToken != r.Token {
@@ -193,7 +194,7 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		p.Stop()
 		return cfg, errors.New("无法确认新 core 的进程身份，已停止新进程")
 	}
-	r = &independentRecord{Stamp: stamp, PID: p.cmd.Process.Pid, Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
+	r = &independentRecord{Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
 	if err = writeIndependent(cfg.Core.DataDir, *r); err != nil {
 		p.Stop()
 		return cfg, errors.New("保存独立 core 进程记录失败，已停止新进程")

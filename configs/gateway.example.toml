@@ -18,3 +18,12 @@ plugins_dir = "./runtime/gateway/plugins"
 # stage = "auto"
 # github_token_env = "WE_CLAY_GITHUB_TOKEN"
 # storage_encrypted = false
+
+# 私有 OSS（启用后下载不会访问 GitHub；账号目录等 [core] 配置需一并启用）
+# [core.oss]
+# bucket = "weclay"
+# region = "cn-beijing"
+# prefix = "core"
+# endpoint = "https://oss-cn-beijing.aliyuncs.com"
+# cname = false
+# 凭据只从 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / 可选 OSS_SESSION_TOKEN 环境读取。
