@@ -33,3 +33,7 @@ GitHub 下载令牌只从环境读取，不传给附件重定向地址或 core�
 ## 私有 OSS
 
 OSS 下载凭据仅从环境读取；不传给 core，不写入配置与缓存回执。用户侧 RAM 权限仅需 weclay/core/* 的 GetObject。Actions 写入凭据不得分发给客户端。下载通过 HTTPS，拒绝重定向以防签名/STS 票据外泄，记录错误时不输出原始 OSS 响应或签名 URL。
+
+## core 运行授权
+
+运行授权 Key 只从所选环境变量读取，以 `WE_CLAY_AUTH_KEY` 传入 core，不进入 argv、TOML 或进程记录。独立进程记录仅保存单向摘要用于提示 Key 变更；该摘要不能替代服务端授权。授权校验和续期均由 core 完成。它与 OSS/GitHub 下载凭据、本机 API Token 分离。见 docs/运行授权.md。

@@ -13,8 +13,9 @@ import (
 // CoreConfig 开启由 Run 管理的 core；不设置 Config.Core 则连接外部 core。
 // Version 必须固定为实际发布的 tag；不会自动升级到 latest。
 type CoreConfig struct {
-	OSS              *OSSConfig    `toml:"oss"`        // 非 nil 时从私有 OSS 下载；不回退 GitHub。
-	Repository       string        `toml:"repository"` // 默认 we-clay/core-release。
+	AuthKeyEnv       string        `toml:"auth_key_env"` // 运行授权 Key 的环境变量名；默认 WE_CLAY_AUTH_KEY。
+	OSS              *OSSConfig    `toml:"oss"`          // 非 nil 时从私有 OSS 下载；不回退 GitHub。
+	Repository       string        `toml:"repository"`   // 默认 we-clay/core-release。
 	Version          string        `toml:"version"`
 	DeviceName       string        `toml:"device_name"`       // 可选：启动 core 时设置显示名称；留空沿用保存值。
 	KeepAlive        bool          `toml:"keep_alive"`        // 独立运行：Run 退出保留 core，后续 Run 复用。
@@ -35,6 +36,9 @@ var envPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 func (c CoreConfig) Resolve() (CoreConfig, error) {
 	if c.KeepAlive && !filepath.IsAbs(c.DataDir) {
 		return c, fmt.Errorf("keep_alive 模式必须显式填写固定的绝对 core.data_dir")
+	}
+	if c.AuthKeyEnv == "" {
+		c.AuthKeyEnv = "WE_CLAY_AUTH_KEY"
 	}
 	if c.Repository == "" {
 		c.Repository = "we-clay/core-release"
@@ -78,6 +82,16 @@ func (c CoreConfig) Resolve() (CoreConfig, error) {
 }
 
 func (c CoreConfig) Validate() error {
+	if !envPattern.MatchString(c.AuthKeyEnv) {
+		return fmt.Errorf("core.auth_key_env 不是有效环境变量名")
+	}
+	switch strings.ToUpper(c.AuthKeyEnv) {
+	case "OSS_ACCESS_KEY_ID", "OSS_ACCESS_KEY_SECRET", "OSS_SESSION_TOKEN", "SDK_SOURCE_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "WE_CLAY_GATEWAY_CORE_TOKEN", "WE_CLAY_CORE_TOKEN":
+		return fmt.Errorf("core.auth_key_env 不能复用下载凭据或本机 API 令牌的环境变量")
+	}
+	if strings.EqualFold(c.AuthKeyEnv, c.GitHubTokenEnv) {
+		return fmt.Errorf("授权 Key 与 GitHub 下载令牌必须使用不同环境变量")
+	}
 	if c.OSS != nil {
 		if err := c.OSS.Validate(); err != nil {
 			return err

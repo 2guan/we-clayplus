@@ -8,6 +8,7 @@ plugins_dir = "./runtime/gateway/plugins"
 # 自动下载/启动：取消下方注释，并将版本替换为已发布的 core tag。
 # 保持整个 [core] 段注释时，连接已有 core。
 # [core]
+# auth_key_env = "WE_CLAY_AUTH_KEY" # 待发布的运行授权：只填环境变量名，不能填 Key
 # repository = "we-clay/core-release"
 # version = "<已发布的 core tag>"
 # keep_alive = false # true 时必须将 data_dir 改为固定的绝对账号目录

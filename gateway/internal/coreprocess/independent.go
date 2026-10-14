@@ -3,6 +3,7 @@ package coreprocess
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,17 +21,18 @@ const independentFile = "gateway-core.json"
 
 // 位于账号私有目录；token 从不输出到日志或命令参数。
 type independentRecord struct {
-	PID          int    `json:"pid"`
-	Stamp        string `json:"process_stamp"`
-	Token        string `json:"token"`
-	Source       string `json:"source,omitempty"`
-	Repository   string `json:"repository"`
-	Version      string `json:"version"`
-	Address      string `json:"address"`
-	LoginAddress string `json:"login_address"`
-	Binary       string `json:"binary"`
-	DeviceName   string `json:"device_name,omitempty"` // 启动时明确指定的名称，不读取 core 的设备文件。
-	Encrypted    bool   `json:"storage_encrypted"`
+	AuthorizationID string `json:"authorization_id,omitempty"` // 仅 Key 摘要，变更时要求重启；不是认证凭据。
+	PID             int    `json:"pid"`
+	Stamp           string `json:"process_stamp"`
+	Token           string `json:"token"`
+	Source          string `json:"source,omitempty"`
+	Repository      string `json:"repository"`
+	Version         string `json:"version"`
+	Address         string `json:"address"`
+	LoginAddress    string `json:"login_address"`
+	Binary          string `json:"binary"`
+	DeviceName      string `json:"device_name,omitempty"` // 启动时明确指定的名称，不读取 core 的设备文件。
+	Encrypted       bool   `json:"storage_encrypted"`
 }
 
 func readIndependent(dir string) (*independentRecord, error) {
@@ -159,6 +161,9 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		if err = matchIndependent(r, cfg); err != nil {
 			return cfg, err
 		}
+		if id := authorizationIdentity(cfg.Core.AuthKeyEnv); id != "" && id != r.AuthorizationID {
+			return cfg, errors.New("运行授权 Key 与现有 core 不同；请先 StopCore 再启动，使新授权生效")
+		}
 		if cfg.Core.DeviceName != "" && cfg.Core.DeviceName != r.DeviceName {
 			return cfg, errors.New("设备名称配置与已运行 core 不同；请先 StopCore，再启动以应用新名称（账号目录保持不变）")
 		}
@@ -194,7 +199,7 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		p.Stop()
 		return cfg, errors.New("无法确认新 core 的进程身份，已停止新进程")
 	}
-	r = &independentRecord{Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
+	r = &independentRecord{AuthorizationID: authorizationIdentity(cfg.Core.AuthKeyEnv), Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
 	if err = writeIndependent(cfg.Core.DataDir, *r); err != nil {
 		p.Stop()
 		return cfg, errors.New("保存独立 core 进程记录失败，已停止新进程")
@@ -286,4 +291,16 @@ func WaitIndependent(ctx context.Context, cfg config.Config) error {
 			}
 		}
 	}
+}
+
+func authorizationIdentity(env string) string {
+	if env == "" {
+		env = "WE_CLAY_AUTH_KEY"
+	}
+	key := os.Getenv(env)
+	if key == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }

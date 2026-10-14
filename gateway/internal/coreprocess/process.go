@@ -66,7 +66,7 @@ func Start(ctx context.Context, binary string, cfg config.Config) (*Process, err
 		return nil, err
 	}
 	p.cmd.Stdout, p.cmd.Stderr = log, log
-	p.cmd.Env = childEnv(os.Environ(), cfg.CoreToken, c.GitHubTokenEnv)
+	p.cmd.Env = authorizationEnv(childEnv(os.Environ(), cfg.CoreToken, c.GitHubTokenEnv), c.AuthKeyEnv)
 	if err = p.cmd.Start(); err != nil {
 		log.Close()
 		return nil, fmt.Errorf("启动 core 失败: %w", err)
@@ -139,4 +139,24 @@ func (p *Process) Stop() {
 			<-p.done
 		}
 	})
+}
+
+// 只传给 core 固定名称；Key 不出现在 argv、TOML 或进程记录。
+func authorizationEnv(env []string, keyEnv string) []string {
+	if keyEnv == "" {
+		keyEnv = "WE_CLAY_AUTH_KEY"
+	}
+	key := os.Getenv(keyEnv)
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.EqualFold(name, keyEnv) || strings.EqualFold(name, "WE_CLAY_AUTH_KEY") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	if key != "" {
+		out = append(out, "WE_CLAY_AUTH_KEY="+key)
+	}
+	return out
 }

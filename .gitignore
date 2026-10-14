@@ -30,3 +30,9 @@ go.work.sum
 gateway-core.json
 gateway-core.lock
 .gateway-core-*
+
+# 在线授权私有数据
+core-authorization/
+auth-state.json
+signing.key
+issued-keys/
