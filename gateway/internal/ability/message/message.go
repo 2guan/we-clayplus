@@ -72,6 +72,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 	msg = proto.Clone(msg).(*sdk.Message)
 	var result sdk.Send_Response
 	var clientID uint64
+	var stringClientID string
 	receiver := msg.GetReceiver().GetUsername()
 
 	switch msg.GetType().GetCode() {
@@ -112,7 +113,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 		msg.Content = data.GetFilename()
 	case sdk.TypeImage.Code:
 		data := msg.GetImage()
@@ -126,7 +128,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = resp.GetCreateTime()
-		clientID = numericClientID(resp.GetClientId().GetValue())
+		stringClientID = resp.GetClientId().GetValue()
+		clientID = numericClientID(stringClientID)
 		result.Media = &sdk.Media{
 			Key:  resp.GetAesKey(),
 			Url:  resp.GetFileId(),
@@ -148,7 +151,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = resp.GetCreateTime()
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 		result.Media = &sdk.Media{
 			Url:  resp.GetClientId(),
 			Size: uint32(resp.GetSize()),
@@ -164,7 +168,12 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			return nil, err
 		}
 		result.NewId = resp.GetNewId()
-		//result.CreateTime = resp.CreateTime
+		// core 使用请求的秒级时间作视频 ClientId，且校验了回执回显。
+		// 恢复的是原始请求值，不生成新的撤回 ID 或时间。
+		if id, parseErr := strconv.ParseUint(resp.GetClientId(), 10, 32); parseErr == nil && id != 0 {
+			clientID = id
+			result.CreateTime = uint32(id)
+		}
 		result.Media = &sdk.Media{
 			Key:  resp.GetAesKey(),
 			Url:  resp.GetExtendXml(),
@@ -183,6 +192,11 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			item := resp.GetResult()[0]
 			result.NewId = item.GetNewId()
 			result.Media = &sdk.Media{Md5: item.GetMd5(), Size: uint32(item.GetSize())}
+			stringClientID = resp.GetRevokeClientId()
+			if resp.GetRevokeCreateTime() > 0 && resp.GetRevokeCreateTime() <= uint64(^uint32(0)) {
+				result.CreateTime = uint32(resp.GetRevokeCreateTime())
+				clientID = numericClientID(stringClientID)
+			}
 		}
 	case sdk.TypeLocation.Code:
 		data := msg.GetLocation()
@@ -212,7 +226,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 
 	default:
 		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Send: type=%d", msg.GetType().GetCode()))
@@ -221,6 +236,9 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		return nil, errors.New("消息回执缺少消息 ID，结果未确认，请勿自动重试")
 	}
 	canRevoke := a.receipts.remember(receiver, result.NewId, clientID, uint64(result.CreateTime))
+	if !canRevoke {
+		canRevoke = a.receipts.rememberString(receiver, result.NewId, stringClientID, uint64(result.CreateTime))
+	}
 	slog.Info(fmt.Sprintf("[%s] -> %s : %s", msg.GetType().GetDesc(), msg.GetReceiver().GetNickname(), msg.Content))
 
 	// 自动撤回绑定当前连接和 context，不能在下一次 Run 操作另一个账号。
@@ -232,6 +250,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		scoped := api.New(conn)
 		ctx := conn.Context()
 		newID, created := result.NewId, result.CreateTime
+		originalStringID := stringClientID
 		timer := time.NewTimer(time.Duration(msg.Timestamp) * time.Second)
 		go func() {
 			defer timer.Stop()
@@ -243,7 +262,13 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			if ctx.Err() != nil {
 				return
 			}
-			if _, err := scoped.Revoke(receiver, newID, clientID, uint64(created)); err != nil {
+			var err error
+			if clientID != 0 {
+				_, err = scoped.Revoke(receiver, newID, clientID, uint64(created))
+			} else {
+				_, err = scoped.RevokeWithClientID(receiver, newID, originalStringID, uint64(created))
+			}
+			if err != nil {
 				slog.Warn("消息撤回失败", "err", err)
 			}
 		}()
@@ -347,7 +372,13 @@ func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response
 	if !ok {
 		return nil, sdk.ErrRevokeReceiptUnavailable
 	}
-	resp, err := a.api.Revoke(receiver, newMsgId, receipt.clientID, receipt.created)
+	var resp *api.RevokeMessageResponse
+	var err error
+	if receipt.clientID != 0 {
+		resp, err = a.api.Revoke(receiver, newMsgId, receipt.clientID, receipt.created)
+	} else {
+		resp, err = a.api.RevokeWithClientID(receiver, newMsgId, receipt.stringClientID, receipt.created)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -37,6 +37,8 @@ type MessageService interface {
 	ForwardFile(receiver, xml string) (*SendAppMessageResponse, error)
 	// Revoke 撤回消息
 	Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64) (*RevokeMessageResponse, error)
+	// RevokeWithClientID 使用媒体发送时的原始字符串客户端 ID。
+	RevokeWithClientID(receiver string, newMsgId uint64, clientMsgId string, timestamp uint64) (*RevokeMessageResponse, error)
 	// DownloadImg 下载消息图片
 	DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error)
 	// DownloadVideo 下载视频

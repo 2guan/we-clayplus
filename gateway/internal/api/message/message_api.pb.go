@@ -575,13 +575,16 @@ func (x *UploadVoiceResponse) GetNewId() uint64 {
 
 // UploadEmojiResponse 上传表情响应（镜像 we-clay.message.UploadEmojiResponse）
 type UploadEmojiResponse struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	BaseResponse  *base.BaseResponse            `protobuf:"bytes,1,opt,name=base_response,json=baseResponse,proto3,oneof" json:"base_response,omitempty"` // 基础响应
-	Count         *int32                        `protobuf:"varint,2,opt,name=count,proto3,oneof" json:"count,omitempty"`                                  // emoji 项目数量
-	Result        []*UploadEmojiResponse_Result `protobuf:"bytes,3,rep,name=result,proto3" json:"result,omitempty"`                                       // emoji 上传响应列表
-	ActionFlag    *uint32                       `protobuf:"varint,4,opt,name=action_flag,json=actionFlag,proto3,oneof" json:"action_flag,omitempty"`      // 操作标志
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState        `protogen:"open.v1"`
+	BaseResponse *base.BaseResponse            `protobuf:"bytes,1,opt,name=base_response,json=baseResponse,proto3,oneof" json:"base_response,omitempty"` // 基础响应
+	Count        *int32                        `protobuf:"varint,2,opt,name=count,proto3,oneof" json:"count,omitempty"`                                  // emoji 项目数量
+	Result       []*UploadEmojiResponse_Result `protobuf:"bytes,3,rep,name=result,proto3" json:"result,omitempty"`                                       // emoji 上传响应列表
+	ActionFlag   *uint32                       `protobuf:"varint,4,opt,name=action_flag,json=actionFlag,proto3,oneof" json:"action_flag,omitempty"`      // 操作标志
+	// core 从本次发送请求返回的撤回元数据；不是微信 UploadEmojiResponse 的字段。
+	RevokeClientId   *string `protobuf:"bytes,5,opt,name=revoke_client_id,json=revokeClientId,proto3,oneof" json:"revoke_client_id,omitempty"`
+	RevokeCreateTime *uint64 `protobuf:"varint,6,opt,name=revoke_create_time,json=revokeCreateTime,proto3,oneof" json:"revoke_create_time,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UploadEmojiResponse) Reset() {
@@ -638,6 +641,20 @@ func (x *UploadEmojiResponse) GetResult() []*UploadEmojiResponse_Result {
 func (x *UploadEmojiResponse) GetActionFlag() uint32 {
 	if x != nil && x.ActionFlag != nil {
 		return *x.ActionFlag
+	}
+	return 0
+}
+
+func (x *UploadEmojiResponse) GetRevokeClientId() string {
+	if x != nil && x.RevokeClientId != nil {
+		return *x.RevokeClientId
+	}
+	return ""
+}
+
+func (x *UploadEmojiResponse) GetRevokeCreateTime() uint64 {
+	if x != nil && x.RevokeCreateTime != nil {
+		return *x.RevokeCreateTime
 	}
 	return 0
 }
@@ -1558,13 +1575,15 @@ const file_api_message_message_api_proto_rawDesc = "" +
 	"\t_end_flagB\x10\n" +
 	"\x0e_base_responseB\x0e\n" +
 	"\f_cancel_flagB\t\n" +
-	"\a_new_id\"\xde\x03\n" +
+	"\a_new_id\"\xec\x04\n" +
 	"\x13UploadEmojiResponse\x12@\n" +
 	"\rbase_response\x18\x01 \x01(\v2\x16.api.base.BaseResponseH\x00R\fbaseResponse\x88\x01\x01\x12\x19\n" +
 	"\x05count\x18\x02 \x01(\x05H\x01R\x05count\x88\x01\x01\x12?\n" +
 	"\x06result\x18\x03 \x03(\v2'.api.message.UploadEmojiResponse.ResultR\x06result\x12$\n" +
 	"\vaction_flag\x18\x04 \x01(\rH\x02R\n" +
-	"actionFlag\x88\x01\x01\x1a\xd6\x01\n" +
+	"actionFlag\x88\x01\x01\x12-\n" +
+	"\x10revoke_client_id\x18\x05 \x01(\tH\x03R\x0erevokeClientId\x88\x01\x01\x121\n" +
+	"\x12revoke_create_time\x18\x06 \x01(\x04H\x04R\x10revokeCreateTime\x88\x01\x01\x1a\xd6\x01\n" +
 	"\x06Result\x12\x17\n" +
 	"\x04code\x18\x01 \x01(\x05H\x00R\x04code\x88\x01\x01\x12\x1b\n" +
 	"\x06offset\x18\x02 \x01(\x05H\x01R\x06offset\x88\x01\x01\x12\x17\n" +
@@ -1580,7 +1599,9 @@ const file_api_message_message_api_proto_rawDesc = "" +
 	"\a_new_idB\x10\n" +
 	"\x0e_base_responseB\b\n" +
 	"\x06_countB\x0e\n" +
-	"\f_action_flag\"\xc7\x04\n" +
+	"\f_action_flagB\x13\n" +
+	"\x11_revoke_client_idB\x15\n" +
+	"\x13_revoke_create_time\"\xc7\x04\n" +
 	"\x16SendAppMessageResponse\x12@\n" +
 	"\rbase_response\x18\x01 \x01(\v2\x16.api.base.BaseResponseH\x00R\fbaseResponse\x88\x01\x01\x12\x1a\n" +
 	"\x06app_id\x18\x02 \x01(\tH\x01R\x05appId\x88\x01\x01\x12\x1b\n" +

@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.0 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.1 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.7.0
+go get github.com/we-clay/we-clay@v0.7.1
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -87,7 +87,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.7.0
+go get github.com/we-clay/we-clay@v0.7.1
 ```
 
 ### 2 · 调用 Run
@@ -149,8 +149,8 @@ func main() {
 将 `WE_CLAY_CORE_VERSION` 设为私有 OSS 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
 
 ```sh
-# macOS / Linux：先确认 Actions 已完成发布 core v0.4.0
-export WE_CLAY_CORE_VERSION='v0.4.0'
+# macOS / Linux：先确认 Actions 已完成发布 core v0.4.1
+export WE_CLAY_CORE_VERSION='v0.4.1'
 # 通过本机受信任的环境配置提供 WE_CLAY_AUTH_KEY（运行授权 Key）
 # 通过本机受信任的环境配置提供 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（只读权限）
 # 填你已有账号目录的绝对路径；新部署才选择新目录
@@ -202,7 +202,7 @@ _, err = client.Message.Revoke(receiver, sent.GetNewId())
 return err
 ```
 
-以上片段放在返回 `error` 的业务函数或回调中。**v0.5.1 修复了 v0.5.0 撤回缺少回执字段导致的 400**；gateway 自动保存和传递原始回执。重启或回执缺失后不能仅凭消息 ID 撤回，详见[撤回示例与限制](docs/直接接入.md#发送后撤回完整函数)。
+以上片段放在返回 `error` 的业务函数或回调中。**v0.7.1 搭配 core v0.4.1** 已在 Mac 模式真机验证文字、位置、名片、图片、语音、视频、文件、链接及动态表情包的发送后撤回。gateway 自动保存和传递原始回执。重启或回执缺失后不能仅凭消息 ID 撤回；微信内置小表情可以作为 `[旺柴][破涕为笑]` 这样的文字发送并按文字消息撤回。详见[撤回示例与限制](docs/直接接入.md#发送后撤回完整函数)。
 
 ### 5 · 可选：加入插件
 
@@ -228,7 +228,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.0
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.1
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -314,6 +314,8 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **v0.7.0 更新：** 接入 core 运行授权 Key、支持每套实例选择不同环境变量，并检测独立 core 的 Key 变更。详见[运行授权](docs/运行授权.md)。
 
+**v0.7.1 更新：** 补齐媒体撤回所需的原始回执；搭配 core v0.4.1，文字、位置、名片、图片、语音、视频、文件、链接、动态表情包均完成发送后撤回的手机验收。
+
 **v0.6.0 更新：** 支持私有 OSS 下载、设备名称配置和会话失效通知/显式重登。多套程序通过不同端口与目录独立运行。 托管模式现在要求 `Core.DataDir` 为固定绝对路径，支持结构化 core 错误，系统发送者缓存未命中时仍保留用户名。设备/限制修正需要配套新 core，旧 Release 不会自动升级。见[设备与限制处理](docs/设备与限制处理.md)。
 
 **v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
@@ -353,7 +355,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 | 领域 | 已有证据与剩余限制 |
 | --- | --- |
-| 消息 | 文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；部分媒体仅回执或格式校验。 |
+| 消息 | 文字/图片/语音/视频/文件、@、链接、名片、位置及转发；上述九类发送后撤回已逐项手机验收，转发消息的撤回仍需单独验证。 |
 | 联系人 | 查询、保留好友关系的备注修改、群来源好友申请及接受申请已在历史 Mac 会话读回；GetOwner 为本地配置查询。 |
 | 群聊 | 建群、查询、邀请及入群读回、群名/公告/备注/通讯录保存、设置管理员有历史验收；缓存和适配层仍需当前版本真机复验。 |
 | 朋友圈 | 历史通过纯文字/单图发布、列表/详情、点赞/取消点赞及同步；评论与回复已接通，待真机验收；其他发布类型和部分权限参数未完整验证。 |
@@ -369,7 +371,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **消息类型也有边界：**
 
-- 已接通文字、@、图片、语音、视频、文件、链接、位置、表情；名片使用 `client.SendCard`。历史上表情和“正在输入”仅收到成功回执，未完整手机验收。
+- 已接通文字、@、图片、语音、视频、文件、链接、位置、动态表情包；名片使用 `client.SendCard`。动态表情包及内置小表情的发送和撤回已手机确认；“正在输入”仍仅收到成功回执，未完整手机验收。
 - 转发支持收到的图片、视频和文件；其他已支持发送的类型可按模型重发。下载支持图片、视频、语音和文件。收到的文件为 `TypeAppFileAttach`，发送本地文件为 `TypeFile`。
 - 小文件发送/转发曾在手机确认可打开；图片与文件下载做过字节校验，视频做过解码检查，语音下载仅检查长度与 SILK 格式。更大的附件及各种客户端组合仍待复验。
 - 通用应用消息、聊天记录、音乐等未验证发送类型返回占位错误。朋友圈纯文字/单图历史发布成功；朋友圈视频上传曾失败，当前保留占位。
