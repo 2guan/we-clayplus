@@ -152,29 +152,57 @@ textarea {
   max-width: 100%;
   transition:
     border-color 0.15s,
-    box-shadow 0.15s;
+    background-color 0.15s;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+select,
+textarea {
+  appearance: none;
+  background: var(--input);
 }
 input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: none;
 }
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
 input::placeholder,
 textarea::placeholder {
   color: var(--muted);
+}
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  background-color: var(--input) !important;
+  -webkit-box-shadow: 0 0 0 1000px var(--input) inset;
+  box-shadow: 0 0 0 1000px var(--input) inset;
 }
 textarea {
   resize: vertical;
   line-height: 1.7;
 }
 select {
-  background: var(--panel);
   color: var(--text);
+  padding-right: 32px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 15px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
 }
 h1,
 h2,
