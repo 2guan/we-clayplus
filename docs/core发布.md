@@ -8,16 +8,16 @@ we-clay 模块与 core Release 独立版本；`CoreConfig.Version` 指向 core �
 
 上传未经压缩的二进制，名称匹配 Release tag 和 Go 的 `GOOS` / `GOARCH`。
 从 we-clay v0.4.1 起识别 `we-clay-core_<tag>_<goos>_<goarch>`，Windows 加 `.exe`。
-下面是已发布 core v0.3.0 的实际附件名：
+下面是已发布 core v0.3.1 的实际附件名：
 
 | 平台 | 附件名 |
 | --- | --- |
-| macOS Apple Silicon | `we-clay-core_v0.3.0_darwin_arm64` |
-| macOS Intel | `we-clay-core_v0.3.0_darwin_amd64` |
-| Linux x86_64 | `we-clay-core_v0.3.0_linux_amd64` |
-| Linux ARM64 | `we-clay-core_v0.3.0_linux_arm64` |
-| Windows x86_64 | `we-clay-core_v0.3.0_windows_amd64.exe` |
-| Windows ARM64 | `we-clay-core_v0.3.0_windows_arm64.exe` |
+| macOS Apple Silicon | `we-clay-core_v0.3.1_darwin_arm64` |
+| macOS Intel | `we-clay-core_v0.3.1_darwin_amd64` |
+| Linux x86_64 | `we-clay-core_v0.3.1_linux_amd64` |
+| Linux ARM64 | `we-clay-core_v0.3.1_linux_arm64` |
+| Windows x86_64 | `we-clay-core_v0.3.1_windows_amd64.exe` |
+| Windows ARM64 | `we-clay-core_v0.3.1_windows_arm64.exe` |
 
 只需上传实际支持的平台；缺少本机平台附件时 Run 会报错，不尝试运行其他平台文件。
 也兼容原先不带版本的 `we-clay-core-<goos>-<goarch>` 命名及已有缓存。新下载同时存在两种附件时优先使用带 tag 的命名；不尝试其他版本或平台。当前下载器不解压 `.zip` / `.tar.gz`。
@@ -37,7 +37,7 @@ core 需要支持现有 `-stage`、`-data`、`-device-type`、`-listen`、`-grpc
 并提供 gRPC `CoreService.Invoke` / `Events`、`/api/login/view` 等现有接口。
 仅交叉编译成功不代表已在相应系统验证运行。
 
-1. 在 `core-release` 创建新的固定 tag Release。`v0.3.0` 已发布，不要覆盖其附件。
+1. 在 `core-release` 创建新的固定 tag Release。`v0.3.1` 已发布，不要覆盖其附件。
 2. 上传对应名称的二进制。建议同时上传 `SHA256SUMS`，便于人工校验及兼容无摘要的附件。
 3. 发布 Release，确认不是 Draft。附件上传状态应为 `uploaded`。
 4. 把实际 tag 填入 `CoreConfig.Version`，或设置 README 使用的 `WE_CLAY_CORE_VERSION`。
@@ -69,6 +69,14 @@ Run 优先使用 GitHub 附件元数据的 `digest`，缺少时才读取该清�
 
 ## 已验证的组合
 
+2026-10-13：当前工作区更新接入示例至 [core-release v0.3.1](https://github.com/we-clay/core-release/releases/tag/v0.3.1)，在 macOS ARM64 完成：
+
+- 使用现有 `coreprocess.Ensure` 下载正式附件，验证大小为 50,208,098 字节，SHA-256 为 `556cc2a6b466607a6d1867e95aac7c1bcb3764a7cb02b2a0b29cfe7827287616`。
+- 再次调用下载器验证本地缓存复用；执行 `-help` 成功，确认 gateway 使用的启动参数仍存在。
+- 配置与 core 进程管理离线测试通过，gateway 与 SDK 编译通过。
+
+本次没有启动微信登录流程或验证真实账号功能；8888 端口继续运行脱机 Mock。core 按固定 tag 显式选择，接入时设置 `WE_CLAY_CORE_VERSION=v0.3.1` 或 `CoreConfig.Version="v0.3.1"`，已有外部 core 进程不会被自动替换。
+
 2026-10-12：we-clay v0.4.1 与 core-release v0.3.0，在 macOS ARM64 完成：
 
 - 通过 `gateway.Run` 从真实 GitHub Release 下载对应附件，大小与 SHA-256 一致。
@@ -76,3 +84,8 @@ Run 优先使用 GitHub 附件元数据的 `digest`，缺少时才读取该清�
 - 取消 context 后 Run 返回，core 子进程退出，登录与 gRPC 端口释放。
 
 本轮未扫码登录账号，未操作旧会话，也未验证其他系统的真实运行。
+
+
+### 2026-10-13 升级至 v0.3.2
+
+本机真实验收入口及配置示例固定到 v0.3.2，继续复用原账号数据目录。该版本增加目录归属校验；换号应使用独立空目录，不清理现有账号档案。登录 HTTP 为 8201，Web 后台为 8208，gRPC 仍为 8088。发布说明见 [v0.3.2](https://github.com/we-clay/core-release/releases/tag/v0.3.2)。

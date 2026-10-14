@@ -1,3 +1,6 @@
+// 文件名：receipts.go
+// 主要功能：管理原始撤回回执缓存，并向宿主提供可持久化的原始字段。
+// 作者：2guan
 package messageability
 
 import (
@@ -79,4 +82,10 @@ func numericClientID(value string) uint64 {
 		return 0
 	}
 	return id
+}
+
+// ReceiptFields 仅导出真实发送回执，不能用本地时间或随机 ID 补齐。
+func ReceiptFields(receiver string, newID uint64) (uint64, uint64, bool) {
+	r, ok := instance.receipts.get(receiver, newID)
+	return r.clientID, r.created, ok
 }

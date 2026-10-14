@@ -1,0 +1,56 @@
+/* 文件名：chat-mentions.css
+ * 主要功能：紧凑的群成员选择浮层，沿用页面亮暗主题。
+ * 作者：2guan
+ */
+.composer {
+  position: relative;
+}
+.chat-mention-list {
+  position: absolute;
+  bottom: 100%;
+  left: 16px;
+  width: min(320px, calc(100% - 32px));
+  max-height: 280px;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px #0002;
+  z-index: 20;
+  padding: 5px;
+}
+.chat-mention-list [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 6px;
+}
+.chat-mention-list [role="option"][aria-selected="true"],
+.chat-mention-list [role="option"]:hover {
+  background: var(--hover, #8882);
+}
+.chat-mention-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-mention-list small {
+  display: block;
+  opacity: 0.55;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chat-mention-list p {
+  padding: 10px;
+  margin: 0;
+  font-size: 13px;
+}

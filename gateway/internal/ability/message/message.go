@@ -1,8 +1,13 @@
+// 文件名：message.go
+// 主要功能：分发消息发送、引用、转发、撤回与媒体下载，保存原始回执。
+// 作者：2guan
 // Package messageability 提供消息能力的实现。
 package messageability
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -172,12 +177,29 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 	case sdk.TypeEmoji.Code:
 		data := msg.GetEmoji()
-		if data.GetMedia() == nil || len(data.GetMedia().GetData()) == 0 {
+		digest, e := hex.DecodeString(data.GetMedia().GetMd5())
+		if data.GetMedia() == nil || (len(data.GetMedia().GetData()) == 0 && (e != nil || len(digest) != 16)) {
 			return nil, errors.New("缺少待发送的媒体数据")
+		}
+		// 在进入 core 前检查原始字节与资源标识，禁止悄悄重编码动图。
+		media := data.GetMedia()
+		if len(media.Data) > 32<<20 {
+			return nil, errors.New("表情超过 32 MB")
+		}
+		expected := strings.ToLower(media.Md5)
+		if len(media.Data) > 0 {
+			sum := fmt.Sprintf("%x", md5.Sum(media.Data))
+			if expected != "" && expected != sum {
+				return nil, errors.New("表情 MD5 与原文件不一致")
+			}
+			expected = sum
 		}
 		resp, err := a.api.SendEmoji(receiver, data.GetMedia().GetMd5(), data.GetMedia().Data)
 		if err != nil {
 			return nil, err
+		}
+		if len(resp.GetResult()) != 1 || resp.GetResult()[0].GetCode() != 0 || resp.GetResult()[0].GetNewId() == 0 || !strings.EqualFold(resp.GetResult()[0].GetMd5(), expected) {
+			return nil, errors.New("表情发送回执无效，结果未知，请勿自动重试")
 		}
 		if len(resp.GetResult()) > 0 {
 			item := resp.GetResult()[0]
@@ -201,6 +223,31 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 	case sdk.TypeApplication.Code, sdk.TypeAppChatRecord.Code, sdk.TypeAppMusic.Code:
 		return nil, sdkroot.NotImplemented("message.Send: 通用应用/聊天记录/音乐")
+	case sdk.TypeAppQuote.Code:
+		data := msg.GetApp()
+		if data == nil || data.GetSubType() != 57 {
+			return nil, errors.New("缺少引用消息参数")
+		}
+		var q struct {
+			Type  int    `xml:"type"`
+			Title string `xml:"title"`
+			Ref   struct {
+				ID string `xml:"svrid"`
+			} `xml:"refermsg"`
+		}
+		if xml.Unmarshal([]byte(data.GetXml()), &q) != nil || q.Type != 57 || strings.TrimSpace(q.Title) == "" || q.Ref.ID == "" {
+			return nil, errors.New("引用消息 XML 无效")
+		}
+		resp, err := a.api.SendApp(receiver, data.GetXml(), data.GetExtendXml(), 57)
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			return nil, errors.New("引用消息回执缺失，结果未确认")
+		}
+		result.NewId = resp.GetNewId()
+		result.CreateTime = uint32(resp.GetCreateTime())
+		clientID = numericClientID(resp.GetClientId())
 	case sdk.TypeAppLink.Code:
 		data := msg.GetApp()
 		if data == nil {

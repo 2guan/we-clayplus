@@ -1,3 +1,6 @@
+// 文件名：core.go
+// 主要功能：解析和校验独立 core 的运行配置及本机登录地址。
+// 作者：2guan
 package config
 
 import (
@@ -17,7 +20,7 @@ type CoreConfig struct {
 	Version          string        `toml:"version"`
 	CacheDir         string        `toml:"cache_dir"`         // 默认 ./runtime/core-bin，按仓库/版本/平台隔离。
 	DataDir          string        `toml:"data_dir"`          // 默认 ./runtime/core，保存账号状态及 core.log。
-	LoginAddress     string        `toml:"login_address"`     // 默认 127.0.0.1:8086；"-" 关闭页面。
+	LoginAddress     string        `toml:"login_address"`     // 默认 127.0.0.1:8201；"-" 关闭页面。
 	Stage            string        `toml:"stage"`             // auto（默认）、login 或 resume；auto 检查会话文件是否存在。
 	GitHubTokenEnv   string        `toml:"github_token_env"`  // 默认 WE_CLAY_GITHUB_TOKEN；公开仓库可不设置。
 	StorageEncrypted bool          `toml:"storage_encrypted"` // 密码读取 WE_CLAY_STORAGE_PASSWORD。
@@ -40,7 +43,7 @@ func (c CoreConfig) Resolve() (CoreConfig, error) {
 		c.DataDir = "./runtime/core"
 	}
 	if c.LoginAddress == "" {
-		c.LoginAddress = "127.0.0.1:8086"
+		c.LoginAddress = "127.0.0.1:8201"
 	}
 	if c.Stage == "" {
 		c.Stage = "auto"

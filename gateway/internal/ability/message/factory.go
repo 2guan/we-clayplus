@@ -1,3 +1,6 @@
+// 文件名：factory.go
+// 主要功能：解析微信消息并在联系人尚未同步时保留原始收发标识。
+// 作者：2guan
 package messageability
 
 import (
@@ -22,12 +25,20 @@ func Build(msg *messageapi.NewMessage) (*sdk.Message, error) {
 	sender := contact.Instance.Get(msg.Sender.Value)
 	receiver := contact.Instance.Get(msg.Receiver.Value)
 
+	// 通讯录未命中时仍保留协议 ID，避免自己发送的消息丢失收件人。
+	if sender == nil {
+		sender = &contact.Contact{Username: msg.GetSender().GetValue()}
+	}
+	if receiver == nil {
+		receiver = &contact.Contact{Username: msg.GetReceiver().GetValue()}
+	}
+
 	content := msg.GetContent().GetValue()
 	msgType := sdk.TypeOf(msg.GetType())
 
 	// 群消息解析 member
 	var member *chatroom.Member
-	if strings.HasSuffix(msg.GetSender().GetValue(), "@chatroom") && strings.Contains(content, ":\n") && msgType != sdk.TypeSystemTip {
+	if (strings.HasSuffix(msg.GetSender().GetValue(), "@chatroom") || strings.HasSuffix(msg.GetSender().GetValue(), "@im.chatroom")) && strings.Contains(content, ":\n") && msgType != sdk.TypeSystemTip {
 		parts := strings.SplitN(content, ":\n", 2)
 		memberName := parts[0]
 		content = parts[1]
@@ -125,7 +136,7 @@ func buildVoice(msg *sdk.Message, raw *messageapi.NewMessage) {
 		slog.Warn("parse voice xml failed", "err", err)
 		return
 	}
-	msg.Content = fmt.Sprintf("[%ds] %s", temp.Voice.Duration, formatter.DecimalBytes(float64(temp.Voice.Size), 2))
+	msg.Content = fmt.Sprintf("[%ds] %s", (temp.Voice.Duration+999)/1000, formatter.DecimalBytes(float64(temp.Voice.Size), 2))
 	msg.Data = &sdk.Message_Voice{Voice: &sdk.VoiceData{
 		Media:    &sdk.Media{Key: temp.Voice.Key, Url: temp.Voice.Url, Size: temp.Voice.Size},
 		Duration: temp.Voice.Duration,
@@ -183,11 +194,11 @@ func buildLocation(msg *sdk.Message, raw *messageapi.NewMessage) {
 	var temp struct {
 		XmlName  xml.Name `xml:"msg"`
 		Location struct {
-			Latitude  float64 `xml:"latitude"`
-			Longitude float64 `xml:"longitude"`
-			Scale     int32   `xml:"scale"`
-			PoiName   string  `xml:"poiname"`
-			Label     string  `xml:"label"`
+			Latitude  float64 `xml:"x,attr"`
+			Longitude float64 `xml:"y,attr"`
+			Scale     int32   `xml:"scale,attr"`
+			PoiName   string  `xml:"poiname,attr"`
+			Label     string  `xml:"label,attr"`
 		} `xml:"location"`
 	}
 	if err := xml.Unmarshal([]byte(msg.GetContent()), &temp); err != nil {

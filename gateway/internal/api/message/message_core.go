@@ -1,3 +1,6 @@
+// 文件名：message_core.go
+// 主要功能：适配 core 消息接口，包括表情资源引用与原文件上传。
+// 作者：2guan
 // Package messageapi 提供消息服务的远程实现（通过 gRPC 调用 core）。
 package messageapi
 
@@ -117,8 +120,12 @@ func (w remote) SendVoice(receiver string, reader io.Reader, duration, format in
 // SendEmoji 发送表情消息（multipart/form-data）
 func (w remote) SendEmoji(receiver, md5 string, data []byte) (*UploadEmojiResponse, error) {
 	var resp UploadEmojiResponse
+	files := map[string][]byte{}
+	if len(data) > 0 {
+		files["emoji"] = data
+	}
 	if err := w.core().Post("/api/message/emoji").Multipart(
-		map[string][]byte{"emoji": data},
+		files,
 		map[string]string{"receiver": receiver, "md5": md5},
 	).DoProto(&resp); err != nil {
 		return nil, err
