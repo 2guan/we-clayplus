@@ -28,6 +28,7 @@ type independentRecord struct {
 	Address      string `json:"address"`
 	LoginAddress string `json:"login_address"`
 	Binary       string `json:"binary"`
+	DeviceName   string `json:"device_name,omitempty"` // 启动时明确指定的名称，不读取 core 的设备文件。
 	Encrypted    bool   `json:"storage_encrypted"`
 }
 
@@ -157,6 +158,9 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		if err = matchIndependent(r, cfg); err != nil {
 			return cfg, err
 		}
+		if cfg.Core.DeviceName != "" && cfg.Core.DeviceName != r.DeviceName {
+			return cfg, errors.New("设备名称配置与已运行 core 不同；请先 StopCore，再启动以应用新名称（账号目录保持不变）")
+		}
 		cfg.CoreToken = r.Token
 		if err = probe(ctx, cfg); err != nil {
 			return cfg, errors.New("已有独立 core 尚不可连接或鉴权失败；保留进程，请检查 core.log")
@@ -189,7 +193,7 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		p.Stop()
 		return cfg, errors.New("无法确认新 core 的进程身份，已停止新进程")
 	}
-	r = &independentRecord{Stamp: stamp, PID: p.cmd.Process.Pid, Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, Encrypted: cfg.Core.StorageEncrypted}
+	r = &independentRecord{Stamp: stamp, PID: p.cmd.Process.Pid, Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
 	if err = writeIndependent(cfg.Core.DataDir, *r); err != nil {
 		p.Stop()
 		return cfg, errors.New("保存独立 core 进程记录失败，已停止新进程")

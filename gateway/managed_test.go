@@ -83,19 +83,21 @@ func mockCoreMain() {
 	addr := f.String("grpc-listen", "", "")
 	stage := f.String("stage", "", "")
 	device := f.String("device-type", "", "")
+	deviceName := f.String("device-name", "", "")
+	updateVersion := f.Bool("update-version", true, "")
 	f.String("listen", "", "")
 	f.String("api-token-env", "", "")
 	f.Bool("storage-encrypt", false, "")
-	updateVersion := f.Bool("update-version", true, "")
 	f.Parse(os.Args[1:])
 	mode := os.Getenv("WE_CLAY_TEST_MANAGED_CORE")
 	if mode == "exit" {
 		os.Exit(7)
 	}
-	if *updateVersion || *device != "mac" || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
+	if *device != "mac" || *updateVersion || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
 		os.Exit(8)
 	}
 	os.WriteFile(filepath.Join(*data, "fixture-stage"), []byte(*stage), 0600)
+	os.WriteFile(filepath.Join(*data, "fixture-device-name"), []byte(*deviceName), 0600)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	listener, err := net.Listen("tcp", *addr)

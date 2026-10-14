@@ -15,9 +15,10 @@ import (
 type CoreConfig struct {
 	Repository       string        `toml:"repository"` // 默认 we-clay/core-release。
 	Version          string        `toml:"version"`
+	DeviceName       string        `toml:"device_name"`       // 可选：启动 core 时设置显示名称；留空沿用保存值。
 	KeepAlive        bool          `toml:"keep_alive"`        // 独立运行：Run 退出保留 core，后续 Run 复用。
 	CacheDir         string        `toml:"cache_dir"`         // 默认 ./runtime/core-bin，按仓库/版本/平台隔离。
-	DataDir          string        `toml:"data_dir"`          // 默认 ./runtime/core，保存账号状态及 core.log。
+	DataDir          string        `toml:"data_dir"`          // 必填绝对路径，保存账号状态及 core.log。
 	LoginAddress     string        `toml:"login_address"`     // 默认 127.0.0.1:8086；"-" 关闭页面。
 	Stage            string        `toml:"stage"`             // auto（默认）、login 或 resume；auto 检查会话文件是否存在。
 	GitHubTokenEnv   string        `toml:"github_token_env"`  // 默认 WE_CLAY_GITHUB_TOKEN；公开仓库可不设置。
@@ -40,8 +41,8 @@ func (c CoreConfig) Resolve() (CoreConfig, error) {
 	if c.CacheDir == "" {
 		c.CacheDir = "./runtime/core-bin"
 	}
-	if c.DataDir == "" {
-		c.DataDir = "./runtime/core"
+	if c.DataDir == "" || !filepath.IsAbs(c.DataDir) {
+		return c, fmt.Errorf("core.data_dir 必须显式填写固定的绝对路径；升级时请填写现有账号目录，避免创建新设备")
 	}
 	if c.LoginAddress == "" {
 		c.LoginAddress = "127.0.0.1:8086"

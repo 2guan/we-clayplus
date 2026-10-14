@@ -17,10 +17,13 @@ import (
 
 // Build 从协议层 NewMessage 构建 SDK Message（由 gateway 同步调用）
 func Build(msg *messageapi.NewMessage) (*sdk.Message, error) {
+	if msg == nil {
+		return nil, fmt.Errorf("message is nil")
+	}
 	marshal, _ := json.Marshal(msg)
 
-	sender := contact.Instance.Get(msg.Sender.Value)
-	receiver := contact.Instance.Get(msg.Receiver.Value)
+	sender := resolveContact(msg.GetSender().GetValue())
+	receiver := resolveContact(msg.GetReceiver().GetValue())
 
 	content := msg.GetContent().GetValue()
 	msgType := sdk.TypeOf(msg.GetType())
@@ -228,4 +231,17 @@ func buildApp(msg *sdk.Message, raw *messageapi.NewMessage) {
 		Url:     temp.Url,
 		Xml:     raw.GetContent().GetValue(),
 	}}
+}
+
+// Cache misses must not erase a protocol sender (including system accounts).
+func resolveContact(username string) *contact.Contact {
+	if username == "" {
+		return nil
+	}
+	if contact.Instance != nil {
+		if known := contact.Instance.Get(username); known != nil {
+			return known
+		}
+	}
+	return &contact.Contact{Username: username}
 }

@@ -112,6 +112,7 @@ func main() {
     err := gateway.Run(ctx, gateway.Config{
         Core: &gateway.CoreConfig{
             Version: os.Getenv("WE_CLAY_CORE_VERSION"),
+            DataDir: os.Getenv("WE_CLAY_DATA_DIR"), // 必填：固定绝对路径；升级填写原账号目录
         },
     }, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{
         OnReady: func(ctx context.Context, client *gateway.Client) error {
@@ -144,6 +145,8 @@ func main() {
 ```sh
 # macOS / Linux：固定使用已发布的 core v0.3.0
 export WE_CLAY_CORE_VERSION='v0.3.0'
+# 填你已有账号目录的绝对路径；新部署才选择新目录
+export WE_CLAY_DATA_DIR='/absolute/path/to/existing/core-data'
 go run .
 ```
 
@@ -154,7 +157,7 @@ go run .
 <details>
 <summary>缓存、私有附件与已有 core</summary>
 
-- 二进制保存在 `runtime/core-bin/`，账号状态和 core 日志保存在 `runtime/core/`，均应排除 Git。
+- 二进制保存在 `runtime/core-bin/`，账号状态和 core 日志保存在显式指定的 `Core.DataDir`，均应排除 Git。
 - Release 仓库为私有时，通过 `WE_CLAY_GITHUB_TOKEN` 提供读取权限；不要把令牌写进配置文件。
 - 已独立运行 core 时，省略 `Core`，改填 `CoreAddress`；该模式要求 core 先完成登录，Run 不管理其进程。
 - 版本必须已经发布，不能填 `latest`。Release 未发布时，Run 会明确返回下载错误。
@@ -293,6 +296,8 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **v0.5.5 增加独立 core 与表情包下载**：`KeepAlive` 保留 core 进程，`StopCore` 显式停止；`Message.Download` 统一处理微信表情 CDN。见[独立 core](docs/独立core.md)与[媒体下载](docs/媒体下载.md)。
 
+**源码待发布变更：** 托管模式现在要求 `Core.DataDir` 为固定绝对路径，支持结构化 core 错误，系统发送者缓存未命中时仍保留用户名。设备/限制修正需要配套新 core，旧 Release 不会自动升级。见[设备与限制处理](docs/设备与限制处理.md)。
+
 **v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
 **13 个能力域，128 个 SDK 方法：54 个已接通，74 个仅保留占位。**
@@ -363,3 +368,11 @@ core v0.3.0 的 macOS ARM64 附件已验证下载、校验、启动、gRPC 鉴�
   <strong>we-clay</strong> · 采用 <a href="LICENSE">MIT License</a><br />
   基于 sbgayhub 的原始项目及前期整理版本，保留原作者署名。
 </p>
+
+## 掉线通知与重新登录
+
+`Handlers.OnConnectionChanged` 接收 core 的登录状态变化；微信会话离线后，Run 返回 `gateway.ErrLoginRequired`，旧 Client 停用。重新连接时由 gateway 请求 core 完成重登，应用无需实现微信认证。详见[三层职责与完整流程](docs/掉线通知与重新登录.md)。当前为本地开发改动，尚未发布到 Go 模块版本。
+
+## 自定义设备名称（开发中）
+
+通过 `gateway.CoreConfig.DeviceName` 或 `[core].device_name` 指定名称，例如“我的 Mac 机器人”。留空沿用已有设备名称；更改后重启 core 生效，设备 ID 与账号目录保持不变。此配置尚未发布，需使用配套的新 gateway/core 构建。见[设备名称配置](docs/运行指南.md#自定义设备名称)。

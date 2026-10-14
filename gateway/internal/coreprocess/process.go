@@ -51,6 +51,9 @@ func Start(ctx context.Context, binary string, cfg config.Config) (*Process, err
 		loginAddress = ""
 	}
 	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", "mac", "-update-version=false", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
+	if c.DeviceName != "" {
+		args = append(args, "-device-name", c.DeviceName)
+	}
 	if c.StorageEncrypted {
 		args = append(args, "-storage-encrypt")
 	}

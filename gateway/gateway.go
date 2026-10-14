@@ -33,8 +33,14 @@ type Config = config.Config
 // CoreConfig 指定下载版本和本地目录；设置 Config.Core 后由 Run 管理 core 生命周期。
 type CoreConfig = config.CoreConfig
 
+// ConnectionState 只反映 core 的登录状态；不代表 gateway 缓存与插件已就绪。
+type ConnectionState = coreprocess.ConnectionState
+
 // ErrAlreadyRunning 表示本进程已有一个 Run 正在启动、运行或退出。
 var ErrAlreadyRunning = errors.New("本进程已有 gateway 正在运行")
+
+// ErrLoginRequired 可通过 errors.Is 识别；保留 core 和设备资料，由用户重新扫码。
+var ErrLoginRequired = coreprocess.ErrLoginRequired
 var runMu sync.Mutex
 
 // LoadConfig 可选地从 TOML 文件读取配置；直接传 Config 无需配置文件。
@@ -127,8 +133,28 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	defer messageability.ResetReceipts()
 	messageability.SetOutboundReady(false)
 	defer messageability.SetOutboundReady(false)
+	var handlerMu sync.Mutex
+	callHandler := func(name string, fn func() error) error {
+		handlerMu.Lock()
+		defer handlerMu.Unlock()
+		return invokeHandler(name, fn)
+	}
+	var lastConnection *ConnectionState
+	reportConnection := func(s ConnectionState) error {
+		// 本机状态每两秒读取；只向应用报告实际变化。
+		handlerMu.Lock()
+		defer handlerMu.Unlock()
+		if lastConnection != nil && *lastConnection == s {
+			return nil
+		}
+		lastConnection = &s
+		if h := opts.handlers.OnConnectionChanged; h != nil {
+			return invokeHandler("OnConnectionChanged", func() error { return h(runCtx, s) })
+		}
+		return nil
+	}
 	if cfg.Core != nil {
-		if err = coreprocess.WaitOnline(runCtx, client, *cfg.Core); err != nil {
+		if err = coreprocess.WaitOnlineNotify(runCtx, client, *cfg.Core, reportConnection); err != nil {
 			cancel()
 			return err
 		}
@@ -168,17 +194,25 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	defer func() { cancel(); direct.state.close() }()
 	hooks := eventsync.Hooks{WithoutPlugins: opts.withoutPlugins}
 	if h := opts.handlers.OnReady; h != nil {
-		hooks.Ready = func() error { return invokeHandler("OnReady", func() error { return h(runCtx, direct) }) }
+		hooks.Ready = func() error { return callHandler("OnReady", func() error { return h(runCtx, direct) }) }
 	}
 	if h := opts.handlers.OnMessage; h != nil {
 		hooks.Message = func(m *message.Message) error {
-			return invokeHandler("OnMessage", func() error { return h(runCtx, direct, m) })
+			return callHandler("OnMessage", func() error { return h(runCtx, direct, m) })
 		}
 	}
 	if h := opts.handlers.OnEvent; h != nil {
 		hooks.Event = func(e *sdkplugin.Event) error {
-			return invokeHandler("OnEvent", func() error { return h(runCtx, direct, e) })
+			return callHandler("OnEvent", func() error { return h(runCtx, direct, e) })
 		}
 	}
+	watchDone := make(chan struct{})
+	defer func() { cancel(); <-watchDone }()
+	go func() {
+		defer close(watchDone)
+		if err := coreprocess.WatchOnline(runCtx, client, reportConnection); runCtx.Err() == nil {
+			cancelCause(err)
+		}
+	}()
 	return eventsync.RunEvents(runCtx, client, hooks)
 }
