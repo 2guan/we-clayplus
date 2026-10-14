@@ -6,6 +6,7 @@ package dashboard
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -47,6 +48,8 @@ type Server struct {
 	subscribers     map[chan struct{}]struct{}
 	taskMu          sync.Mutex
 	taskCancel      map[string]context.CancelFunc
+	streamMu        sync.Mutex
+	taskStreams     map[string]*taskStream
 	workers         sync.WaitGroup
 }
 
@@ -69,7 +72,7 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), startedAt: time.Now(), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}}
+	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), startedAt: time.Now(), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
 	if err = s.initBehaviors(); err == nil {
 		err = s.initBusiness()
 	}
@@ -236,6 +239,8 @@ func (s *Server) Handler() http.Handler {
 			writeJSON(w, 200, Schema())
 		case "/api/events":
 			s.events(w, r)
+		case "/api/task-stream":
+			s.streamTask(w, r)
 		case "/api/action":
 			if r.Method != http.MethodPost {
 				writeError(w, 405, "请求方法不支持")
@@ -319,6 +324,123 @@ func (s *Server) Handler() http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
+}
+
+// taskStream 只在内存中暂存单个洞察任务的增量，最终报告仍由任务完成路径持久化。
+type taskStream struct {
+	text string
+	done bool
+	wake chan struct{}
+}
+
+func (s *Server) startTaskStream(id string) {
+	s.streamMu.Lock()
+	s.taskStreams[id] = &taskStream{wake: make(chan struct{}, 1)}
+	s.streamMu.Unlock()
+}
+
+func (s *Server) appendTaskStream(id, delta string) {
+	if delta == "" {
+		return
+	}
+	s.streamMu.Lock()
+	stream := s.taskStreams[id]
+	if stream != nil && !stream.done && len(stream.text)+len(delta) <= 4<<20 {
+		stream.text += delta
+		close(stream.wake)
+		stream.wake = make(chan struct{})
+	}
+	s.streamMu.Unlock()
+}
+
+func (s *Server) resetTaskStream(id string) {
+	s.streamMu.Lock()
+	if stream := s.taskStreams[id]; stream != nil && !stream.done {
+		stream.text = ""
+		close(stream.wake)
+		stream.wake = make(chan struct{})
+	}
+	s.streamMu.Unlock()
+}
+
+func (s *Server) finishTaskStream(id string) {
+	s.streamMu.Lock()
+	if stream := s.taskStreams[id]; stream != nil {
+		stream.done = true
+		close(stream.wake)
+		time.AfterFunc(30*time.Second, func() {
+			s.streamMu.Lock()
+			if s.taskStreams[id] == stream {
+				delete(s.taskStreams, id)
+			}
+			s.streamMu.Unlock()
+		})
+	}
+	s.streamMu.Unlock()
+}
+
+func (s *Server) streamTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, 405, "请求方法不支持")
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		writeError(w, 400, "任务 ID 无效")
+		return
+	}
+	f, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, 500, "当前服务不支持流式响应")
+		return
+	}
+	s.streamMu.Lock()
+	stream := s.taskStreams[id]
+	s.streamMu.Unlock()
+	if stream == nil {
+		writeError(w, 404, "任务流已过期或不存在")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("X-Accel-Buffering", "no")
+	last := 0
+	tick := time.NewTicker(25 * time.Second)
+	defer tick.Stop()
+	for {
+		if _, valid := s.currentUser(r); !valid {
+			return
+		}
+		s.streamMu.Lock()
+		text, done, wake := stream.text, stream.done, stream.wake
+		s.streamMu.Unlock()
+		if len(text) < last {
+			payload, _ := json.Marshal(map[string]string{"text": text})
+			_, _ = fmt.Fprintf(w, "event: snapshot\ndata: %s\n\n", payload)
+			last = len(text)
+			f.Flush()
+		} else if len(text) > last {
+			payload, _ := json.Marshal(map[string]string{"text": text[last:]})
+			_, _ = fmt.Fprintf(w, "event: delta\ndata: %s\n\n", payload)
+			last = len(text)
+			f.Flush()
+		}
+		if done {
+			fmt.Fprint(w, "event: done\ndata: {}\n\n")
+			f.Flush()
+			return
+		}
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-r.Context().Done():
+			return
+		case <-wake:
+		case <-tick.C:
+			fmt.Fprint(w, ": heartbeat\n\n")
+			f.Flush()
+		}
+	}
 }
 func (s *Server) notify() {
 	s.eventMu.Lock()

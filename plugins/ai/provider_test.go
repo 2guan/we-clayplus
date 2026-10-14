@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -60,5 +61,63 @@ func TestProviderHTTPFailureAndUsage(t *testing.T) {
 	result, err := Execute(context.Background(), cfg, Request{Kind: "chat", Prompt: "hello"}, false)
 	if err != nil || result.InputTokens != 12 || result.OutputTokens != 8 {
 		t.Fatalf("未透传用量：%+v %v", result, err)
+	}
+}
+
+func TestInsightStreamDetectsTruncation(t *testing.T) {
+	for _, test := range []struct {
+		name, events, wantError string
+	}{
+		{
+			name:      "output limit",
+			events:    `data: {"choices":[{"delta":{"content":"部分报告"},"finish_reason":"length"}]}` + "\n\n" + "data: [DONE]\n\n",
+			wantError: "Token 上限",
+		},
+		{
+			name:   "completed without done marker",
+			events: `data: {"choices":[{"delta":{"content":"完整报告"},"finish_reason":"stop"}]}` + "\n\n",
+		},
+		{
+			name:      "premature eof",
+			events:    `data: {"choices":[{"delta":{"content":"部分报告"}}]}` + "\n\n",
+			wantError: "提前结束",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = fmt.Fprint(w, test.events)
+			}))
+			defer server.Close()
+			result, err := streamChatCompletions(context.Background(), server.URL, "fixture-key", []byte(`{}`), func(string) {})
+			if test.wantError == "" {
+				if err != nil || result.Text != "完整报告" {
+					t.Fatalf("expected complete report, got %q, %v", result.Text, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantError) || result.Text == "" {
+				t.Fatalf("expected partial report and %q error, got %q, %v", test.wantError, result.Text, err)
+			}
+		})
+	}
+}
+
+func TestInsightStreamAcceptsLargeReasoningPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		// 部分模型会把推理内容放在每个 SSE 事件中；它不应挤占正文，也不应在 32 MB 处中断。
+		chunk := strings.Repeat("x", 1<<20)
+		for range 33 {
+			_, _ = fmt.Fprintf(w, "data: {\"reasoning_content\":\"%s\"}\n\n", chunk)
+		}
+		_, _ = fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"分析完成\"},\"finish_reason\":\"stop\"}]}\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	result, err := streamChatCompletions(context.Background(), server.URL, "fixture-key", []byte(`{}`), func(string) {})
+	if err != nil || result.Text != "分析完成" {
+		t.Fatalf("large reasoning stream was not handled: %q, %v", result.Text, err)
 	}
 }

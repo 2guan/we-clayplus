@@ -2755,6 +2755,18 @@ td code {
   line-height: 1.9;
   overflow-wrap: anywhere;
 }
+.insight-stream-status {
+  position: sticky;
+  bottom: 0;
+  width: fit-content;
+  margin: 12px 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+}
 @media (min-width: 1800px) {
   .insight-workspace {
     grid-template-columns: 390px minmax(0, 1fr);

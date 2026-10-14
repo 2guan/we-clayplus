@@ -4,6 +4,7 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -18,6 +19,9 @@ import (
 	"strings"
 	"time"
 )
+
+// 流式协议可能携带较长的推理字段；限制传输总量以保护服务，同时避免大量图片分析被旧的 32 MB 上限误伤。
+const maxStreamResponseBytes int64 = 128 << 20
 
 // Request 使用通用媒体输入；模型配置和 API Key 仅存在于服务端。
 // Tool 只描述服务端已授权的有限动作；模型返回的参数仍需执行器重新校验。
@@ -94,6 +98,15 @@ func Retryable(err error) bool {
 
 // Execute 的 Mock 分支位于任何网络与媒体读取之前，可通过测试证明不会外发。
 func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error) {
+	return execute(ctx, c, r, mock, nil)
+}
+
+// ExecuteStream 为洞察报告提供模型增量；其他既有调用仍走 Execute。
+func ExecuteStream(ctx context.Context, c Config, r Request, mock bool, onText func(string)) (Result, error) {
+	return execute(ctx, c, r, mock, onText)
+}
+
+func execute(ctx context.Context, c Config, r Request, mock bool, onText func(string)) (Result, error) {
 	if mock {
 		select {
 		case <-ctx.Done():
@@ -103,6 +116,9 @@ func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error
 		text := map[string]string{"chat": "这是脱机演示回复。你的消息已经进入独立的模拟会话，可以继续测试人工接管、专属策略和消息操作。", "vision": "【模拟识图】画面由柔和的绿色山峦、树林与水面组成，整体安静、明亮。此结果为固定示例，未上传图片。", "audio": "【模拟转写】把细节慢慢做好，就是最好的设计。\n音频未发送到任何外部服务。", "video": "【模拟视频分析】\n00:00 画面出现远山与水面。\n00:04 镜头逐渐靠近树木。\n00:08 画面结束。\n此时间线为虚构演示，不代表上传视频的实际内容。", "tts": "/sample-audio.wav", "image": "/sample-landscape.svg", "video_generation": "/sample-video.mp4", "insight": "会话摘要\n\n大家围绕界面布局、色彩和操作顺序交换了意见。\n\n可以跟进：\n1. 确认高频操作的位置。\n2. 对比亮色和暗色主题。\n3. 在手机上测试输入和返回。\n\n依据：脱机示例数据；不对真实个人作性格判断。"}[r.Kind]
 		if text == "" {
 			return Result{}, fmt.Errorf("未知 AI 能力")
+		}
+		if onText != nil {
+			onText(text)
 		}
 		return Result{Text: text, InputTokens: 128, OutputTokens: 96}, nil
 	}
@@ -148,10 +164,10 @@ func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error
 		return mimoSpeech(ctx, c, r)
 	}
 	if c.Provider == "gemini" {
-		return gemini(ctx, c, r)
+		return gemini(ctx, c, r, onText)
 	}
 	if c.Provider == "anthropic" {
-		return anthropic(ctx, c, r)
+		return anthropic(ctx, c, r, onText)
 	}
 	endpoint := strings.TrimRight(c.Endpoint, "/")
 	var body any
@@ -193,6 +209,9 @@ func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error
 			} else {
 				parameters["reasoning_effort"] = map[bool]string{true: "medium", false: "none"}[c.Thinking == "on"]
 			}
+		}
+		if r.Kind == "insight" && onText != nil {
+			parameters["stream"] = true
 		}
 		path = "/chat/completions"
 	case "audio":
@@ -263,6 +282,9 @@ func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error
 			return Result{}, err
 		}
 	}
+	if r.Kind == "insight" && onText != nil && (c.Provider == "openai" || c.Provider == "mimo" || c.Provider == "") {
+		return streamChatCompletions(ctx, endpoint+path, c.Key, raw, onText)
+	}
 	response, mime, err := request(ctx, endpoint+path, c.Key, contentType, raw, nil)
 	if err != nil {
 		return Result{}, err
@@ -315,7 +337,140 @@ func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error
 	if strings.TrimSpace(result.Text) == "" && len(result.ToolCalls) == 0 {
 		return Result{}, fmt.Errorf("模型返回了空内容或拒绝了本次请求")
 	}
+	if r.Kind == "insight" && onText != nil {
+		onText(result.Text)
+	}
 	return result, nil
+}
+
+// streamChatCompletions 逐行解析 OpenAI 兼容 SSE，限制总响应体并只转发正文增量。
+func streamChatCompletions(ctx context.Context, endpoint, key string, body []byte, onText func(string)) (Result, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return Result{}, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+key)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return Result{}, fmt.Errorf("模型连接失败或超时：%w", safeConnectionError(err))
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return Result{}, &HTTPError{resp.StatusCode}
+	}
+	if !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return Result{}, fmt.Errorf("模型未返回流式响应")
+	}
+	reader := bufio.NewReaderSize(io.LimitReader(resp.Body, maxStreamResponseBytes+1), 32<<10)
+	var result Result
+	var total int64
+	var finishReason string
+	done := false
+	for {
+		line, readErr := reader.ReadString('\n')
+		total += int64(len(line))
+		if total > maxStreamResponseBytes {
+			return Result{}, fmt.Errorf("模型流式响应超过 128 MB")
+		}
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				done = true
+				break
+			}
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content string `json:"content"`
+					} `json:"delta"`
+					FinishReason string `json:"finish_reason"`
+				} `json:"choices"`
+				Usage struct {
+					Input  int `json:"prompt_tokens"`
+					Output int `json:"completion_tokens"`
+				} `json:"usage"`
+			}
+			if data != "" && json.Unmarshal([]byte(data), &chunk) == nil {
+				result.InputTokens = chunk.Usage.Input
+				result.OutputTokens = chunk.Usage.Output
+				if len(chunk.Choices) > 0 {
+					choice := chunk.Choices[0]
+					if choice.FinishReason != "" {
+						finishReason = choice.FinishReason
+					}
+					if choice.Delta.Content != "" {
+						result.Text += choice.Delta.Content
+						onText(choice.Delta.Content)
+					}
+				}
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			return Result{}, fmt.Errorf("读取模型流失败：%w", safeConnectionError(readErr))
+		}
+	}
+	if finishReason == "length" {
+		return result, fmt.Errorf("模型输出达到 Token 上限，报告可能不完整；请提高该模型的最大输出 Token 后重试")
+	}
+	if !done && finishReason == "" {
+		return result, fmt.Errorf("模型流提前结束，报告可能不完整；请重试或检查模型服务")
+	}
+	if strings.TrimSpace(result.Text) == "" {
+		return Result{}, fmt.Errorf("模型返回了空内容或拒绝了本次请求")
+	}
+	return result, nil
+}
+
+// postSSE 统一处理 Gemini 与 Anthropic 的服务端事件，避免按行完整读取模型报告。
+func postSSE(ctx context.Context, endpoint string, body []byte, headers map[string]string, onData func([]byte)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("模型连接失败或超时：%w", safeConnectionError(err))
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &HTTPError{resp.StatusCode}
+	}
+	if !strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return fmt.Errorf("模型未返回流式响应")
+	}
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxStreamResponseBytes+1))
+	scanner.Buffer(make([]byte, 32<<10), 1<<20)
+	var total int64
+	for scanner.Scan() {
+		line := scanner.Text()
+		total += int64(len(line) + 1)
+		if total > maxStreamResponseBytes {
+			return fmt.Errorf("模型流式响应超过 128 MB")
+		}
+		if strings.HasPrefix(line, "data:") {
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data != "" && data != "[DONE]" {
+				onData([]byte(data))
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取模型流失败：%w", safeConnectionError(err))
+	}
+	return nil
 }
 
 // request 限制响应大小且拒绝重定向，避免将认证头发送到另一个地址。
@@ -346,7 +501,7 @@ func request(ctx context.Context, endpoint, key, contentType string, body []byte
 	}
 	return raw, resp.Header.Get("Content-Type"), nil
 }
-func gemini(ctx context.Context, c Config, r Request) (Result, error) {
+func gemini(ctx context.Context, c Config, r Request, onText func(string)) (Result, error) {
 	if r.Kind == "tts" || r.Kind == "image" {
 		return Result{}, fmt.Errorf("当前 Gemini 适配器只开放文本与多模态理解")
 	}
@@ -366,7 +521,45 @@ func gemini(ctx context.Context, c Config, r Request) (Result, error) {
 		generation["thinkingConfig"] = map[string]int{"thinkingBudget": map[bool]int{true: -1, false: 0}[c.Thinking == "on"]}
 	}
 	raw, _ := json.Marshal(body)
-	response, _, err := request(ctx, strings.TrimRight(c.Endpoint, "/")+"/models/"+url.PathEscape(c.Model)+":generateContent", "", "application/json", raw, map[string]string{"x-goog-api-key": c.Key})
+	endpoint := strings.TrimRight(c.Endpoint, "/") + "/models/" + url.PathEscape(c.Model)
+	if r.Kind == "insight" && onText != nil {
+		result := Result{}
+		err := postSSE(ctx, endpoint+":streamGenerateContent?alt=sse", raw, map[string]string{"x-goog-api-key": c.Key}, func(data []byte) {
+			var chunk struct {
+				Candidates []struct {
+					Content struct {
+						Parts []struct {
+							Text string `json:"text"`
+						} `json:"parts"`
+					} `json:"content"`
+				} `json:"candidates"`
+				Usage struct {
+					Input  int `json:"promptTokenCount"`
+					Output int `json:"candidatesTokenCount"`
+				} `json:"usageMetadata"`
+			}
+			if json.Unmarshal(data, &chunk) != nil {
+				return
+			}
+			result.InputTokens, result.OutputTokens = chunk.Usage.Input, chunk.Usage.Output
+			for _, candidate := range chunk.Candidates {
+				for _, part := range candidate.Content.Parts {
+					if part.Text != "" {
+						result.Text += part.Text
+						onText(part.Text)
+					}
+				}
+			}
+		})
+		if err != nil {
+			return Result{}, err
+		}
+		if strings.TrimSpace(result.Text) == "" {
+			return Result{}, fmt.Errorf("模型返回空内容")
+		}
+		return result, nil
+	}
+	response, _, err := request(ctx, endpoint+":generateContent", "", "application/json", raw, map[string]string{"x-goog-api-key": c.Key})
 	if err != nil {
 		return Result{}, err
 	}
@@ -395,7 +588,7 @@ func gemini(ctx context.Context, c Config, r Request) (Result, error) {
 	}
 	return Result{Text: text.String(), InputTokens: v.Usage.Input, OutputTokens: v.Usage.Output}, nil
 }
-func anthropic(ctx context.Context, c Config, r Request) (Result, error) {
+func anthropic(ctx context.Context, c Config, r Request, onText func(string)) (Result, error) {
 	if r.Kind != "chat" && r.Kind != "vision" && r.Kind != "insight" {
 		return Result{}, fmt.Errorf("此适配器仅支持对话和识图")
 	}
@@ -416,8 +609,48 @@ func anthropic(ctx context.Context, c Config, r Request) (Result, error) {
 	} else if c.Temperature != nil {
 		body["temperature"] = *c.Temperature
 	}
+	if r.Kind == "insight" && onText != nil {
+		body["stream"] = true
+	}
 	raw, _ := json.Marshal(body)
-	response, _, err := request(ctx, strings.TrimRight(c.Endpoint, "/")+"/messages", "", "application/json", raw, map[string]string{"x-api-key": c.Key, "anthropic-version": "2023-06-01"})
+	headers := map[string]string{"x-api-key": c.Key, "anthropic-version": "2023-06-01"}
+	if r.Kind == "insight" && onText != nil {
+		result := Result{}
+		err := postSSE(ctx, strings.TrimRight(c.Endpoint, "/")+"/messages", raw, headers, func(data []byte) {
+			var event struct {
+				Type  string `json:"type"`
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+				Usage struct {
+					Input  int `json:"input_tokens"`
+					Output int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			if json.Unmarshal(data, &event) != nil {
+				return
+			}
+			if event.Type == "content_block_delta" && event.Delta.Text != "" {
+				result.Text += event.Delta.Text
+				onText(event.Delta.Text)
+			}
+			if event.Usage.Input > 0 {
+				result.InputTokens = event.Usage.Input
+			}
+			if event.Usage.Output > 0 {
+				result.OutputTokens = event.Usage.Output
+			}
+		})
+		if err != nil {
+			return Result{}, err
+		}
+		if strings.TrimSpace(result.Text) == "" {
+			return Result{}, fmt.Errorf("模型返回空内容")
+		}
+		return result, nil
+	}
+	response, _, err := request(ctx, strings.TrimRight(c.Endpoint, "/")+"/messages", "", "application/json", raw, headers)
 	if err != nil {
 		return Result{}, err
 	}

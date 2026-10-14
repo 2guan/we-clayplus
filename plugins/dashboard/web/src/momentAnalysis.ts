@@ -3,16 +3,38 @@
 // 作者：2guan
 import type { Moment } from "./types";
 import { request } from "./api";
-// 将缩略图统一限制为 512 像素，兼容 Mock 的 SVG，同时减少模型输入体积。
-async function thumbnail(blob: Blob): Promise<Blob> {
+// 根据图片总数逐级缩小单图尺寸并调整 JPEG 质量；大量朋友圈图最低保留 100 像素长边，
+// 在不重复解码和多次有损编码的前提下进一步压低上传体积，同时保留基本场景信息。
+async function thumbnail(blob: Blob, count: number): Promise<Blob> {
   const url = URL.createObjectURL(blob);
   try {
     const image = new Image();
     image.src = url;
     await image.decode();
+    const maxSide =
+      count > 96
+        ? 100
+        : count > 48
+          ? 160
+          : count > 24
+            ? 256
+            : count > 8
+              ? 384
+              : 512;
+    // 数量越多，单张质量越低；466 张时仍保留 100px 识别边长，优先节省传输与上下文载荷。
+    const quality =
+      count > 96
+        ? 0.5
+        : count > 48
+          ? 0.58
+          : count > 24
+            ? 0.64
+            : count > 8
+              ? 0.7
+              : 0.76;
     const scale = Math.min(
       1,
-      512 / Math.max(image.naturalWidth, image.naturalHeight),
+      maxSide / Math.max(image.naturalWidth, image.naturalHeight),
     );
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -26,7 +48,7 @@ async function thumbnail(blob: Blob): Promise<Blob> {
       canvas.toBlob(
         (b) => (b ? resolve(b) : reject(new Error("缩略图转换失败"))),
         "image/jpeg",
-        0.8,
+        quality,
       ),
     );
   } finally {
@@ -60,23 +82,22 @@ export async function loadMomentAnalysis(
     cursor = next;
   }
   if (!items.length) throw new Error("这位好友当前没有可读取的朋友圈内容");
-  const refs = items.flatMap((m) =>
-    [
-      ...new Set([...(m.images || []), ...(m.thumbnail ? [m.thumbnail] : [])]),
-    ].map((url, i) => ({ url, label: `朋友圈 ${m.id} 的缩略图 ${i + 1}` })),
+  const sources = items.flatMap((m) =>
+    [...new Set([...(m.images || []), ...(m.thumbnail ? [m.thumbnail] : [])])]
+      .filter(Boolean)
+      .map((url, i) => ({ url, label: `朋友圈 ${m.id} 的缩略图 ${i + 1}` })),
   );
-  const images: { label: string; mime: string; data: string }[] = new Array(
-    refs.length,
-  );
+  const images: { label: string; mime: string; data: string }[] = [];
   let next = 0;
   let bytes = 0;
   let done = 0;
+  let skipped = 0;
   // 限制并发，复用已处理解密和来源校验的同源图片代理；不读取 original_images。
   await Promise.all(
-    Array.from({ length: Math.min(4, refs.length) }, async () => {
-      while (next < refs.length) {
+    Array.from({ length: Math.min(3, sources.length) }, async () => {
+      while (next < sources.length) {
         const index = next++;
-        const ref = refs[index];
+        const ref = sources[index];
         const url = /^https?:\/\//.test(ref.url)
           ? `/api/wechat-image?url=${encodeURIComponent(ref.url)}`
           : ref.url;
@@ -86,9 +107,41 @@ export async function loadMomentAnalysis(
           !url.startsWith("/sample-")
         )
           throw new Error("朋友圈缩略图地址无效");
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("朋友圈缩略图加载失败，请稍后重试");
-        const blob = await thumbnail(await response.blob());
+        let response: Response | undefined;
+        // 较大范围偶有微信 CDN 瞬时限流；最多重试一次，避免一张失效图中断整批文字分析。
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            response = await fetch(url, { credentials: "same-origin" });
+          } catch {
+            if (attempt === 1) break;
+          }
+          if (
+            response?.ok ||
+            (response && response.status < 500 && response.status !== 429)
+          )
+            break;
+          if (attempt === 0)
+            await new Promise((resolve) => setTimeout(resolve, 350));
+        }
+        if (response?.status === 401)
+          throw new Error("后台登录已失效，请重新登录后再试");
+        if (!response?.ok) {
+          skipped++;
+          onProgress(
+            `有图片暂时无法读取，已跳过 · ${++done}/${sources.length} 张`,
+          );
+          continue;
+        }
+        let blob: Blob;
+        try {
+          blob = await thumbnail(await response.blob(), sources.length);
+        } catch {
+          skipped++;
+          onProgress(
+            `有图片格式无法处理，已跳过 · ${++done}/${sources.length} 张`,
+          );
+          continue;
+        }
         bytes += blob.size;
         if (bytes > 12 * 1024 * 1024)
           throw new Error("缩略图总量超过 12 MB，请减少朋友圈条数");
@@ -98,14 +151,21 @@ export async function loadMomentAnalysis(
           reader.onerror = () => reject(new Error("缩略图读取失败"));
           reader.readAsDataURL(blob);
         });
-        images[index] = {
+        images.push({
           label: ref.label,
           mime: blob.type.split(";")[0],
           data,
-        };
-        onProgress(`正在读取缩略图 · ${++done}/${refs.length} 张`);
+        });
+        onProgress(`正在读取缩略图 · ${++done}/${sources.length} 张`);
       }
     }),
   );
-  return { items, images };
+  const compressedSize =
+    bytes >= 1024 * 1024
+      ? `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+      : `${Math.ceil(bytes / 1024)} KB`;
+  onProgress(
+    `缩略图压缩完成 · ${images.length} 张 / ${compressedSize}${skipped ? `，跳过 ${skipped} 张` : ""}`,
+  );
+  return { items, images, skippedImages: skipped };
 }

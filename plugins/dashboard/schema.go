@@ -81,11 +81,14 @@ func Schema() []Group {
 			entry("video", "视频理解默认模型 ID", "需要模型声明 video 能力。", ""),
 			entry("tts", "语音合成默认模型 ID", "需要模型声明 tts 能力。", ""),
 			entry("image", "图片生成默认模型 ID", "需要模型声明 image 能力。", ""),
-			number("timeout", "单次调用超时 (秒)", "超时结果不自动重发微信消息。", 90, 5, 600),
+			number("timeout", "单次调用超时 (秒)", "默认 5 分钟；超时结果不自动重发微信消息。", 300, 5, 600),
 			number("concurrency", "并发任务上限", "限制模型和媒体处理的资源消耗。", 2, 1, 8),
 			number("daily_calls", "每日请求上限", "0 表示不设请求数量上限。", 200, 0, 100000),
 			number("max_output", "单次最大输出 Token", "发送给支持该参数的模型。", 2048, 64, 32768),
 			flag("fallback", "服务故障自动切换", "各能力按独立流水线切换；指定模型测活不切换，视频已受理但状态未知时停止。", true),
+		}},
+		{"insight", "智能洞察", "为较长报告单独设置生成预算，避免占用普通对话的输出上限。", "models", false, "下次任务", []Field{
+			number("max_output", "报告最大输出 Token", "单个模型单独设置的上限优先；支持该参数的模型最多输出 32768 Token。", 8192, 1024, 32768),
 		}},
 		{"vision", "图片理解", "控制发送到识图模型的数据规模。", "lab", false, "下次任务", []Field{
 			flag("auto", "自动识别入站图片", "仅对允许自动回复的会话生效。", true),
@@ -179,7 +182,7 @@ func Schema() []Group {
 	groups = append(groups, safetyGroups()...)
 	groups = append(groups, businessGroups()...)
 	// 尚未接通执行器的字段也提供完整表单，但明确标注仅预览；真实模式拒绝修改它们。
-	live := strings.Fields("reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer security.session_hours security.login_attempts")
+	live := strings.Fields("reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer security.session_hours security.login_attempts")
 	for i := range groups {
 		for j := range groups[i].Fields {
 			groups[i].Fields[j].Preview = groups[i].Area != "plugins" && !slices.Contains(live, groups[i].ID+"."+groups[i].Fields[j].Key)

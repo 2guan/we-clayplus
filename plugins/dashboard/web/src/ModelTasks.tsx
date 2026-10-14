@@ -39,7 +39,7 @@ export function TaskBadge({ task }: { task: Task }) {
 }
 // 根据任务类型展示文本、图片和音频，不将模型文本当作 HTML 执行。
 export function TaskResult({ task }: { task: Task }) {
-  if (task.error)
+  if (task.error && !(task.kind === "insight" && task.result))
     return (
       <div className="task-error">
         <WarningCircle size={28} />
@@ -47,7 +47,7 @@ export function TaskResult({ task }: { task: Task }) {
         <p>{task.error}</p>
       </div>
     );
-  if (task.status === "running" || task.status === "queued")
+  if ((task.status === "running" || task.status === "queued") && !(task.kind === "insight" && task.result))
     return (
       <div className="empty">
         <span className="loader" />
@@ -56,6 +56,21 @@ export function TaskResult({ task }: { task: Task }) {
       </div>
     );
   if (!task.result) return <Empty title="任务已停止" />;
+  if (task.error && task.kind === "insight")
+    return (
+      <>
+        <div className="task-error" role="alert">
+          <WarningCircle size={24} />
+          <h3>报告可能不完整</h3>
+          <p>{task.error}</p>
+        </div>
+        <div className="task-result">
+          <Suspense fallback={<div className="prose">{task.result}</div>}>
+            <MarkdownReport content={task.result} />
+          </Suspense>
+        </div>
+      </>
+    );
   return (
     <div className="task-result">
       {task.kind === "image" ? (

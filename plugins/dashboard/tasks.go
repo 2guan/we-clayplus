@@ -113,6 +113,9 @@ func (s *Server) queue(q ai.Request) (string, error) {
 		s.taskMu.Unlock()
 		return "", err
 	}
+	if q.Kind == "insight" {
+		s.startTaskStream(id)
+	}
 	s.taskMu.Unlock()
 	s.notify()
 	s.workers.Add(1)
@@ -120,6 +123,9 @@ func (s *Server) queue(q ai.Request) (string, error) {
 		defer s.workers.Done()
 		defer cancel()
 		defer func() { s.taskMu.Lock(); delete(s.taskCancel, id); s.taskMu.Unlock() }()
+		if q.Kind == "insight" {
+			defer s.finishTaskStream(id)
+		}
 		s.runTask(ctx, id, q)
 	}()
 	return id, nil
@@ -255,11 +261,14 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if q.Source == "wechat" && q.Kind == "chat" && q.Target != "" && (m.Provider == "openai" || m.Provider == "mimo") {
 			request.Tools = s.behaviorTools(q.Target)
 		}
-		timeout := int(s.number("routing.timeout", 90))
+		timeout := int(s.number("routing.timeout", 300))
 		if m.Timeout > 0 {
 			timeout = m.Timeout
 		}
 		maxOutput := int(s.number("routing.max_output", 2048))
+		if q.Kind == "insight" {
+			maxOutput = int(s.number("insight.max_output", 8192))
+		}
 		if m.MaxOutput > 0 {
 			maxOutput = m.MaxOutput
 		}
@@ -282,7 +291,12 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			break
 		}
 		usedKey = key
-		result, err = ai.Execute(ctx, config, request, s.cfg.Mock)
+		if q.Kind == "insight" {
+			s.resetTaskStream(id)
+			result, err = ai.ExecuteStream(ctx, config, request, s.cfg.Mock, func(delta string) { s.appendTaskStream(id, delta) })
+		} else {
+			result, err = ai.Execute(ctx, config, request, s.cfg.Mock)
+		}
 		// 成功即停止；指定模型、取消和已受理但状态未知的视频任务不触发新生成。
 		if err == nil || ctx.Err() != nil || !fallback || ai.VideoJobPending(err) {
 			break
@@ -332,6 +346,9 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if err != nil {
 			t.Status = "failed"
 			t.Error = err.Error()
+			if q.Kind == "insight" {
+				t.Result = result.Text
+			}
 		} else {
 			t.Status = "completed"
 			t.Result = result.Text

@@ -103,6 +103,10 @@ func openStore(dir string, mock bool) (*store, error) {
 		s.state.Account.Status = "offline"
 	}
 	migrateBusinessSettings(s, mock)
+	// 旧版 90 秒是系统默认超时；升级到 5 分钟，避免大量图片分析沿用过短的旧默认值。
+	if timeout, ok := s.state.Settings["routing.timeout"].(float64); ok && timeout == 90 {
+		s.state.Settings["routing.timeout"] = 300
+	}
 	// 升级时仅补缺省字段，不覆盖用户已保存的设置。
 	for k, v := range defaults() {
 		if _, ok := s.state.Settings[k]; !ok {
