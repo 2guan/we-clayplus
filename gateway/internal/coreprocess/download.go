@@ -37,6 +37,7 @@ type release struct {
 	Assets []asset `json:"assets"`
 }
 type receipt struct {
+	Source     string `json:"source,omitempty"`
 	Repository string `json:"repository"`
 	Version    string `json:"version"`
 	Asset      string `json:"asset"`
@@ -84,11 +85,21 @@ func assetNames(version, goos, goarch string) []string {
 }
 
 func cacheDirectory(cfg config.CoreConfig, name string) string {
-	key := sha256.Sum256([]byte(cfg.Repository + "\x00" + cfg.Version + "\x00" + name))
+	key := sha256.Sum256([]byte(cacheSource(cfg) + "\x00" + cfg.Version + "\x00" + name))
 	return filepath.Join(cfg.CacheDir, hex.EncodeToString(key[:]))
 }
 
+func cacheSource(cfg config.CoreConfig) string {
+	if cfg.OSS != nil {
+		return cfg.OSS.SourceID()
+	}
+	return cfg.Repository
+}
+
 func (d downloader) ensure(ctx context.Context, cfg config.CoreConfig) (string, error) {
+	if cfg.OSS != nil {
+		return d.ensureOSS(ctx, cfg)
+	}
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -137,7 +148,6 @@ func (d downloader) ensure(ctx context.Context, cfg config.CoreConfig) (string, 
 	}
 	name := binary.Name
 	want.Asset = name
-	dir := cacheDirectory(cfg, name)
 	if binary.Size <= 0 || binary.Size > maxBinarySize {
 		return "", errors.New("core 附件大小无效或超过 512 MiB")
 	}
@@ -166,7 +176,19 @@ func (d downloader) ensure(ctx context.Context, cfg config.CoreConfig) (string, 
 		return "", errors.New("Release 的 SHA-256 摘要无效")
 	}
 	want.Size = binary.Size
-	if err = os.MkdirAll(cfg.CacheDir, 0700); err != nil {
+	return saveDownload(ctx, cfg, want, func(ctx context.Context) (io.ReadCloser, error) {
+		res, err := d.get(ctx, fmt.Sprintf("/repos/%s/releases/assets/%d", cfg.Repository, binary.ID), token, true)
+		if err != nil {
+			return nil, err
+		}
+		return res.Body, nil
+	})
+}
+
+func saveDownload(ctx context.Context, cfg config.CoreConfig, want receipt, fetch func(context.Context) (io.ReadCloser, error)) (string, error) {
+	name := want.Asset
+	dir := cacheDirectory(cfg, name)
+	if err := os.MkdirAll(cfg.CacheDir, 0700); err != nil {
 		return "", err
 	}
 	tmp, err := os.MkdirTemp(cfg.CacheDir, ".download-")
@@ -178,15 +200,15 @@ func (d downloader) ensure(ctx context.Context, cfg config.CoreConfig) (string, 
 	if err != nil {
 		return "", err
 	}
-	slog.Info("正在下载 core", "repository", cfg.Repository, "version", cfg.Version, "asset", name)
-	res, err = d.get(ctx, fmt.Sprintf("/repos/%s/releases/assets/%d", cfg.Repository, binary.ID), token, true)
+	slog.Info("正在下载 core", "version", cfg.Version, "asset", name)
+	body, err := fetch(ctx)
 	if err != nil {
 		file.Close()
 		return "", err
 	}
 	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(file, h), io.LimitReader(res.Body, want.Size+1))
-	res.Body.Close()
+	n, err := io.Copy(io.MultiWriter(file, h), io.LimitReader(body, want.Size+1))
+	body.Close()
 	closeErr := file.Close()
 	if err != nil {
 		return "", errors.New("下载 core 中断；未保存为可执行文件")
@@ -286,7 +308,7 @@ func cached(ctx context.Context, dir string, want receipt) (string, error) {
 		return "", bad
 	}
 	var got receipt
-	if json.Unmarshal(raw, &got) != nil || got.Repository != want.Repository || got.Version != want.Version || got.Asset != want.Asset || !validHash(got.SHA256) || got.Size <= 0 || got.Size > maxBinarySize {
+	if json.Unmarshal(raw, &got) != nil || got.Source != want.Source || got.Repository != want.Repository || got.Version != want.Version || got.Asset != want.Asset || !validHash(got.SHA256) || got.Size <= 0 || got.Size > maxBinarySize {
 		return "", bad
 	}
 	if want.SHA256 != "" && (want.SHA256 != got.SHA256 || want.Size != got.Size) {

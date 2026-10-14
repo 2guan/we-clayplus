@@ -250,6 +250,22 @@ func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64)
 	return &resp, nil
 }
 
+func (w remote) RevokeWithClientID(receiver string, newMsgId uint64, clientMsgId string, timestamp uint64) (*RevokeMessageResponse, error) {
+	if receiver == "" || newMsgId == 0 || clientMsgId == "" || timestamp == 0 {
+		return nil, errors.New("撤回需要原始 receiver、new_id、string_client_id 和 create_time")
+	}
+	var resp RevokeMessageResponse
+	if err := w.core().Post("/api/message/revoke").Body(map[string]any{
+		"receiver":         receiver,
+		"new_id":           newMsgId,
+		"string_client_id": clientMsgId,
+		"create_time":      timestamp,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // DownloadImg 下载消息图片
 func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error) {
 	b, err := w.core().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).DoBinary()

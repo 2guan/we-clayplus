@@ -6,6 +6,7 @@ package messageability
 import (
 	"container/list"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -19,6 +20,7 @@ type receiptKey struct {
 type revokeReceipt struct {
 	key               receiptKey
 	clientID, created uint64
+	stringClientID    string
 }
 type receiptCache struct {
 	mu      sync.Mutex
@@ -30,12 +32,22 @@ func (c *receiptCache) remember(receiver string, newID, clientID, created uint64
 	if receiver == "" || newID == 0 || clientID == 0 || created == 0 {
 		return false
 	}
+	return c.rememberReceipt(revokeReceipt{key: receiptKey{receiver, newID}, clientID: clientID, created: created})
+}
+
+func (c *receiptCache) rememberString(receiver string, newID uint64, clientID string, created uint64) bool {
+	if receiver == "" || newID == 0 || created == 0 || clientID == "" || len(clientID) > 512 || strings.ContainsRune(clientID, 0) {
+		return false
+	}
+	return c.rememberReceipt(revokeReceipt{key: receiptKey{receiver, newID}, stringClientID: clientID, created: created})
+}
+
+func (c *receiptCache) rememberReceipt(r revokeReceipt) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
 		c.entries = make(map[receiptKey]*list.Element)
 	}
-	r := revokeReceipt{receiptKey{receiver, newID}, clientID, created}
 	if e := c.entries[r.key]; e != nil {
 		e.Value = r
 		c.order.MoveToBack(e)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scan the Git index; never print or retain candidate secret values."""
 from pathlib import Path
-import hashlib,json,os,shutil,subprocess,sys,tempfile
+import hashlib,json,os,re,shutil,subprocess,sys,tempfile
 root=Path(__file__).resolve().parents[1]
 raw=subprocess.check_output(['git','ls-files','-s','-z'],cwd=root)
 entries=[]
@@ -11,8 +11,9 @@ for record in raw.split(b'\0'):
  if stage!='0' or mode not in ('100644','100755'):raise SystemExit('Unmerged or non-regular staged file: '+name)
  p=Path(name)
  if p.is_absolute() or '..' in p.parts:raise SystemExit('Invalid staged path')
- blocked=any(x.lower() in ('runtime','data','logs','secrets','credentials','node_modules','.git','bin','dist') or x.startswith('data-restored') for x in p.parts)
+ blocked=any(x.lower() in ('runtime','data','logs','secrets','credentials','node_modules','.git','bin','dist','core-authorization','issued-keys') or x.startswith('data-restored') for x in p.parts)
  blocked=blocked or p.name.startswith('.env') or p.suffix.lower() in ('.log','.pem','.key','.p12','.pfx','.db','.sqlite','.session')
+ blocked=blocked or p.name.lower() in ('auth-state.json','signing.key','installation-id')
  if blocked:raise SystemExit('Forbidden staged path: '+name)
  entries.append((name,blob))
 if not entries:raise SystemExit('No staged files to scan')
@@ -25,7 +26,9 @@ with tempfile.TemporaryDirectory(prefix='we-clay-secret-check-') as tmp:
  snapshot=Path(tmp)/'source';snapshot.mkdir();report=Path(tmp)/'findings.json'
  for name,blob in entries:
   dest=snapshot/name;dest.parent.mkdir(parents=True,exist_ok=True)
-  dest.write_bytes(subprocess.check_output(['git','cat-file','blob',blob],cwd=root))
+  data=subprocess.check_output(['git','cat-file','blob',blob],cwd=root)
+  if re.search(rb'(?<![A-Za-z0-9_])wca_[0-9a-f]{64}(?![A-Za-z0-9_])',data):raise SystemExit('Forbidden runtime authorization key (candidate hidden)')
+  dest.write_bytes(data)
  result=subprocess.run([scanner,'dir',str(snapshot),'--report-format=json','--report-path='+str(report),'--exit-code=1','--no-banner'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  if result.returncode not in (0,1) or not report.exists():raise SystemExit('Secret scanner failed')
  findings=json.loads(report.read_text());unknown=[]

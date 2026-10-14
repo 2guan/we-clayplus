@@ -30,3 +30,14 @@ go.work.sum
 node_modules/
 playwright-report/
 test-results/
+
+# 独立 core 的本机进程记录，可能含 API 令牌
+gateway-core.json
+gateway-core.lock
+.gateway-core-*
+
+# 在线授权私有数据
+core-authorization/
+auth-state.json
+signing.key
+issued-keys/

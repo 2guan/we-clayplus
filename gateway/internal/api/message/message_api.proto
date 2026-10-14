@@ -97,6 +97,9 @@ message UploadEmojiResponse {
   optional int32 count = 2;                         // emoji 项目数量
   repeated Result result = 3;                       // emoji 上传响应列表
   optional uint32 action_flag = 4;                  // 操作标志
+  // core 从本次发送请求返回的撤回元数据；不是微信 UploadEmojiResponse 的字段。
+  optional string revoke_client_id = 5;
+  optional uint64 revoke_create_time = 6;
 
   message Result {
     optional int32 code = 1;    // 返回码

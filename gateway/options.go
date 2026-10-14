@@ -12,6 +12,9 @@ import (
 // 回调串行执行，应及时返回并遵守 ctx 取消。返回错误或 panic 会停止 Run，
 // 不自动重试回调；未确认的事件在下次启动时可能重放，业务需按消息 ID 去重。
 type Handlers struct {
+	// OnConnectionChanged 通知 core 登录阶段变化，与其他回调串行。
+	// 此回调可能先于 OnReady；业务调用必须等到 OnReady。掉线后 Run 返回 ErrLoginRequired。
+	OnConnectionChanged func(context.Context, ConnectionState) error
 	// OnReady 在登录、缓存初始化和首次事件订阅成功后调用一次；重连不重复调用。
 	OnReady func(context.Context, *Client) error
 	// OnMessage 接收正常解析的消息，先于内置命令和插件执行。

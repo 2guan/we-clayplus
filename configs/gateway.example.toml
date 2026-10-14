@@ -5,17 +5,29 @@ core_token_env = "WE_CLAY_CORE_TOKEN"
 data_dir = "./runtime/gateway/data"
 plugins_dir = "./runtime/gateway/plugins"
 
-# 自动下载/启动：取消下方注释，固定使用已发布的 core v0.3.2。
+# 自动下载/启动：取消下方注释，固定使用已发布的 core tag（如 v0.4.2）。
 # 保持整个 [core] 段注释时，连接已有 core。
 # [core]
+# auth_key_env = "WE_CLAY_AUTH_KEY" # 运行授权：只填环境变量名，不能填 Key
 # repository = "we-clay/core-release"
-# version = "v0.3.2"
+# version = "v0.4.2"
+# keep_alive = false # true 时必须将 data_dir 改为固定的绝对账号目录
 # cache_dir = "./runtime/core-bin"
-# data_dir = "./runtime/core"
+# data_dir = "/absolute/path/to/existing/core-data" # 托管模式必填绝对路径；升级保留原账号目录
 # login_address = "127.0.0.1:8201"
+# device_name = "我的 Mac 机器人" # 可选；留空保留原名，变更需重启 core
 # stage = "auto"
 # github_token_env = "WE_CLAY_GITHUB_TOKEN"
 # storage_encrypted = false
+
+# 私有 OSS（启用后下载不会访问 GitHub；账号目录等 [core] 配置需一并启用）
+# [core.oss]
+# bucket = "weclay"
+# region = "cn-beijing"
+# prefix = "core"
+# endpoint = "https://oss-cn-beijing.aliyuncs.com"
+# cname = false
+# 凭据只从 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / 可选 OSS_SESSION_TOKEN 环境读取。
 
 # Dashboard 与 AI 默认启用；Mock 只允许回环地址，运行期间不访问 core 或模型供应商。
 [console]

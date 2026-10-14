@@ -103,16 +103,27 @@ func TestVoiceEncodingAndReceipt(t *testing.T) {
 			w.WriteHeader(404)
 		case "/api/message/revoke":
 			var q struct {
-				Receiver   string
-				NewID      uint64 `json:"new_id"`
-				ClientID   uint64 `json:"client_id"`
-				CreateTime uint64 `json:"create_time"`
+				Receiver       string `json:"receiver"`
+				NewID          uint64 `json:"new_id"`
+				ClientID       uint64 `json:"client_id"`
+				StringClientID string `json:"string_client_id"`
+				CreateTime     uint64 `json:"create_time"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
 				t.Error(err)
 			}
-			if q.Receiver != "synthetic-voice-peer" || q.NewID != 9223372036854770001 || q.ClientID != 9007199254740993 || q.CreateTime != 1789890000 {
+			if q.Receiver != "synthetic-voice-peer" || q.CreateTime != 1789890000 {
 				t.Error("撤回丢失原始回执")
+				w.WriteHeader(400)
+				return
+			}
+			if q.NewID == 9223372036854770001 && q.ClientID != 9007199254740993 {
+				t.Error("数值回执不匹配")
+				w.WriteHeader(400)
+				return
+			}
+			if q.NewID == 9223372036854770002 && q.StringClientID != "synthetic_voice_1789890000" {
+				t.Error("字符串回执不匹配")
 				w.WriteHeader(400)
 				return
 			}
@@ -144,12 +155,11 @@ func TestVoiceEncodingAndReceipt(t *testing.T) {
 			t.Fatal("控制台回执精度或时长丢失")
 		}
 		_, err = b.Execute(ctx, control.Command{Operation: "revoke", Target: "synthetic-voice-peer", ID: receipt["id"]})
-		// 非数字 client_id 不能凭空构造，必须在发起撤回 RPC 前拒绝。
-		if (i == 1 && err != nil) || (i == 2 && err == nil) {
+		if err != nil {
 			t.Fatalf("撤回结果错误: %v", err)
 		}
 	}
-	if sends.Load() != 2 || revokes.Load() != 1 {
+	if sends.Load() != 2 || revokes.Load() != 2 {
 		t.Fatal("发送或撤回调用次数错误")
 	}
 }
