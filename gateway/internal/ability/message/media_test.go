@@ -53,6 +53,12 @@ func (f *mediaAPI) DownloadFile(receiver, id, key string, size uint32) (*api.Dow
 	r, _ := f.DownloadImg(receiver, id, key, size)
 	return &api.DownloadFileResponse{Chunk: r.Chunk}, nil
 }
+func (f *mediaAPI) DownloadFileChunk(receiver, id, key string, size, offset, chunkSize uint32) (*api.DownloadFileResponse, error) {
+	f.calls++
+	f.receiver, f.id, f.key, f.size = receiver, id, key, size
+	data := []byte("media")
+	return &api.DownloadFileResponse{Size: proto.Uint32(size), Offset: proto.Uint32(offset), ChunkSize: proto.Uint32(uint32(len(data))), Chunk: &base.Buffer{Size: proto.Uint32(uint32(len(data))), Data: data}}, nil
+}
 
 type messageContacts struct{ contact.Ability }
 
