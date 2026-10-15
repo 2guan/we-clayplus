@@ -3,7 +3,7 @@
 本项目仓库 `we-clay/we-clay` 为私有仓库，保存 gateway、SDK 与应用代码。独立 core 源码保持私有，不得纳入本项目。不得提交账号密码、API 令牌、登录二维码、认证票据、
 设备标识、会话文件、私钥、聊天记录、真实媒体、日志和已填写的运行配置。
 
-令牌从环境变量读取。本地运行目录为 `runtime/`，编译输出在 `bin/`；二者均已忽略。
+嵌入式 Run 的令牌从环境变量读取。一键安装的授权 Key 保存在本机运行目录的 `secrets/license.key`；macOS/Linux 权限为 0600，Windows 限制为当前用户读取，`cmd/we-clay` 只从该文件读取并传给 core。本地运行目录为 `runtime/`，编译输出在 `bin/`；二者均已忽略。
 `configs/` 只保存无凭据的示例。`.gitignore` 不替代提交前检查。
 
 ## 提交与推送
@@ -20,11 +20,11 @@
 ## 运行边界
 
 gateway/core gRPC 使用 Authorization 元数据携带 Bearer 令牌，调用和事件订阅均验证。
-只允许回环 IP 地址，跨机器使用受信任的加密隧道；gateway 无 HTTP 回调监听。外部插件以独立进程执行，具有当前系统用户的权限，只加载可信插件。Dashboard 与 AI 为进程内基础插件。
+只允许回环 IP 地址，跨机器使用受信任的加密隧道；gateway 无 HTTP 回调监听。预编译主程序默认禁止启动外部插件进程，Dashboard 与 AI 仍为进程内基础插件。显式启用的外部插件保留原有环境变量继承行为；启动时过滤框架自身的授权 Key（包括自定义变量名）、core 通讯令牌、OSS 与框架下载凭据。第三方服务密钥仍可能被插件读取。插件具有当前系统用户权限，能读取同用户可访问的文件，只能加载可信插件。
 
 ## 二进制下载
 
-自动模式从指定 Release 下载当前平台附件，校验大小与 SHA-256 后才执行；
+自动模式从指定 Release 或授权服务签发的私有 OSS 短时 URL 下载当前平台附件，校验大小与 SHA-256 后才执行；
 GitHub 下载令牌只从环境读取，不传给附件重定向地址或 core。缓存和账号状态都在本地 `runtime/`。
 发布仓库及其维护者属于信任边界，固定版本并保持已发布附件不可变。
 默认在调用方取消 context 时回收本次启动的 core。`KeepAlive: true` 时，core 脱离终端独立运行，取消只关闭 gateway。
@@ -40,8 +40,8 @@ Mock 免登录演示只允许回环监听及本机 Host，使用独立 `mock.db`
 
 ## 私有 OSS
 
-默认通过运行授权 Key 向 HTTPS 授权服务申请私有 OSS 的短时下载链接；Key 只发给授权服务，签名链接只访问配置的 OSS Bucket/Endpoint，不落盘、不传给 core。保留原有 OSS AK/SK 读取方式：凭据仅从环境读取，不传给 core，不写入配置与缓存回执；用户侧 RAM 权限仅需 weclay/core/* 的 GetObject。Actions 写入凭据不得分发给客户端。下载拒绝重定向，记录错误时不输出原始 OSS 响应或签名 URL。清单中的大小和 SHA-256 校验保持不变。
+默认通过运行授权 Key 向 HTTPS 授权服务申请私有 OSS 短时下载链接；Key 只发给授权服务，不进入命令行参数或日志。安装脚本与 gateway 均核对固定 Bucket、对象路径、版本、大小和 SHA-256，下载拒绝重定向，错误不输出签名 URL 或原始 OSS 响应。原有 OSS AK/SK 下载方式保留给受控部署，凭据仅从环境读取，不传给 core，也不写入配置与缓存回执。发布用写入凭据只存放于 GitHub Actions Secrets，授权服务使用独立只读凭据；两者均不得分发给客户端。
 
 ## core 运行授权
 
-运行授权 Key 只从所选环境变量读取，以 `WE_CLAY_AUTH_KEY` 传入 core，不进入 argv、TOML 或进程记录。独立进程记录仅保存单向摘要用于提示 Key 变更；该摘要不能替代服务端授权。授权校验和续期均由 core 完成。它与 OSS/GitHub 下载凭据、本机 API Token 分离。见 docs/运行授权.md。
+嵌入式调用的运行授权 Key 从所选环境变量读取；预编译启动器从本机权限受限的 Key 文件读取并以 `WE_CLAY_AUTH_KEY` 传入 core，不进入 argv、TOML 或进程记录。独立进程记录仅保存单向摘要用于提示 Key 变更；该摘要不能替代服务端授权。授权校验和续期均由 core 完成。它与 OSS/GitHub 下载凭据、本机 API Token 分离。见 docs/运行授权.md。

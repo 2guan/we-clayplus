@@ -11,27 +11,31 @@ import (
 )
 
 type runtimeState struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	events  chan *sdk.Event
-	done    chan struct{}
-	workers sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
+	external  bool
+	deniedEnv string
+	events    chan *sdk.Event
+	done      chan struct{}
+	workers   sync.WaitGroup
 }
 
 var active atomic.Pointer[runtimeState]
 var operations sync.Mutex
 
 // Initial 初始化本次运行；即使失败也必须调用 Destroy 释放已加载插件。
-func Initial(ctx context.Context, dir string) error {
+func Initial(ctx context.Context, dir string, external bool, deniedEnv string) error {
 	ctx, cancel := context.WithCancel(ctx)
-	state := &runtimeState{ctx: ctx, cancel: cancel, events: make(chan *sdk.Event, 100), done: make(chan struct{})}
+	state := &runtimeState{ctx: ctx, cancel: cancel, external: external, deniedEnv: deniedEnv, events: make(chan *sdk.Event, 100), done: make(chan struct{})}
 	active.Store(state)
 	pluginDir = dir
 	configPath = filepath.Join(dir, "config.toml")
 	configs = map[string]*Config{}
 	go dispatcher(state)
-	if err := loadConfig(); err != nil {
-		return err
+	if external {
+		if err := loadConfig(); err != nil {
+			return err
+		}
 	}
 	// HostService 是既有 RPC 服务名；组件改名不改变线上协议。
 	sdk.HostServiceImpl = &gatewayService{}
@@ -41,10 +45,13 @@ func Initial(ctx context.Context, dir string) error {
 	if err := registerBuiltinCM(); err != nil {
 		return err
 	}
-	if err := LoadPlugins(); err != nil {
-		return err
+	if external {
+		if err := LoadPlugins(); err != nil {
+			return err
+		}
+		return startConfigWatcher()
 	}
-	return startConfigWatcher()
+	return nil
 }
 
 func Destroy() {
