@@ -54,3 +54,10 @@
   margin: 0;
   font-size: 13px;
 }
+.avatar-context-menu button {
+  overflow-wrap: anywhere;
+}
+.avatar-context-menu small {
+  font-size: 10px;
+  white-space: nowrap;
+}

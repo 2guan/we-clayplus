@@ -1,7 +1,7 @@
 // 文件名：ChatMentions.tsx
 // 主要功能：群成员模糊选择、头像右键入口及精确绑定 @ 文本与成员 ID。
 // 作者：2guan
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import PinyinMatch from "pinyin-match/src/simplified.js";
 import { Avatar } from "./ui";
@@ -232,29 +232,39 @@ export function MentionList({
 }
 export function AvatarMentionMenu({
   target,
+  allowMention,
   onPick,
   onClose,
 }: {
-  target: { member: GroupMember; x: number; y: number };
+  target: { member: GroupMember; x: number; y: number; trigger: HTMLElement };
+  allowMention: boolean;
   onPick: (m: GroupMember) => void;
   onClose: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
-  useEffect(() => {
-    root.current?.querySelector("button")?.focus();
+  useLayoutEffect(() => {
+    const node = root.current!;
+    const rect = node.getBoundingClientRect();
+    node.style.left = `${Math.max(8, Math.min(target.x, window.innerWidth - rect.width - 8))}px`;
+    node.style.top = `${Math.max(8, Math.min(target.y, window.innerHeight - rect.height - 8))}px`;
+    (node.querySelector<HTMLButtonElement>("button:not(:disabled)") || node).focus();
     const outside = (e: PointerEvent) => {
       if (!root.current?.contains(e.target as Node)) close.current();
     };
     document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, []);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      if (target.trigger.isConnected) target.trigger.focus();
+    };
+  }, [target]);
   return createPortal(
     <div
       ref={root}
-      className="message-context-menu"
+      className="message-context-menu avatar-context-menu"
       role="menu"
+      tabIndex={-1}
       aria-label="人员快捷菜单"
       style={{
         position: "fixed",
@@ -266,14 +276,17 @@ export function AvatarMentionMenu({
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <button
+      {allowMention && <button
         role="menuitem"
         onClick={() => {
           onPick(target.member);
           onClose();
         }}
       >
-        @TA
+        @ {target.member.display_name || target.member.remark || target.member.name || target.member.id}
+      </button>}
+      <button role="menuitem" disabled title="当前 core 暂未提供拍一拍发送接口">
+        <span>拍一拍</span><small>暂不可用</small>
       </button>
     </div>,
     document.body,

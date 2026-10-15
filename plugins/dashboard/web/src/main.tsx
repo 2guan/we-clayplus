@@ -66,7 +66,7 @@ function Login({
       <div className="auth-appearance">{appearance}</div>
       <div className="login-aside">
         <div className="wordmark">
-          <span>W</span>
+          <span><img src="/weclay-logo.png" alt="" width={29} height={29} /></span>
           {brandName}
         </div>
         <div>
@@ -104,7 +104,7 @@ function Login({
             }
           }}
         >
-          <span className="login-mark">W</span>
+          <span className="login-mark"><img src="/weclay-logo.png" alt="" width={29} height={29} /></span>
           {demo && (
             <div className="hint">
               脱机外观预览，不创建真实账号。
@@ -386,7 +386,7 @@ function App() {
   if (!auth)
     return (
       <div className="startup">
-        <span className="login-mark">W</span>
+        <span className="login-mark"><img src="/weclay-logo.png" alt="" width={29} height={29} /></span>
         {error ? (
           <>
             <h2>无法连接控制台</h2>
@@ -497,7 +497,7 @@ function App() {
       )}
       <aside id="sidebar" className={`sidebar ${mobileNav ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
         <a href="#overview" className="brand" aria-label={`${brandName} 总览`} title={brandName}>
-          <span className="brand-mark">W</span>
+          <span className="brand-mark"><img src="/weclay-logo.png" alt="" width={29} height={29} /></span>
           <div>
             <strong>{brandName}</strong>
             <small>微信与 AI 工作台</small>

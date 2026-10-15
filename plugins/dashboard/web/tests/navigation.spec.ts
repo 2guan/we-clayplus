@@ -21,8 +21,9 @@ test("机器人标题与头像随账号更新，图片失败时保留默认图�
   await page.goto("/#overview");
   await expect(page).toHaveTitle("测试机器人 · 总览");
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /navigation-fixture/);
-  await expect(page.locator(".brand-mark")).toHaveText("W");
-  await expect(page.locator(".brand img")).toHaveCount(0);
+  await expect(page.locator(".brand-mark img")).toHaveAttribute("src", "/weclay-logo.png");
+  await expect(page.locator(".brand img")).toHaveCount(1);
+  await expect.poll(() => page.locator(".brand img").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(500);
   await page.locator('.sidebar a[href="#settings"]').click();
   await expect(page).toHaveTitle("测试机器人 · 系统设置");
   nickname = "另一个机器人";
@@ -31,7 +32,7 @@ test("机器人标题与头像随账号更新，图片失败时保留默认图�
   await page.reload();
   await expect(page).toHaveTitle("另一个机器人 · 总览");
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/svg\+xml/);
-  await expect(page.locator(".brand img")).toHaveCount(0);
+  await expect(page.locator(".brand img")).toHaveCount(1);
   nickname = "";
   photo = "";
   await page.reload();

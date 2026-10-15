@@ -669,6 +669,18 @@ td code {
   font-size: 18px;
   letter-spacing: -0.5px;
 }
+.brand-mark:has(img),
+.login-mark:has(img),
+.wordmark > span:has(img) {
+  padding: 0;
+  flex-shrink: 0;
+}
+.brand-mark img,
+.login-mark img,
+.wordmark > span img {
+  display: block;
+  object-fit: contain;
+}
 .brand small {
   display: block;
   font-size: 9px;
@@ -1338,12 +1350,18 @@ td code {
   color: #98a09a;
   flex-shrink: 0;
 }
-.wechat-rail > .avatar {
+.wechat-rail > .wechat-self-profile {
+  width: 35px;
+  height: 35px;
+  padding: 0;
+  border-radius: 7px;
+  margin-bottom: 9px;
+}
+.wechat-self-profile > .avatar {
   width: 35px;
   height: 35px;
   border-radius: 7px;
   font-size: 18px;
-  margin-bottom: 9px;
 }
 .wechat-rail button,
 .wechat-rail a {

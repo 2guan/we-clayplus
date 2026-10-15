@@ -140,6 +140,9 @@ test("五种配色均支持亮暗模式，并覆盖所有页面与认证页", as
   await page.getByRole("button", { name: "脱机 Mock", exact: true }).click();
   for (const entry of ["登录页", "初始化页"]) {
     await page.getByRole("button", { name: entry, exact: true }).click();
+    await expect(page.locator(".login-mark img")).toHaveAttribute("src", "/weclay-logo.png");
+    await expect.poll(() => page.locator(".login-mark img").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(500);
+    await expect(page.locator(".wordmark img")).toHaveAttribute("src", "/weclay-logo.png");
     await chooseColor("蓝色");
     await expect(page.locator("html")).toHaveAttribute("data-color", "blue");
     await page.getByRole("button", { name: "返回控制台", exact: true }).click();

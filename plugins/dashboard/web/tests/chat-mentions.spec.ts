@@ -69,7 +69,7 @@ test("群聊 @ 选择绑定真实成员 ID", async ({ page }) => {
   await page
     .getByRole("button", { name: "查看张三的资料" })
     .click({ button: "right" });
-  await page.getByRole("menuitem", { name: "@TA" }).click();
+  await page.getByRole("menuitem", { name: "@ 张三", exact: true }).click();
   await expect(input).toHaveValue("@张三\u2005");
   // 删除 @ 字段后，普通文本不应保留隐藏的提醒对象。
   await input.fill("普通文字");

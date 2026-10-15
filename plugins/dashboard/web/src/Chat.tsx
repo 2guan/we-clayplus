@@ -209,6 +209,7 @@ export default function Chat(props: PageProps) {
     member: GroupMember;
     x: number;
     y: number;
+    trigger: HTMLElement;
   } | null>(null);
   useEffect(() => {
     setAvatarMenu(null);
@@ -387,16 +388,31 @@ export default function Chat(props: PageProps) {
       {avatarMenu && (
         <AvatarMentionMenu
           target={avatarMenu}
+          allowMention={current?.kind === "group"}
           onClose={() => setAvatarMenu(null)}
           onPick={(m) => mentions.pick(m, false)}
         />
       )}
       <div className="wechat-rail">
-        <Avatar
-          src={state.account.photo}
-          blank={state.account.status !== "online"}
-          name={state.account.avatar || state.account.name}
-        />
+        <button
+          type="button"
+          className="wechat-self-profile"
+          aria-label="查看我的资料"
+          title="查看我的资料"
+          aria-haspopup="dialog"
+          disabled={!state.account.id}
+          onClick={(e) => setPerson({
+            id: state.account.id,
+            name: state.account.name,
+            anchor: e.currentTarget,
+          })}
+        >
+          <Avatar
+            src={state.account.photo}
+            blank={state.account.status !== "online"}
+            name={state.account.avatar || state.account.name}
+          />
+        </button>
         <button
           className={section === "chats" ? "selected" : ""}
           onClick={() => switchSection("chats")}
@@ -692,22 +708,19 @@ export default function Chat(props: PageProps) {
                       <button
                         className="person-avatar-button"
                         onContextMenu={(e) => {
-                          if (
-                            current.kind !== "group" ||
-                            m.self ||
-                            !m.sender_id
-                          )
-                            return;
+                          const id = m.self ? state.account.id : m.sender_id || (current.kind !== "group" ? current.id : "");
+                          if (!id) return;
                           e.preventDefault();
                           setMenu(null);
                           setPerson(null);
                           const rect = e.currentTarget.getBoundingClientRect();
                           setAvatarMenu({
                             member: mentionMembers.find(
-                              (p) => p.id === m.sender_id,
-                            ) || { id: m.sender_id, name: m.sender },
+                              (p) => p.id === id,
+                            ) || { id, name: m.self ? state.account.name : m.sender || current.name },
                             x: e.clientX || rect.left,
                             y: e.clientY || rect.bottom,
+                            trigger: e.currentTarget,
                           });
                         }}
                         aria-label={`查看${m.self ? state.account.name : m.sender}的资料`}
