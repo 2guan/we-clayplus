@@ -1,6 +1,6 @@
 # 维护约定
 
-- 提交作者和提交者统一为 `youfu-fun <24789121+youfu-fun@users.noreply.github.com>`。每次新建 clone/worktree 后先设置仓库级 `user.name` / `user.email`；提交前用 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT` 核对，推送前检查将推送的提交身份。不得依赖机器全局 Git 身份。
+- 提交作者和提交者根据当前开发者的实际身份确定，保持仓库级配置与开发者身份一致。每次新建 clone/worktree 后先设置或核验仓库级 `user.name` / `user.email`；提交前用 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT` 核对，推送前检查将推送的提交身份。不得依赖机器全局未受控的 Git 身份。
 
 - 修改前阅读根目录 README.md 和 SECURITY.md。
 - gateway 提供可导入的 Run 入口，不增加上层 main/CLI；内部实现位于 gateway/internal。
