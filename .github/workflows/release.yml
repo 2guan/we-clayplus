@@ -3,13 +3,17 @@ name: 发布 we-clay 跨平台安装包
 on:
   push:
     tags: ['v*']
+  pull_request:
+    paths:
+      - scripts/install.ps1
+      - .github/workflows/release.yml
 
 permissions:
   contents: read
 
 # 稳定安装脚本只能由一个版本更新，禁止并发发布造成版本回退。
 concurrency:
-  group: we-clay-oss-release
+  group: we-clay-oss-release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'tag' }}
   cancel-in-progress: false
 
 jobs:
@@ -31,7 +35,7 @@ jobs:
 
   release:
     needs: windows-installer-check
-    if: github.repository == 'we-clay/we-clay' && github.event.repository.private == true
+    if: github.event_name == 'push' && github.repository == 'we-clay/we-clay' && github.event.repository.private == true
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -93,7 +97,7 @@ jobs:
 
   release-notes:
     needs: release
-    if: github.repository == 'we-clay/we-clay' && github.event.repository.private == true
+    if: github.event_name == 'push' && github.repository == 'we-clay/we-clay' && github.event.repository.private == true
     runs-on: ubuntu-24.04
     permissions:
       contents: write

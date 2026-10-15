@@ -9,27 +9,32 @@ bucket_host='weclay.oss-cn-beijing.aliyuncs.com'
 
 usage() {
   cat <<'EOF'
-用法：install.sh [--key-file 授权文件] [--data-dir 本机目录] [--core-data-dir 旧微信账号目录] [--no-run]
+用法：install.sh [--key-file 授权文件] [--data-dir 本机目录] [--core-data-dir 旧微信账号目录] [--device-name 微信设备名称] [--no-run]
 
 不传 --key-file 时读取已安装的授权文件；首次安装会安全提示输入 Key。
 已有微信登录数据时，必须传 --core-data-dir 指向原来的 core 账号目录。
+--device-name 可选；不传时沿用此前保存的名称或 core 中的原设备名称。
 EOF
 }
 
 fail() { printf '安装失败：%s\n' "$1" >&2; exit 1; }
+stage() { printf '%s\n' "$1" >&2; }
 
 key_file=''
 data_dir=''
 core_data_dir=''
+device_name=''
+device_name_set=0
 run_after=1
 while (($#)); do
   case "$1" in
-    --key-file|--data-dir|--core-data-dir)
-      (($# >= 2)) || fail "$1 缺少路径"
+    --key-file|--data-dir|--core-data-dir|--device-name)
+      (($# >= 2)) || fail "$1 缺少参数值"
       case "$1" in
         --key-file) key_file=$2 ;;
         --data-dir) data_dir=$2 ;;
         --core-data-dir) core_data_dir=$2 ;;
+        --device-name) device_name=$2; device_name_set=1 ;;
       esac
       shift 2 ;;
     --no-run) run_after=0; shift ;;
@@ -64,6 +69,10 @@ esac
 if [[ -n "$core_data_dir" ]]; then
   [[ "$core_data_dir" = /* && -d "$core_data_dir" ]] || fail '--core-data-dir 必须指向已存在的绝对目录，避免误建新设备'
 fi
+if ((device_name_set)); then
+  [[ -n "${device_name//[[:space:]]/}" && "$device_name" != *$'\n'* && "$device_name" != *$'\r'* ]] || fail '--device-name 不能为空、纯空白或包含换行'
+fi
+stage "准备安装 we-clay ${version}（${goos}/${goarch}）"
 
 mkdir -p "$data_dir/secrets" "$data_dir/bin"
 existing_install=0
@@ -85,9 +94,17 @@ fi
 request=$(printf '{"product":"we-clay","version":"%s","goos":"%s","goarch":"%s","asset":"bundle"}' "$version" "$goos" "$goarch")
 plan_file=$(mktemp "$data_dir/bin/.download-plan.XXXXXX")
 binary_tmp=$(mktemp "$data_dir/bin/.we-clay.XXXXXX")
-trap 'rm -f "$plan_file" "$binary_tmp"' EXIT
+download_pid=''
+cleanup() {
+  if [[ -n "$download_pid" ]]; then
+    kill "$download_pid" 2>/dev/null || true
+  fi
+  rm -f "$plan_file" "$binary_tmp"
+}
+trap cleanup EXIT
 
 # curl 从 stdin 接收含 Key 的配置，Key 不出现在进程参数或日志中。
+stage '正在验证授权并申请下载地址…'
 if ! printf 'header = "Authorization: Bearer %s"\n' "$key" | curl --config - --silent --fail --show-error --proto '=https' --tlsv1.2 --max-time 30 \
   --header 'Accept: text/plain' --header 'Content-Type: application/json' \
   --request POST --data "$request" --output "$plan_file" "$auth_url" 2>/dev/null; then
@@ -110,10 +127,41 @@ esac
 [[ "$asset_url" =~ ^[A-Za-z0-9._~:/?\&=%+-]+$ ]] || fail '下载地址包含不安全字符'
 
 # 私有 OSS 的短时 URL 只从 stdin 传给 curl，不进入命令行参数；不跟随重定向。
-if ! printf 'url = "%s"\n' "$asset_url" | curl --config - --silent --fail --show-error --proto '=https' --tlsv1.2 \
-  --max-time 600 --output "$binary_tmp" 2>/dev/null; then
+stage '正在下载主程序…'
+printf 'url = "%s"\n' "$asset_url" | curl --config - --silent --fail --show-error --proto '=https' --tlsv1.2 \
+  --max-time 600 --output "$binary_tmp" 2>/dev/null &
+download_pid=$!
+show_download_progress() {
+  local current_size progress
+  current_size=$(wc -c < "$binary_tmp" | tr -d ' ')
+  progress=$(awk -v current="$current_size" -v total="$expected_size" 'BEGIN {
+    percent = total > 0 ? int(current / total * 100) : 0
+    if (percent > 100) percent = 100
+    printf "%3d%%  %.1f / %.1f MiB", percent, current / 1048576, total / 1048576
+  }')
+  printf '\r下载进度：%s' "$progress" >&2
+}
+if [[ -t 2 ]]; then
+  while kill -0 "$download_pid" 2>/dev/null; do
+    show_download_progress
+    sleep 1
+  done
+fi
+download_ok=1
+wait "$download_pid" || download_ok=0
+download_pid=''
+if [[ -t 2 ]]; then
+  if ((download_ok)); then
+    show_download_progress
+    printf '\n' >&2
+  else
+    printf '\r\033[K' >&2
+  fi
+fi
+if (( !download_ok )); then
   fail '二进制下载失败；短时地址可能已过期，请重新运行安装脚本'
 fi
+stage '下载完成，正在校验文件大小与 SHA-256…'
 actual_size=$(wc -c < "$binary_tmp" | tr -d ' ')
 [[ "$actual_size" = "$expected_size" ]] || fail '二进制大小校验失败'
 [[ "$(hash_file "$binary_tmp")" = "$expected_hash" ]] || fail '二进制 SHA-256 校验失败'
@@ -128,11 +176,18 @@ fi
 binary_tmp=''
 
 # 原设备路径独立保存为数据，不把用户输入拼接进可执行脚本。
+stage '校验通过，正在写入启动入口…'
 if [[ -n "$core_data_dir" ]]; then
   old_core_tmp=$(mktemp "$data_dir/.core-data-dir.XXXXXX")
   printf '%s\n' "$core_data_dir" > "$old_core_tmp"
   chmod 0600 "$old_core_tmp"
   mv -f "$old_core_tmp" "$data_dir/core-data-dir.txt"
+fi
+if ((device_name_set)); then
+  device_name_tmp=$(mktemp "$data_dir/.device-name.XXXXXX")
+  printf '%s\n' "$device_name" > "$device_name_tmp"
+  chmod 0600 "$device_name_tmp"
+  mv -f "$device_name_tmp" "$data_dir/device-name.txt"
 fi
 runner_tmp=$(mktemp "$data_dir/.run.XXXXXX")
 cat > "$runner_tmp" <<'EOF'
@@ -145,6 +200,10 @@ args=(--data-dir "$root" --license-file "$root/secrets/license.key")
 if [[ -f "$root/core-data-dir.txt" ]]; then
   IFS= read -r old_core < "$root/core-data-dir.txt"
   args+=(--core-data-dir "$old_core")
+fi
+if [[ -f "$root/device-name.txt" ]]; then
+  IFS= read -r device_name < "$root/device-name.txt"
+  [[ -n "$device_name" ]] && args+=(--device-name "$device_name")
 fi
 exec "$root/bin/we-clay_${version}" "${args[@]}" "$@"
 EOF
