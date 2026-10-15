@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.3 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.8.0 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.7.3
+go get github.com/we-clay/we-clay@v0.8.0
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -67,7 +67,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 | 领域 | 提供的接口 | SDK |
 | --- | --- | --- |
-| **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回，支持表情包下载 | [message](sdk/message/ability.go) |
+| **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回，支持表情包下载；拍一拍（Mac 模式私聊与群聊已验证） | [message](sdk/message/ability.go) |
 | **联系人** | 查询、备注、搜索、好友申请与验证 | [contact](sdk/contact/ability.go) |
 | **群聊** | 创建、成员查询、邀请、群名、公告与管理 | [chatroom](sdk/chatroom/ability.go) |
 | **朋友圈** | 时间线、指定好友主页、发布、点赞、取消点赞与评论 | [moments](sdk/moments/ability.go) |
@@ -87,7 +87,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.7.3
+go get github.com/we-clay/we-clay@v0.8.0
 ```
 
 ### 2 · 调用 Run
@@ -149,8 +149,8 @@ func main() {
 将 `WE_CLAY_CORE_VERSION` 设为私有 OSS 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
 
 ```sh
-# macOS / Linux：先确认已发布的目标 core tag（例如 v0.4.3）
-export WE_CLAY_CORE_VERSION='v0.4.3'
+# macOS / Linux：先确认 Actions 已完成发布 core v0.4.5
+export WE_CLAY_CORE_VERSION='v0.4.5'
 # 通过本机受信任的环境配置提供 WE_CLAY_AUTH_KEY（运行授权 Key）
 # 通过本机受信任的环境配置提供 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（只读权限）
 # 填你已有账号目录的绝对路径；新部署才选择新目录
@@ -228,7 +228,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.3
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.8.0
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -362,6 +362,8 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 ## 当前状态
 
+**v0.8.0 更新：** 内建 Dashboard 与 AI 基础插件，控制台默认监听 `127.0.0.1:8208`，core 登录页默认改为 `127.0.0.1:8201`；旧端口配置升级时须核对。新增私聊和群聊拍一拍入口，搭配 core v0.4.5 使用。Mac 模式下，core HTTP 接口的私聊与群聊请求均得到微信明确成功回执，手机端确认显示；SDK/gateway 调用链完成离线验证，尚未单独真机复验。结果不确定时不自动重试。
+
 **v0.5.5 增加独立 core 与表情包下载**：`KeepAlive` 保留 core 进程，`StopCore` 显式停止；`Message.Download` 统一处理微信表情 CDN。见[独立 core](docs/独立core.md)与[媒体下载](docs/媒体下载.md)。
 
 **v0.7.0 更新：** 接入 core 运行授权 Key、支持每套实例选择不同环境变量，并检测独立 core 的 Key 变更。详见[运行授权](docs/运行授权.md)。
@@ -376,7 +378,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
-**13 个能力域，128 个 SDK 方法：54 个已接通，74 个仅保留占位。**
+**13 个能力域，129 个 SDK 方法：61 个已接通，68 个仅保留占位。**
 另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。
 
 - **历史真机记录**：Mac 模式下，核心链路已测试消息媒体、联系人、群聊、标签、朋友圈等操作，具体范围见下表后的说明。
@@ -390,7 +392,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 <!-- capabilities:start -->
 | Client 字段 | 已接通的方法 | 保留占位的方法 |
 | --- | --- | --- |
-| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Download` | — |
+| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Pat`、`Download` | — |
 | `Contact` · 联系人 | `Get`、`List`、`GetSelf`、`SetRemark`、`AddFriend`、`VerifyFriend`、`Search`、`GetOwner` | `Delete`、`BlacklistAdd`、`BlacklistRemove` |
 | `Chatroom` · 群聊 | `Create`、`GetInfo`、`GetQRCode`、`InviteMember`、`SetName`、`SetAnnouncement`、`SetRemark`、`Save`、`SetAdmin`、`ListMembers`、`GetMember`、`GetMembersDetail` | `FacingCreate`、`AddMember`、`RemoveMember`、`RemoveAdmin`、`TransferOwner`、`Quit`、`ScanJoin`、`ScanJoinEnterprise`、`ConsentJoin` |
 | `Moments` · 朋友圈 | `Timeline`、`UserPage`、`Detail`、`Comment`、`Like`、`Unlike`、`Post`、`Upload`、`Sync` | `Delete`、`DeleteComment`、`SetPrivacy` |
@@ -400,7 +402,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | `Login` · 登录 | — | `Login`、`Init`、`Refresh`、`Wakeup`、`Logout`、`PasswordLogin` |
 | `Miniapp` · 小程序 | `GetRecord` | `JSLogin`、`QrcodeAuthLogin`、`GetRuntimeSession`、`GetSessionQRCode`、`OperateWxData`、`CloudCallFunction`、`SendVerifyCode`、`CheckVerifyCode`、`AddMobile`、`DelMobile`、`GetAllMobile`、`GetRandomAvatar`、`AddAvatar`、`UploadAvatarImg`、`AddRecord`、`GetUserOpenID`、`OauthSdkApp`、`ThirdAppGrant` |
 | `Official` · 公众号 | — | `Follow`、`Quit`、`MpGetA8Key`、`JSAPIPreVerify`、`OauthAuthorize`、`ReadArticle`、`LikeArticle` |
-| `Payment` · 支付 | — | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CreatePreTransfer`、`ConfirmPreTransfer`、`CollectMoney` |
+| `Payment` · 支付 | `ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CollectMoney` | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`CreatePreTransfer`、`ConfirmPreTransfer` |
 | `Report` · 状态通知 | `StartTyping`、`StopTyping` | `ReadMessage` |
 | `User` · 当前账号 | `GetProfile`、`GetQRCode`、`GetSafetyInfo`、`GetBoundHardDevices`、`UploadAvatar` | `UpdateProfile`、`SetPrivacy`、`SetAlias`、`VerifyPassword`、`SetPassword`、`SendVerifyMobile`、`BindMobile`、`BindEmail`、`SendVerifyEmail`、`DelSafeDevice`、`ReportMotion`、`GetCert` |
 <!-- capabilities:end -->
@@ -421,7 +423,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | 登录 | Run 已负责 Mac 登录等待和会话恢复；单独调用这些登录方法未逐项验收，保留占位。 |
 | 小程序 | 仅使用记录查询通过；其他接口缺少测试 appID 或未测。 |
 | 公众号 | 没有完整真实验收，保留占位。 |
-| 支付 | 没有真实验收，保留占位。 |
+| 支付 | 红包领取/查询与确认收款已接通，未执行真实资金验收；付款及支付账户查询保留占位。 |
 | 状态通知 | 开始/停止输入仅收到成功回执，未手机观察；已读通知未测。 |
 | 当前账号 | 资料、个人二维码、安全设备/绑定硬件查询有历史验收；头像上传已接通并完成离线验证，待真机验收；其他资料/安全写操作保留占位。 |
 

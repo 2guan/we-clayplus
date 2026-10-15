@@ -5,12 +5,12 @@ core_token_env = "WE_CLAY_CORE_TOKEN"
 data_dir = "./runtime/gateway/data"
 plugins_dir = "./runtime/gateway/plugins"
 
-# 自动下载/启动：取消下方注释，固定使用已发布的 core tag（如 v0.4.3）。
+# 自动下载/启动：取消下方注释，固定使用已发布的 core tag（如 v0.4.5）。
 # 保持整个 [core] 段注释时，连接已有 core。
 # [core]
 # auth_key_env = "WE_CLAY_AUTH_KEY" # 运行授权：只填环境变量名，不能填 Key
 # repository = "we-clay/core-release"
-# version = "v0.4.3"
+# version = "v0.4.5"
 # keep_alive = false # true 时必须将 data_dir 改为固定的绝对账号目录
 # cache_dir = "./runtime/core-bin"
 # data_dir = "/absolute/path/to/existing/core-data" # 托管模式必填绝对路径；升级保留原账号目录

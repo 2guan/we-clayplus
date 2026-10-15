@@ -40,6 +40,11 @@ func (c Client) Revoke(receiver string, newMsgId uint64) (*Revoke_Response, erro
 	})
 }
 
+// Pat 在指定会话中拍一拍指定联系人。
+func (c Client) Pat(receiver, pattedUsername string) (*Pat_Response, error) {
+	return c.Client.Pat(context.Background(), &Pat_Request{Receiver: receiver, PattedUsername: pattedUsername})
+}
+
 // Download 下载媒体资源（server-stream）。调用方须关闭 reader；流中的错误会在 Read 时返回。
 func (c Client) Download(msg *Message) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -137,6 +142,17 @@ func (s Server) Forward(ctx context.Context, request *Forward_Request) (*Forward
 // Revoke 撤回消息
 func (s Server) Revoke(ctx context.Context, request *Revoke_Request) (*Revoke_Response, error) {
 	return s.Impl.Revoke(request.Receiver, request.NewId)
+}
+
+// Pat 将拍一拍请求交给消息能力实现。
+func (s Server) Pat(ctx context.Context, request *Pat_Request) (*Pat_Response, error) {
+	if s.Impl == nil {
+		return nil, status.Error(codes.Unavailable, "message ability is unavailable")
+	}
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "pat request is required")
+	}
+	return s.Impl.Pat(request.GetReceiver(), request.GetPattedUsername())
 }
 
 // Download 下载媒体资源（server-stream）
