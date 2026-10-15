@@ -17,6 +17,7 @@ EOF
 }
 
 fail() { printf '安装失败：%s\n' "$1" >&2; exit 1; }
+stage() { printf '%s\n' "$1" >&2; }
 
 key_file=''
 data_dir=''
@@ -64,6 +65,7 @@ esac
 if [[ -n "$core_data_dir" ]]; then
   [[ "$core_data_dir" = /* && -d "$core_data_dir" ]] || fail '--core-data-dir 必须指向已存在的绝对目录，避免误建新设备'
 fi
+stage "准备安装 we-clay ${version}（${goos}/${goarch}）"
 
 mkdir -p "$data_dir/secrets" "$data_dir/bin"
 existing_install=0
@@ -85,9 +87,17 @@ fi
 request=$(printf '{"product":"we-clay","version":"%s","goos":"%s","goarch":"%s","asset":"bundle"}' "$version" "$goos" "$goarch")
 plan_file=$(mktemp "$data_dir/bin/.download-plan.XXXXXX")
 binary_tmp=$(mktemp "$data_dir/bin/.we-clay.XXXXXX")
-trap 'rm -f "$plan_file" "$binary_tmp"' EXIT
+download_pid=''
+cleanup() {
+  if [[ -n "$download_pid" ]]; then
+    kill "$download_pid" 2>/dev/null || true
+  fi
+  rm -f "$plan_file" "$binary_tmp"
+}
+trap cleanup EXIT
 
 # curl 从 stdin 接收含 Key 的配置，Key 不出现在进程参数或日志中。
+stage '正在验证授权并申请下载地址…'
 if ! printf 'header = "Authorization: Bearer %s"\n' "$key" | curl --config - --silent --fail --show-error --proto '=https' --tlsv1.2 --max-time 30 \
   --header 'Accept: text/plain' --header 'Content-Type: application/json' \
   --request POST --data "$request" --output "$plan_file" "$auth_url" 2>/dev/null; then
@@ -110,10 +120,41 @@ esac
 [[ "$asset_url" =~ ^[A-Za-z0-9._~:/?\&=%+-]+$ ]] || fail '下载地址包含不安全字符'
 
 # 私有 OSS 的短时 URL 只从 stdin 传给 curl，不进入命令行参数；不跟随重定向。
-if ! printf 'url = "%s"\n' "$asset_url" | curl --config - --silent --fail --show-error --proto '=https' --tlsv1.2 \
-  --max-time 600 --output "$binary_tmp" 2>/dev/null; then
+stage '正在下载主程序…'
+printf 'url = "%s"\n' "$asset_url" | curl --config - --silent --fail --show-error --proto '=https' --tlsv1.2 \
+  --max-time 600 --output "$binary_tmp" 2>/dev/null &
+download_pid=$!
+show_download_progress() {
+  local current_size progress
+  current_size=$(wc -c < "$binary_tmp" | tr -d ' ')
+  progress=$(awk -v current="$current_size" -v total="$expected_size" 'BEGIN {
+    percent = total > 0 ? int(current / total * 100) : 0
+    if (percent > 100) percent = 100
+    printf "%3d%%  %.1f / %.1f MiB", percent, current / 1048576, total / 1048576
+  }')
+  printf '\r下载进度：%s' "$progress" >&2
+}
+if [[ -t 2 ]]; then
+  while kill -0 "$download_pid" 2>/dev/null; do
+    show_download_progress
+    sleep 1
+  done
+fi
+download_ok=1
+wait "$download_pid" || download_ok=0
+download_pid=''
+if [[ -t 2 ]]; then
+  if ((download_ok)); then
+    show_download_progress
+    printf '\n' >&2
+  else
+    printf '\r\033[K' >&2
+  fi
+fi
+if (( !download_ok )); then
   fail '二进制下载失败；短时地址可能已过期，请重新运行安装脚本'
 fi
+stage '下载完成，正在校验文件大小与 SHA-256…'
 actual_size=$(wc -c < "$binary_tmp" | tr -d ' ')
 [[ "$actual_size" = "$expected_size" ]] || fail '二进制大小校验失败'
 [[ "$(hash_file "$binary_tmp")" = "$expected_hash" ]] || fail '二进制 SHA-256 校验失败'
@@ -128,6 +169,7 @@ fi
 binary_tmp=''
 
 # 原设备路径独立保存为数据，不把用户输入拼接进可执行脚本。
+stage '校验通过，正在写入启动入口…'
 if [[ -n "$core_data_dir" ]]; then
   old_core_tmp=$(mktemp "$data_dir/.core-data-dir.XXXXXX")
   printf '%s\n' "$core_data_dir" > "$old_core_tmp"

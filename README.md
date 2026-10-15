@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.9.0 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.9.1 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 想编写自己的 Go 机器人或插件时，再引入私有 SDK：
 
 ```sh
-go get github.com/we-clay/we-clay@v0.9.0
+go get github.com/we-clay/we-clay@v0.9.1
 ```
 
 **直接安装预编译程序，或导入 `gateway` 在自己的 Go 程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -57,6 +57,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 ## 一键安装
 
 正式发布的安装脚本按系统下载已编译的 `we-clay` 主程序；主程序使用同一授权 Key 自动下载、校验并启动独立 core。使用者无需安装 Go、读取私有源码或领取 OSS AK/SK。脚本和二进制从私有 OSS 提供，下载前由[授权服务](docs/一键安装.md)签发短时链接。首次安装需要在终端输入授权 Key，或传入授权文件路径。
+安装过程会提示当前阶段和主程序下载进度；安装目录可用 `--data-dir` 指定，原微信账号目录使用 `--core-data-dir` 指定。
 
 **macOS / Linux：**
 
@@ -120,7 +121,7 @@ curl -fsSL https://nww.hihfy.com/we-clay-auth/install.sh | bash -s -- \
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.9.0
+go get github.com/we-clay/we-clay@v0.9.1
 ```
 
 ### 2 · 调用 Run
@@ -261,7 +262,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.9.0
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.9.1
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 

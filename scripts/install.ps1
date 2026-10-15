@@ -63,7 +63,80 @@ function Write-PrivateFile([string]$path, [string]$value) {
         if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
     }
 }
+function Download-WithProgress([string]$url, [string]$path, [long]$expectedBytes) {
+    Add-Type -AssemblyName System.Net.Http
+    $handler = New-Object System.Net.Http.HttpClientHandler
+    $handler.AllowAutoRedirect = $false
+    $client = [System.Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromMinutes(10)
+    $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $url)
+    $response = $null
+    $source = $null
+    $target = $null
+    $timeout = [System.Threading.CancellationTokenSource]::new()
+    $timeout.CancelAfter([TimeSpan]::FromMinutes(10))
+    $downloaded = [long]0
+    $nextReport = 10
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $responseTask = $client.SendAsync($request, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead, $timeout.Token)
+        $remainingMs = [int][Math]::Ceiling(600000 - $watch.Elapsed.TotalMilliseconds)
+        if ($remainingMs -le 0 -or -not $responseTask.Wait($remainingMs)) {
+            $timeout.Cancel()
+            Fail '二进制下载超时；请重新运行安装脚本'
+        }
+        $response = $responseTask.GetAwaiter().GetResult()
+        if (-not $response.IsSuccessStatusCode) { Fail '二进制下载失败；请重新运行安装脚本' }
+        if ($response.Content.Headers.ContentLength -and $response.Content.Headers.ContentLength -ne $expectedBytes) {
+            Fail '二进制大小与授权服务提供的清单不一致'
+        }
+        $streamTask = $response.Content.ReadAsStreamAsync()
+        $remainingMs = [int][Math]::Ceiling(600000 - $watch.Elapsed.TotalMilliseconds)
+        if ($remainingMs -le 0 -or -not $streamTask.Wait($remainingMs)) {
+            $timeout.Cancel()
+            Fail '二进制下载超时；请重新运行安装脚本'
+        }
+        $source = $streamTask.GetAwaiter().GetResult()
+        $target = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $buffer = New-Object byte[] (1024 * 1024)
+        Write-Progress -Activity '下载 we-clay' -Status '0%' -PercentComplete 0
+        Write-Host ('下载进度：0%（0 / {0:N1} MiB）' -f ($expectedBytes / 1MB))
+        while ($true) {
+            $remainingMs = [int][Math]::Ceiling(600000 - $watch.Elapsed.TotalMilliseconds)
+            if ($remainingMs -le 0) { Fail '二进制下载超时；请重新运行安装脚本' }
+            $readTask = $source.ReadAsync($buffer, 0, $buffer.Length, $timeout.Token)
+            if (-not $readTask.Wait($remainingMs)) {
+                $timeout.Cancel()
+                Fail '二进制下载超时；请重新运行安装脚本'
+            }
+            $count = $readTask.GetAwaiter().GetResult()
+            if ($count -le 0) { break }
+            $downloaded += $count
+            if ($downloaded -gt $expectedBytes) { Fail '二进制大小超过授权服务提供的清单' }
+            $target.Write($buffer, 0, $count)
+            $percent = [int][Math]::Floor(100.0 * $downloaded / $expectedBytes)
+            Write-Progress -Activity '下载 we-clay' -Status "$percent%" -PercentComplete $percent
+            if ($percent -ge $nextReport) {
+                Write-Host ('下载进度：{0}%（{1:N1} / {2:N1} MiB）' -f $percent, ($downloaded / 1MB), ($expectedBytes / 1MB))
+                while ($nextReport -le $percent) { $nextReport += 10 }
+            }
+        }
+        $target.Flush()
+        if ($downloaded -ne $expectedBytes) { Fail '二进制大小校验失败' }
+        Write-Host ('下载完成：{0:N1} MiB，耗时 {1:N0} 秒' -f ($downloaded / 1MB), $watch.Elapsed.TotalSeconds)
+    } finally {
+        Write-Progress -Activity '下载 we-clay' -Completed
+        if ($target) { $target.Dispose() }
+        if ($source) { $source.Dispose() }
+        if ($response) { $response.Dispose() }
+        $request.Dispose()
+        $client.Dispose()
+        $handler.Dispose()
+        $timeout.Dispose()
+    }
+}
 
+Write-Host '[1/5] 检查系统和安装目录...'
 if ($version -notmatch '^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$') { Fail '安装脚本尚未经过正式发布构建' }
 if (-not [IO.Path]::IsPathRooted($DataDir)) { Fail 'DataDir 必须是绝对路径' }
 if ($CoreDataDir -and ((-not [IO.Path]::IsPathRooted($CoreDataDir)) -or (-not (Test-Path -LiteralPath $CoreDataDir -PathType Container)))) {
@@ -83,6 +156,7 @@ New-Item -ItemType Directory -Path $secretsDir, $binDir -Force | Out-Null
 Set-PrivateDirectoryAcl $secretsDir
 $licenseFile = Join-Path $secretsDir 'license.key'
 $existingInstall = Test-Path -LiteralPath (Join-Path $DataDir 'installed-version.txt')
+Write-Host '[2/5] 读取授权并申请下载地址...'
 if ($KeyFile) {
     if (-not (Test-Path -LiteralPath $KeyFile -PathType Leaf)) { Fail '授权文件不存在' }
     $key = [IO.File]::ReadAllText($KeyFile).Trim()
@@ -110,6 +184,8 @@ if ($lines.Count -ne 4) { Fail '授权服务返回格式错误' }
 $resolvedVersion, $assetUrl, $expectedHash, $expectedSize = $lines
 if ($resolvedVersion -cne $version) { Fail '下载版本与安装脚本不一致' }
 if ($expectedHash -cnotmatch '^[0-9a-f]{64}$' -or $expectedSize -cnotmatch '^[0-9]+$') { Fail '下载摘要或大小无效' }
+$expectedBytes = [long]0
+if (-not [long]::TryParse($expectedSize, [ref]$expectedBytes) -or $expectedBytes -le 0) { Fail '下载文件大小无效' }
 $assetName = "we-clay_${version}_windows_${goarch}.exe"
 $uri = $null
 if (-not [Uri]::TryCreate($assetUrl, [UriKind]::Absolute, [ref]$uri) -or
@@ -119,10 +195,12 @@ if (-not [Uri]::TryCreate($assetUrl, [UriKind]::Absolute, [ref]$uri) -or
     Fail '授权服务返回了非预期的 OSS 下载地址'
 }
 $temporary = Join-Path $binDir ('.we-clay.' + [Guid]::NewGuid().ToString('N'))
+Write-Host "[3/5] 下载 we-clay $version（windows/$goarch）..."
 try {
     try {
-        Invoke-WebRequest -Uri $assetUrl -OutFile $temporary -UseBasicParsing -MaximumRedirection 0 | Out-Null
-    } catch { Fail '二进制下载失败；短时地址可能已过期，请重新运行安装脚本' }
+        Download-WithProgress $assetUrl $temporary $expectedBytes
+    } catch { Fail '二进制下载失败或超时；请检查网络并重新运行安装脚本' }
+    Write-Host '[4/5] 校验文件大小和 SHA-256...'
     $file = Get-Item -LiteralPath $temporary
     if ($file.Length.ToString() -cne $expectedSize) { Fail '二进制大小校验失败' }
     $actualHash = (Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -138,6 +216,7 @@ try {
     if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
 }
 
+Write-Host '[5/5] 保存运行配置和启动入口...'
 if ($CoreDataDir) { Write-AtomicText (Join-Path $DataDir 'core-data-dir.txt') "$CoreDataDir`n" }
 $runner = @'
 $ErrorActionPreference = 'Stop'
@@ -168,4 +247,8 @@ Write-Host "安装完成：we-clay $version"
 Write-Host "运行入口：$(Join-Path $DataDir 'run.cmd')"
 Write-Host '控制台：http://127.0.0.1:8208'
 if ($existingInstall) { Write-Host '检测到升级：请先停止旧 gateway，再运行 run.cmd；独立 core 会保持微信登录。' }
-if (-not $NoRun -and -not $existingInstall) { & (Join-Path $DataDir 'run.ps1') }
+if ($NoRun) { Write-Host '已按 NoRun 跳过自动启动。' }
+elseif (-not $existingInstall) {
+    Write-Host '首次安装完成，正在启动 we-clay；首次运行还可能下载 core。'
+    & (Join-Path $DataDir 'run.ps1')
+}
