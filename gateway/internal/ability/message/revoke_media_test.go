@@ -78,9 +78,9 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 			}
 			defer conn.Close()
 			a := &ability{api: messageapi.New(conn)}
-			copy := proto.Clone(tc.msg).(*sdk.Message)
-			copy.Receiver = &contact.Contact{Username: "synthetic_peer"}
-			sent, err := a.Send(copy)
+			cloned := proto.Clone(tc.msg).(*sdk.Message)
+			cloned.Receiver = &contact.Contact{Username: "synthetic_peer"}
+			sent, err := a.Send(cloned)
 			if err != nil {
 				t.Fatal(err)
 			}

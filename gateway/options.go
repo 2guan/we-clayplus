@@ -25,10 +25,11 @@ type Handlers struct {
 }
 
 type runOptions struct {
-	handlers         Handlers
-	withoutPlugins   bool
-	withoutDashboard bool
-	withoutAI        bool
+	handlers               Handlers
+	withoutPlugins         bool
+	withoutExternalPlugins bool
+	withoutDashboard       bool
+	withoutAI              bool
 }
 
 // Option 配置直接接入行为，不写入 TOML。
@@ -43,6 +44,12 @@ func WithHandlers(handlers Handlers) Option {
 // 不传此项时保留原来的插件行为，也可与直接回调共用。
 func WithoutPlugins() Option {
 	return func(o *runOptions) { o.withoutPlugins = true }
+}
+
+// WithoutExternalPlugins 只禁止外部插件进程的发现、启动和手动加载。
+// 控制台、AI 等内建功能仍会运行；适合仅交付主程序二进制的部署。
+func WithoutExternalPlugins() Option {
+	return func(o *runOptions) { o.withoutExternalPlugins = true }
 }
 
 func invokeHandler(name string, fn func() error) (err error) {

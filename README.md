@@ -8,11 +8,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.3 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.9.1 · MIT License" width="492" />
 </p>
 
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
+  <a href="#一键安装">一键安装</a> ·
   <a href="#能力概览">能力概览</a> ·
   <a href="docs/插件开发.md">插件开发</a> ·
   <a href="#工作方式">架构</a> ·
@@ -21,18 +22,20 @@
 
 <br />
 
+想编写自己的 Go 机器人或插件时，再引入私有 SDK：
+
 ```sh
-go get github.com/we-clay/we-clay@v0.7.3
+go get github.com/we-clay/we-clay@v0.9.1
 ```
 
-**导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
-在同一个 Go 程序里接收消息、主动发送、操作联系人和朋友圈。通过回调取得 `Client` 即可调用业务接口；插件可选，底层微信连接由独立 core 提供。
+**直接安装预编译程序，或导入 `gateway` 在自己的 Go 程序里调用 `gateway.Run(ctx, cfg)`。**
+两种方式使用同一套 Dashboard、AI、SDK 和 core 通信实现。需要自己编写机器人逻辑时，通过回调取得 `Client` 调用业务接口；底层微信连接由独立 core 提供。
 
 <table>
 <tr>
 <td width="50%" valign="top">
-<h3>融入你的 Go 项目</h3>
-通过 Go Modules 引入，gateway 与 SDK 共用一个模块。无需克隆本仓库，编译应用也不需要 core 源码。
+<h3>一键启动或融入 Go 项目</h3>
+预编译程序包含 Dashboard、AI 和网页资源；开发者仍可通过 Go Modules 导入 gateway 与 SDK。两种方式都不需要 core 源码。
 </td>
 <td width="50%" valign="top">
 <h3>直接写机器人逻辑</h3>
@@ -51,6 +54,37 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 </tr>
 </table>
 
+## 一键安装
+
+正式发布的安装脚本按系统下载已编译的 `we-clay` 主程序；主程序使用同一授权 Key 自动下载、校验并启动独立 core。使用者无需安装 Go、读取私有源码或领取 OSS AK/SK。脚本和二进制从私有 OSS 提供，下载前由[授权服务](docs/一键安装.md)签发短时链接。首次安装需要在终端输入授权 Key，或传入授权文件路径。
+安装过程会提示当前阶段和主程序下载进度；安装目录可用 `--data-dir` 指定，原微信账号目录使用 `--core-data-dir` 指定。省略 `--key-file` 时会在终端安全提示输入授权 Key；可用 `--device-name` 指定微信中显示的设备名称。
+
+**macOS / Linux：**
+
+```sh
+curl -fsSL https://nww.hihfy.com/we-clay-auth/install.sh | bash
+```
+
+**Windows PowerShell：**
+
+```powershell
+$installer = Join-Path $env:TEMP 'we-clay-install.ps1'
+Invoke-WebRequest 'https://nww.hihfy.com/we-clay-auth/install.ps1' -OutFile $installer
+powershell -NoProfile -ExecutionPolicy Bypass -File $installer
+```
+
+已有登录过的微信设备时，安装命令必须加 `--core-data-dir`（Windows 为 `-CoreDataDir`）指向**原 core 账号目录的绝对路径**；不要复制账号目录或重新选择新目录。示例：
+
+```sh
+curl -fsSL https://nww.hihfy.com/we-clay-auth/install.sh | bash -s -- \
+  --key-file /absolute/path/to/license.key \
+  --core-data-dir /absolute/path/to/existing/core-data
+```
+
+首次安装完成会启动主程序，控制台在 `http://127.0.0.1:8208`，微信登录页在 `http://127.0.0.1:8201`。升级安装只替换版本化二进制，不自动启动第二个 gateway；先停止旧 gateway，再运行安装目录中的 `run.sh` 或 Windows 的 `run.cmd`。独立 core 保持运行及登录。详见[三平台安装、授权文件、升级与多套实例](docs/一键安装.md)。
+
+`cmd/we-clay` 只是启动入口；现有 `gateway.Run` 和 SDK 导入方式继续可用。
+
 ## core 运行授权
 
 已接入维护者自建的在线授权：core 自己检查和续期，gateway 默认通过 `WE_CLAY_AUTH_KEY` 传入 Key；多套部署可用 `Core.AuthKeyEnv` 选择各自的环境变量。we-clay v0.7.0 提供授权配置，core v0.4.0 起强制执行；旧 core 不受此机制追溯限制。参见[运行授权](docs/运行授权.md)。
@@ -67,7 +101,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 | 领域 | 提供的接口 | SDK |
 | --- | --- | --- |
-| **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回，支持表情包下载 | [message](sdk/message/ability.go) |
+| **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回，支持表情包下载；拍一拍（Mac 模式私聊与群聊已验证） | [message](sdk/message/ability.go) |
 | **联系人** | 查询、备注、搜索、好友申请与验证 | [contact](sdk/contact/ability.go) |
 | **群聊** | 创建、成员查询、邀请、群名、公告与管理 | [chatroom](sdk/chatroom/ability.go) |
 | **朋友圈** | 时间线、指定好友主页、发布、点赞、取消点赞与评论 | [moments](sdk/moments/ability.go) |
@@ -77,7 +111,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ## 快速开始
 
-**准备：** Go 1.26+、私有 we-clay 仓库读取权限，已发布 core 的 OSS 只读凭据，以及 core v0.4.0 起所需的运行授权 Key。接入时不需要 core 源码。
+**准备：** 这一节是源码 SDK 接入，需 Go 1.26+、私有 we-clay 仓库读取权限，以及运行授权 Key。core 从私有 OSS 下载可用同一 Key 换取短时地址；受控部署仍可使用原有 OSS 只读凭据。接入时不需要 core 源码。仅运行控制台可按上文使用预编译安装包。
 安装私有模块前设置 `GOPRIVATE=github.com/we-clay/*` 并配置 GitHub 的 Git 读取凭据；凭据不要写进 go.mod 或仓库。
 
 ### 1 · 添加依赖
@@ -87,7 +121,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.7.3
+go get github.com/we-clay/we-clay@v0.9.1
 ```
 
 ### 2 · 调用 Run
@@ -149,10 +183,10 @@ func main() {
 将 `WE_CLAY_CORE_VERSION` 设为私有 OSS 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
 
 ```sh
-# macOS / Linux：先确认已发布的目标 core tag（例如 v0.4.3）
-export WE_CLAY_CORE_VERSION='v0.4.3'
+# macOS / Linux：先确认 Actions 已完成发布 core v0.4.5
+export WE_CLAY_CORE_VERSION='v0.4.5'
 # 通过本机受信任的环境配置提供 WE_CLAY_AUTH_KEY（运行授权 Key）
-# 通过本机受信任的环境配置提供 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（只读权限）
+# 默认不需要 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET
 # 填你已有账号目录的绝对路径；新部署才选择新目录
 export WE_CLAY_DATA_DIR='/absolute/path/to/existing/core-data'
 go run .
@@ -166,7 +200,7 @@ go run .
 <summary>缓存、私有附件与已有 core</summary>
 
 - 二进制保存在 `runtime/core-bin/`，账号状态和 core 日志保存在显式指定的 `Core.DataDir`，均应排除 Git。
-- 私有 OSS 使用只读环境凭据；详细配置见 [OSS 下载](docs/OSS下载.md)。旧 GitHub 下载方式仍使用 `WE_CLAY_GITHUB_TOKEN`。
+- 私有 OSS 优先使用同一授权 Key 申请短时下载地址；保留 OSS 环境凭据作为受控部署方式。详细配置见 [OSS 下载](docs/OSS下载.md)。旧 GitHub 下载方式仍使用 `WE_CLAY_GITHUB_TOKEN`。
 - 已独立运行 core 时，省略 `Core`，改填 `CoreAddress`；该模式要求 core 先完成登录，Run 不管理其进程。
 - 版本必须已经发布，不能填 `latest`。OSS 清单尚未发布时，Run 会明确返回下载错误。
 - 附件格式与发布步骤见 [core 发布指南](docs/core发布.md)。
@@ -228,7 +262,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.3
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.9.1
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -253,7 +287,7 @@ flowchart LR
 
 | 组件 | 职责 | 运行方式 |
 | --- | --- | --- |
-| **gateway** | 管理 core、提供 Client 与回调、可选加载插件 | 嵌入你的 Go 应用 |
+| **gateway** | 管理 core、提供 Client 与回调、可选加载插件 | 预编译主程序或嵌入你的 Go 应用 |
 | **SDK** | 业务类型、能力接口与插件通信封装 | 编译进你的程序或插件 |
 | **core** | 微信协议、登录与底层会话 | 独立二进制服务 |
 
@@ -282,7 +316,7 @@ make mock
 
 打开 `http://127.0.0.1:8208`，即可查看页面、切换演示场景和预览工作台。Mock 使用虚构数据与独立数据库，不启动 core、不连接微信或真实模型，也不会访问真实控制台数据；首次编译可能需要 Go 依赖。按 Ctrl+C 退出。
 
-**连接真实微信：**准备本机 OSS 只读凭据及 `WE_CLAY_AUTH_KEY`，在仓库根目录运行：
+**连接真实微信：**准备 `WE_CLAY_AUTH_KEY`，在仓库根目录运行：
 
 ```sh
 make run
@@ -296,6 +330,7 @@ make run
 gateway.Run(ctx, cfg) // 默认启用 Dashboard 与 AI
 gateway.Run(ctx, cfg, gateway.WithoutDashboard()) // 关闭 Web 页面，保留 AI
 gateway.Run(ctx, cfg, gateway.WithoutAI())       // 保留 Dashboard，关闭 AI
+gateway.Run(ctx, cfg, gateway.WithoutExternalPlugins()) // 保留内建功能，禁止外部插件进程
 ```
 
 也可在 TOML 中设置监听地址、数据目录或禁用项：
@@ -318,7 +353,7 @@ disable_ai = false
 
 ## 私有 OSS 分发
 
-`Core.OSS` 指定私有 Bucket，Run 自动签名下载固定版本并验证 SHA-256；凭据仅从环境读取。见[OSS 配置、权限与升级](docs/OSS下载.md)。
+`Core.OSS` 指定私有 Bucket，Run 使用授权 Key 申请短时下载链接并验证 SHA-256；受控部署仍可使用 OSS 环境凭据。见[OSS 配置、权限与升级](docs/OSS下载.md)。
 
 ## 文档
 
@@ -338,6 +373,7 @@ disable_ai = false
 ```text
 we-clay/
 ├── go.mod              # 唯一 Go 模块
+├── cmd/we-clay/         # 预编译主程序的薄启动入口
 ├── gateway/            # Run、Config、LoadConfig
 │   └── internal/       # 连接、缓存、能力实现与插件管理
 ├── sdk/                # 业务模型、能力接口及插件协议
@@ -362,6 +398,8 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 ## 当前状态
 
+**v0.8.0 更新：** 内建 Dashboard 与 AI 基础插件，控制台默认监听 `127.0.0.1:8208`，core 登录页默认改为 `127.0.0.1:8201`；旧端口配置升级时须核对。新增私聊和群聊拍一拍入口，搭配 core v0.4.5 使用。Mac 模式下，core HTTP 接口的私聊与群聊请求均得到微信明确成功回执，手机端确认显示；SDK/gateway 调用链完成离线验证，尚未单独真机复验。结果不确定时不自动重试。
+
 **v0.5.5 增加独立 core 与表情包下载**：`KeepAlive` 保留 core 进程，`StopCore` 显式停止；`Message.Download` 统一处理微信表情 CDN。见[独立 core](docs/独立core.md)与[媒体下载](docs/媒体下载.md)。
 
 **v0.7.0 更新：** 接入 core 运行授权 Key、支持每套实例选择不同环境变量，并检测独立 core 的 Key 变更。详见[运行授权](docs/运行授权.md)。
@@ -376,7 +414,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
-**13 个能力域，128 个 SDK 方法：54 个已接通，74 个仅保留占位。**
+**13 个能力域，129 个 SDK 方法：61 个已接通，68 个仅保留占位。**
 另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。
 
 - **历史真机记录**：Mac 模式下，核心链路已测试消息媒体、联系人、群聊、标签、朋友圈等操作，具体范围见下表后的说明。
@@ -390,7 +428,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 <!-- capabilities:start -->
 | Client 字段 | 已接通的方法 | 保留占位的方法 |
 | --- | --- | --- |
-| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Download` | — |
+| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Pat`、`Download` | — |
 | `Contact` · 联系人 | `Get`、`List`、`GetSelf`、`SetRemark`、`AddFriend`、`VerifyFriend`、`Search`、`GetOwner` | `Delete`、`BlacklistAdd`、`BlacklistRemove` |
 | `Chatroom` · 群聊 | `Create`、`GetInfo`、`GetQRCode`、`InviteMember`、`SetName`、`SetAnnouncement`、`SetRemark`、`Save`、`SetAdmin`、`ListMembers`、`GetMember`、`GetMembersDetail` | `FacingCreate`、`AddMember`、`RemoveMember`、`RemoveAdmin`、`TransferOwner`、`Quit`、`ScanJoin`、`ScanJoinEnterprise`、`ConsentJoin` |
 | `Moments` · 朋友圈 | `Timeline`、`UserPage`、`Detail`、`Comment`、`Like`、`Unlike`、`Post`、`Upload`、`Sync` | `Delete`、`DeleteComment`、`SetPrivacy` |
@@ -400,7 +438,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | `Login` · 登录 | — | `Login`、`Init`、`Refresh`、`Wakeup`、`Logout`、`PasswordLogin` |
 | `Miniapp` · 小程序 | `GetRecord` | `JSLogin`、`QrcodeAuthLogin`、`GetRuntimeSession`、`GetSessionQRCode`、`OperateWxData`、`CloudCallFunction`、`SendVerifyCode`、`CheckVerifyCode`、`AddMobile`、`DelMobile`、`GetAllMobile`、`GetRandomAvatar`、`AddAvatar`、`UploadAvatarImg`、`AddRecord`、`GetUserOpenID`、`OauthSdkApp`、`ThirdAppGrant` |
 | `Official` · 公众号 | — | `Follow`、`Quit`、`MpGetA8Key`、`JSAPIPreVerify`、`OauthAuthorize`、`ReadArticle`、`LikeArticle` |
-| `Payment` · 支付 | — | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CreatePreTransfer`、`ConfirmPreTransfer`、`CollectMoney` |
+| `Payment` · 支付 | `ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CollectMoney` | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`CreatePreTransfer`、`ConfirmPreTransfer` |
 | `Report` · 状态通知 | `StartTyping`、`StopTyping` | `ReadMessage` |
 | `User` · 当前账号 | `GetProfile`、`GetQRCode`、`GetSafetyInfo`、`GetBoundHardDevices`、`UploadAvatar` | `UpdateProfile`、`SetPrivacy`、`SetAlias`、`VerifyPassword`、`SetPassword`、`SendVerifyMobile`、`BindMobile`、`BindEmail`、`SendVerifyEmail`、`DelSafeDevice`、`ReportMotion`、`GetCert` |
 <!-- capabilities:end -->
@@ -421,7 +459,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | 登录 | Run 已负责 Mac 登录等待和会话恢复；单独调用这些登录方法未逐项验收，保留占位。 |
 | 小程序 | 仅使用记录查询通过；其他接口缺少测试 appID 或未测。 |
 | 公众号 | 没有完整真实验收，保留占位。 |
-| 支付 | 没有真实验收，保留占位。 |
+| 支付 | 红包领取/查询与确认收款已接通，未执行真实资金验收；付款及支付账户查询保留占位。 |
 | 状态通知 | 开始/停止输入仅收到成功回执，未手机观察；已读通知未测。 |
 | 当前账号 | 资料、个人二维码、安全设备/绑定硬件查询有历史验收；头像上传已接通并完成离线验证，待真机验收；其他资料/安全写操作保留占位。 |
 

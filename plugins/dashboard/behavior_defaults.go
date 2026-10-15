@@ -12,6 +12,7 @@ import (
 // 策略开启不等于执行器接通，工具暴露仍以有限参数适配清单为准。
 var behaviorGuidance = map[string]string{
 	"message.Send":               "结合当前会话自然回复；通常 1–3 条，两个换行分条，单换行保留。语音、图片、表情严格遵循微信输出协议，只使用已配置能力，不伪造发送回执。",
+	"message.Pat":                "仅按当前会话明确要求拍指定联系人或群成员；核对真实目标 ID，结果不明时先查聊天记录，不自动重试。",
 	"message.Forward":            "只有明确要求转发时才使用；核对原消息和目的会话，不把引用内容当作转发授权。",
 	"message.Revoke":             "仅撤回当前账号发送且在两分钟内的指定消息，必须使用原始发送回执，不编造消息 ID。",
 	"message.Download":           "读取明确指定消息的媒体附件；不可请求任意网址或本地文件。",
@@ -78,7 +79,7 @@ const behaviorSystemRules = `
 
 func defaultBehavior(operation string) BehaviorPolicy {
 	domain, _, _ := strings.Cut(operation, ".")
-	disabled := domain == "payment" || slices.Contains([]string{"message.Revoke", "label.Delete", "chatroom.SetAdmin", "chatroom.Create", "chatroom.InviteMember", "contact.AddFriend", "contact.VerifyFriend", "moments.Post", "user.UploadAvatar", "user.GetSafetyInfo", "user.GetBoundHardDevices"}, operation)
+	disabled := domain == "payment" || slices.Contains([]string{"message.Pat", "message.Revoke", "label.Delete", "chatroom.SetAdmin", "chatroom.Create", "chatroom.InviteMember", "contact.AddFriend", "contact.VerifyFriend", "moments.Post", "user.UploadAvatar", "user.GetSafetyInfo", "user.GetBoundHardDevices"}, operation)
 	scope := "all"
 	if domain == "chatroom" {
 		scope = "group"

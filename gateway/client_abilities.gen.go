@@ -75,6 +75,9 @@ func (c scopedMessage) Forward(msg *sdkmessage.Message, receiver string) (*sdkme
 func (c scopedMessage) Revoke(receiver string, newMsgId uint64) (*sdkmessage.Revoke_Response, error) {
 	return clientCall(c.state, "message.Revoke", func() (*sdkmessage.Revoke_Response, error) { return c.impl.Revoke(receiver, newMsgId) })
 }
+func (c scopedMessage) Pat(receiver string, pattedUsername string) (*sdkmessage.Pat_Response, error) {
+	return clientCall(c.state, "message.Pat", func() (*sdkmessage.Pat_Response, error) { return c.impl.Pat(receiver, pattedUsername) })
+}
 func (c scopedMessage) Download(msg *sdkmessage.Message) (io.ReadCloser, error) {
 	return clientCall(c.state, "message.Download", func() (io.ReadCloser, error) { return c.impl.Download(msg) })
 }

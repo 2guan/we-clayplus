@@ -23,6 +23,7 @@ device*.json
 .DS_Store
 .idea/
 .vscode/
+__pycache__/
 go.work
 go.work.sum
 

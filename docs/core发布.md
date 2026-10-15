@@ -6,7 +6,7 @@ core v0.3.3 起，私有 core 仓库的 GitHub Actions 完成六个平台构建�
 
 ## 自动下载
 
-使用 we-clay v0.6.0 的 `Core.OSS`，指定 Bucket、地域和前缀；凭据来自 `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、可选 `OSS_SESSION_TOKEN`。完整示例、只读 RAM 权限与 CNAME 配置见[私有 OSS 下载](OSS下载.md)。
+使用 `Core.OSS` 指定 Bucket、地域和前缀；默认使用运行授权 Key 换取短时 OSS 链接，原有 `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`、可选 `OSS_SESSION_TOKEN` 方式仍可使用。完整示例、只读 RAM 权限与 CNAME 配置见[私有 OSS 下载](OSS下载.md)。
 
 - 固定版本，不自动追踪 latest；Actions 尚未完成上传的版本不能使用。
 - Bucket 和对象保持私有。客户端签名读取，无需公开文件。

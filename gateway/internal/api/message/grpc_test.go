@@ -128,6 +128,36 @@ func TestGRPCMediaAdapters(t *testing.T) {
 	}
 }
 
+func TestGRPCPatPreservesCoreReceiptAndExperimentalFlag(t *testing.T) {
+	const id = uint64(9007199254740993)
+	calls := 0
+	s := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodPost || r.URL.Path != "/api/message/pat" {
+			t.Errorf("wrong core route: %s %s", r.Method, r.URL.Path)
+		}
+		var q struct {
+			Receiver       string `json:"receiver"`
+			PattedUsername string `json:"patted_username"`
+			Experimental   bool   `json:"experimental"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil || q.Receiver != "synthetic_friend" || q.PattedUsername != "synthetic_friend" || !q.Experimental {
+			t.Errorf("wrong pat request: %+v err=%v", q, err)
+		}
+		_, _ = io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"id":"9007199254740993","self_message":"accepted","suffix":"demo","suffix_version":"1"}}`)
+	}))
+	defer s.Close()
+	c, err := api.NewGRPCClient(context.Background(), s.Address, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	resp, err := (remote{client: c}).Pat("synthetic_friend", "synthetic_friend")
+	if err != nil || calls != 1 || resp.GetId() != id || resp.GetSelfMessage() != "accepted" || resp.GetSuffix() != "demo" || resp.GetSuffixVersion() != 1 {
+		t.Fatalf("pat receipt lost: resp=%+v calls=%d err=%v", resp, calls, err)
+	}
+}
+
 func TestLargeAttachmentChunkUsesBoundedCoreRequest(t *testing.T) {
 	const total uint32 = 300 << 20
 	const offset uint32 = 131072

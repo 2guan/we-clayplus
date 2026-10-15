@@ -38,7 +38,7 @@ func realPreviewConfig(root string) gateway.Config {
 	// 固定版本、Mac 设备模式由 Run 管理；不导入 core 源码。
 	version := os.Getenv("WE_CLAY_CORE_VERSION")
 	if version == "" {
-		version = "v0.4.3"
+		version = "v0.4.5"
 	}
 	dataDir := os.Getenv("WE_CLAY_DATA_DIR")
 	if dataDir == "" {
@@ -74,7 +74,7 @@ func TestRealPreviewConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Core.Version != "v0.4.3" || cfg.Core.OSS == nil || cfg.Core.OSS.Bucket != "weclay" || cfg.Core.DataDir != filepath.Join(root, "runtime", "core") {
+	if cfg.Core.Version != "v0.4.5" || cfg.Core.OSS == nil || cfg.Core.OSS.Bucket != "weclay" || cfg.Core.DataDir != filepath.Join(root, "runtime", "core") {
 		t.Fatal("默认版本、下载源或账号目录不匹配")
 	}
 	t.Setenv("WE_CLAY_CORE_VERSION", "v0.4.1")
