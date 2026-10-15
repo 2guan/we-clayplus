@@ -3,7 +3,7 @@
 - 提交作者和提交者根据当前开发者的实际身份确定，保持仓库级配置与开发者身份一致。每次新建 clone/worktree 后先设置或核验仓库级 `user.name` / `user.email`；提交前用 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT` 核对，推送前检查将推送的提交身份。不得依赖机器全局未受控的 Git 身份。
 
 - 修改前阅读根目录 README.md 和 SECURITY.md。
-- gateway 提供可导入的 Run 入口，不增加上层 main/CLI；内部实现位于 gateway/internal。
+- gateway 保留可导入的 Run 入口；`cmd/we-clay` 是用户已授权的薄启动入口，调用同一个 Run，不复制业务实现。内部实现位于 gateway/internal。
 - gateway、sdk 保持平行目录；整个仓库只有根目录一个 go.mod，不添加本地 replace。
 - README、运行指南、开发说明及新增维护文档使用中文；许可证和生成代码保留原格式。
 - 本项目仓库 `we-clay/we-clay` 保持私有；独立 core 源码不纳入本仓库，core 新版本从私有 OSS 分发。每次推送前查询本项目目标仓库的可见性，并运行暂存内容敏感信息检查。
@@ -16,7 +16,7 @@
 
 ## 开发与交付
 
-- 本项目的交付目标为 `we-clay/we-clay` 的 `feature/dashboard-ai-plugin` 分支；开发完成并验证后，按用户授权提交、推送本项目变更。仅分析、暂不提交等明确限制优先。
+- 以 `we-clay/we-clay` 最新 main 建特性分支；开发完成并验证后，按用户授权提交、推送本项目变更。仅分析、暂不提交等明确限制优先。
 - 所有新提交遵循约定式提交 1.0.0：新增功能使用 `feat`，修复使用 `fix`，文档使用 `docs`；破坏性变更用 `!` 或 `BREAKING CHANGE:` 明确说明。
 - 本项目的维护约定和安全策略独立维护。移植代码时逐项判断适用性，不用其他项目的 AGENTS.md 或 SECURITY.md 覆盖本项目文档。
 - 推送前获取目标分支最新状态、检查工作区与提交身份；遇到并发更新先整合并验证，不强推、不镜像推送、不覆盖他人提交。

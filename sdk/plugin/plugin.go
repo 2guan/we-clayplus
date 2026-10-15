@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/go-hclog"
@@ -47,11 +48,23 @@ func Get(path string) (*Metadata, *Plugin, error) {
 
 // GetContext 加载插件；ctx 取消时终止子进程，使阻塞中的初始化及 RPC 调用能够退出。
 func GetContext(ctx context.Context, path string) (*Metadata, *Plugin, error) {
+	return GetContextWithDeniedEnv(ctx, path, "WE_CLAY_AUTH_KEY")
+}
+
+// GetContextWithDeniedEnv additionally removes the authorization environment
+// name selected by the embedding application from a plugin child process.
+func GetContextWithDeniedEnv(ctx context.Context, path, deniedEnv string) (*Metadata, *Plugin, error) {
+	cmd := exec.CommandContext(ctx, path)
+	// Preserve the environment used by existing plugins, including their own
+	// API credentials. Filter only credentials owned by the gateway/core.
+	// Plugins run as the same OS user; this is not a sandbox.
+	cmd.Env = pluginProcessEnv(os.Environ(), deniedEnv)
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig:  handshakeConfig,
 		Plugins:          plugin.PluginSet{"plugin": &wrapper{}},
 		VersionedPlugins: map[int]plugin.PluginSet{},
-		Cmd:              exec.CommandContext(ctx, path),
+		Cmd:              cmd,
+		SkipHostEnv:      true,
 		//Reattach:         &plugin.ReattachConfig{},
 		//RunnerFunc: func(l hclog.Logger, cmd *exec.Cmd, tmpDir string) (runner.Runner, error) {
 		//	panic("TODO")
@@ -115,6 +128,31 @@ func GetContext(ctx context.Context, path string) (*Metadata, *Plugin, error) {
 	success = true
 
 	return metadata, &p, nil
+}
+
+func pluginProcessEnv(input []string, deniedEnv string) []string {
+	deniedEnv = strings.ToUpper(deniedEnv)
+	out := make([]string, 0, len(input))
+	for _, item := range input {
+		key, _, ok := strings.Cut(item, "=")
+		upper := strings.ToUpper(key)
+		if !ok || upper == deniedEnv || sensitiveEnvironmentName(upper) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func sensitiveEnvironmentName(upper string) bool {
+	switch upper {
+	case "WE_CLAY_AUTH_KEY", "WE_CLAY_GITHUB_TOKEN",
+		"WE_CLAY_CORE_TOKEN", "WE_CLAY_GATEWAY_CORE_TOKEN",
+		"WE_CLAY_STORAGE_PASSWORD", "SDK_SOURCE_TOKEN",
+		"OSS_ACCESS_KEY_ID", "OSS_ACCESS_KEY_SECRET", "OSS_SESSION_TOKEN":
+		return true
+	}
+	return false
 }
 
 func Kill(name string) {

@@ -52,6 +52,8 @@ func LoadPlugins() error {
 	defer operations.Unlock()
 	if state := active.Load(); state == nil || state.ctx.Err() != nil {
 		return fmt.Errorf("gateway 插件管理器已停止")
+	} else if !state.external {
+		return fmt.Errorf("外部插件进程未启用")
 	}
 	executables, err := discoverPluginExecutables()
 	if err != nil {
@@ -71,6 +73,8 @@ func LoadPlugin(name string) error {
 	defer operations.Unlock()
 	if state := active.Load(); state == nil || state.ctx.Err() != nil {
 		return fmt.Errorf("gateway 插件管理器已停止")
+	} else if !state.external {
+		return fmt.Errorf("外部插件进程未启用")
 	}
 	if name == "" {
 		return fmt.Errorf("插件名称不能为空")
@@ -98,7 +102,7 @@ func loadPluginFromPath(expectedName, path string) error {
 	if state == nil || state.ctx.Err() != nil {
 		return fmt.Errorf("gateway 插件管理器已停止")
 	}
-	metadata, p, err := plugin.GetContext(state.ctx, path)
+	metadata, p, err := plugin.GetContextWithDeniedEnv(state.ctx, path, state.deniedEnv)
 	if err != nil {
 		return err
 	}

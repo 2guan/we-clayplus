@@ -1,0 +1,115 @@
+name: 发布 we-clay 跨平台安装包
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+# 稳定安装脚本只能由一个版本更新，禁止并发发布造成版本回退。
+concurrency:
+  group: we-clay-oss-release
+  cancel-in-progress: false
+
+jobs:
+  windows-installer-check:
+    if: github.repository == 'we-clay/we-clay' && github.event.repository.private == true
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 用原生 PowerShell 解析安装脚本
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/scripts/install.ps1", [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) { throw "Windows 安装脚本有语法错误" }
+
+  release:
+    needs: windows-installer-check
+    if: github.repository == 'we-clay/we-clay' && github.event.repository.private == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GOWORK: 'off'
+      GOTOOLCHAIN: local
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 校验版本提交来自 main
+        run: |
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]]
+          git merge-base --is-ancestor HEAD origin/main
+          test -s "docs/releases/${VERSION}.md"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: 预检 OSS 私有发布凭据与版本
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_SESSION_TOKEN: ${{ secrets.OSS_SESSION_TOKEN }}
+        run: |
+          python -m pip install oss2==2.19.1
+          python scripts/release_we_clay.py preflight
+      - name: 离线测试与静态检查
+        run: |
+          go test ./...
+          go vet ./...
+          bash -n scripts/install.sh
+          python -m py_compile scripts/release_we_clay.py
+          python -m unittest scripts/test_release_we_clay.py
+      - name: 编译六个平台的单一主程序
+        run: |
+          mkdir -p dist
+          for goos in darwin linux windows; do
+            for goarch in amd64 arm64; do
+              name="we-clay_${VERSION}_${goos}_${goarch}"
+              if [ "$goos" = windows ]; then name="${name}.exe"; fi
+              GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath \
+                -ldflags="-s -w -X main.version=${VERSION}" -o "dist/$name" ./cmd/we-clay
+            done
+          done
+      - name: 生成清单并验证版本与摘要
+        run: python scripts/release_we_clay.py package --directory dist
+      - name: 发布私有 OSS，读回验证二进制与安装脚本
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_SESSION_TOKEN: ${{ secrets.OSS_SESSION_TOKEN }}
+        run: python scripts/release_we_clay.py publish --directory dist
+
+  release-notes:
+    needs: release
+    if: github.repository == 'we-clay/we-clay' && github.event.repository.private == true
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 发布中文版本说明
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/${VERSION}.md"
+          test -s "$notes"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" --title "we-clay ${VERSION}" --notes-file "$notes"
+          else
+            gh release create "$VERSION" --verify-tag --title "we-clay ${VERSION}" --notes-file "$notes"
+          fi

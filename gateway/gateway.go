@@ -236,7 +236,11 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	// 启动失败也回收已经启动的插件；停止回调先于缓存落盘及连接释放。
 	defer func() { messageability.SetOutboundReady(false); cancel(); plugin.Destroy() }()
 	if !opts.withoutPlugins {
-		if err = plugin.Initial(runCtx, cfg.PluginsDir); err != nil {
+		authKeyEnv := "WE_CLAY_AUTH_KEY"
+		if cfg.Core != nil {
+			authKeyEnv = cfg.Core.AuthKeyEnv
+		}
+		if err = plugin.Initial(runCtx, cfg.PluginsDir, !opts.withoutExternalPlugins, authKeyEnv); err != nil {
 			return fmt.Errorf("插件初始化失败: %w", err)
 		}
 		if bridge != nil {
