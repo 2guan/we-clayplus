@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/we-clay/we-clay/sdk/control"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,14 +14,16 @@ import (
 
 // Config 配置 gateway。令牌只能通过代码或环境传入，不从 TOML 读取。
 type Config struct {
-	Core         *CoreConfig `toml:"core"`           // 非 nil 时由 Run 下载并管理 core。
-	CoreAddress  string      `toml:"core_address"`   // 默认 127.0.0.1:8088，仅允许回环 IP。
-	CoreToken    string      `toml:"-"`              // 优先于 CoreTokenEnv；不要写入版本库。
-	CoreTokenEnv string      `toml:"core_token_env"` // 默认 WE_CLAY_CORE_TOKEN；"-" 禁用环境读取。
-	DataDir      string      `toml:"data_dir"`       // 缓存目录，默认 ./runtime/gateway/data。
-	PluginsDir   string      `toml:"plugins_dir"`    // 插件及 config.toml 目录，默认 ./runtime/gateway/plugins。
-	Owner        string      `toml:"owner"`          // 管理员微信 ID。
-	Forbidden    string      `toml:"forbidden"`      // 无权限操作的回复文案。
+	// Console 配置默认基础插件；Mock 模式在任何 core 操作前分流。
+	Console      *control.Config `toml:"console"`
+	Core         *CoreConfig     `toml:"core"`           // 非 nil 时由 Run 下载并管理 core。
+	CoreAddress  string          `toml:"core_address"`   // 默认 127.0.0.1:8088，仅允许回环 IP。
+	CoreToken    string          `toml:"-"`              // 优先于 CoreTokenEnv；不要写入版本库。
+	CoreTokenEnv string          `toml:"core_token_env"` // 默认 WE_CLAY_CORE_TOKEN；"-" 禁用环境读取。
+	DataDir      string          `toml:"data_dir"`       // 缓存目录，默认 ./runtime/gateway/data。
+	PluginsDir   string          `toml:"plugins_dir"`    // 插件及 config.toml 目录，默认 ./runtime/gateway/plugins。
+	Owner        string          `toml:"owner"`          // 管理员微信 ID。
+	Forbidden    string          `toml:"forbidden"`      // 无权限操作的回复文案。
 }
 
 // Resolve 补齐默认值，固定目录绝对路径，不改变进程工作目录。
