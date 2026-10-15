@@ -1,6 +1,6 @@
-# 敏感信息管理
+# we-clayplus 敏感信息管理
 
-上游 `we-clay/we-clay` 私有保存 gateway 与 SDK；用户授权的 `2guan/we-clayplus` 为公开仓库，接收本项目可公开的开发改动。独立 `we-clay/core` 源码仓库保持 **Private**。不得提交账号密码、API 令牌、登录二维码、认证票据、
+本项目仓库 `2guan/we-clayplus` 为公开仓库，保存 gateway、SDK 与应用代码。独立 core 源码保持私有，不得纳入本项目。不得提交账号密码、API 令牌、登录二维码、认证票据、
 设备标识、会话文件、私钥、聊天记录、真实媒体、日志和已填写的运行配置。
 
 令牌从环境变量读取。本地运行目录为 `runtime/`，编译输出在 `bin/`；二者均已忽略。
@@ -10,8 +10,8 @@
 
 1. 检查待提交文件，确认只包含代码、无凭据示例和离线测试。
 2. 执行 `git add` 后运行 `make check-secrets`，需安装 Gitleaks v8.30.1 或兼容版本。
-3. 使用 GitHub API 核对两个目标仓库与可见性：`2guan/we-clayplus/main` 为公开交付目标，`we-clay/we-clay/feature/dashboard-ai-plugin` 为私有上游交付目标。不得将 core 源码或运行数据放入任一目标。
-4. 按 `AGENTS.md` 的双仓库交付约定同步本次变更，并分别核对远端提交；公开仓库的授权不包含无关私有代码或敏感信息。
+3. 使用 GitHub API 核对本项目目标仓库 `2guan/we-clayplus` 及其公开可见性；不得将 core 源码或运行数据放入本仓库。
+4. 按本项目 `AGENTS.md` 指定的分支提交和推送，并核对远端提交。只交付本次授权范围内的代码与文档。
 
 检查脚本扫描 Git 索引中的实际文件内容，拒绝运行目录和未处理的扫描结果，
 不输出候选密钥值。当前 `security/reviewed-findings.json` 为空，不接受未审核例外。
