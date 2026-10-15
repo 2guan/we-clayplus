@@ -1,0 +1,250 @@
+/* 文件名：stickers.css
+ * 主要功能：表情库响应式网格与编辑面板，继承全站亮暗主题。
+ * 作者：2guan
+ */
+.sticker-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sticker-toolbar > input {
+  min-width: 0;
+  flex: 1;
+}
+.sticker-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.sticker-filters button {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.sticker-filters button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sticker-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 24px;
+  min-height: 380px;
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 10px;
+  align-content: start;
+  max-height: 65vh;
+  overflow: auto;
+  padding: 2px;
+}
+.sticker-tile {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  min-width: 0;
+}
+.sticker-tile.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.sticker-tile img {
+  height: 82px;
+  width: 82px;
+  object-fit: contain;
+}
+.sticker-tile > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sticker-tile small,
+.sticker-editor > small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.sticker-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+  min-width: 0;
+}
+.sticker-editor > label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.sticker-editor input,
+.sticker-editor textarea {
+  width: 100%;
+}
+.sticker-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+}
+.sticker-preview img {
+  max-width: 150px;
+  max-height: 130px;
+  object-fit: contain;
+}
+.sticker-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.sticker-options label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+.sticker-options input {
+  accent-color: var(--accent);
+  width: auto;
+}
+.sticker-actions {
+  display: flex;
+  gap: 10px;
+}
+.sticker-actions > button {
+  flex: 1;
+}
+.sticker-placeholder {
+  align-self: center;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.sticker-suggestion {
+  padding: 12px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sticker-error {
+  color: #c33d43;
+}
+.sticker-unavailable {
+  display: grid;
+  place-items: center;
+  height: 82px;
+  color: var(--muted);
+  font-size: 11px;
+}
+/* 手机保持可点击尺寸，编辑区改为纵向，避免挤压预览和输入。 */
+@media (max-width: 640px) {
+  .sticker-layout {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .sticker-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-height: 230px;
+  }
+  .sticker-editor {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding: 18px 0 0;
+  }
+  .sticker-tile img {
+    width: 64px;
+    height: 64px;
+  }
+  .sticker-filters button {
+    padding: 7px 10px;
+  }
+}
+
+/* 快速选择器沿用 emoji 面板尺寸，只展示图像；工具栏第二个入口向左收齐。 */
+.emoji-picker.sticker-picker {
+  left: -40px;
+}
+.sticker-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.sticker-quick-grid button {
+  min-width: 0;
+  min-height: 64px;
+  padding: 5px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+}
+.sticker-quick-grid button:hover {
+  background: var(--hover);
+}
+.sticker-quick-grid img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+.sticker-quick-grid .sticker-unavailable {
+  height: 58px;
+  font-size: 10px;
+  white-space: normal;
+}
+.sticker-quick-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.sticker-quick-footer button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  min-height: 32px;
+  color: var(--muted);
+}
+.sticker-quick-error {
+  font-size: 12px;
+  color: #c33d43;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .sticker-picker input {
+    font-size: 16px;
+  }
+  .sticker-quick-footer button {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .emoji-picker.sticker-picker {
+    left: -40px;
+    width: min(340px, calc(100vw - 32px));
+  }
+}

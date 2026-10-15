@@ -1,3 +1,6 @@
+// 文件名：gateway.go
+// 主要功能：组织嵌入式 Run 生命周期、控制台及受管 core 的启动与登录。
+// 作者：2guan
 // Package gateway 提供可嵌入应用的机器人及插件运行入口，通过 gRPC 连接独立 core。
 // 导入此包不会启动服务；调用方负责 context、信号及自身进程的退出策略。
 package gateway
@@ -10,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/we-clay/we-clay/gateway/internal/ability"
@@ -20,9 +24,12 @@ import (
 	"github.com/we-clay/we-clay/gateway/internal/api"
 	userapi "github.com/we-clay/we-clay/gateway/internal/api/user"
 	"github.com/we-clay/we-clay/gateway/internal/config"
+	consolebridge "github.com/we-clay/we-clay/gateway/internal/console"
 	"github.com/we-clay/we-clay/gateway/internal/coreprocess"
 	"github.com/we-clay/we-clay/gateway/internal/plugin"
+	"github.com/we-clay/we-clay/plugins/dashboard"
 	sdkcontact "github.com/we-clay/we-clay/sdk/contact"
+	"github.com/we-clay/we-clay/sdk/control"
 	"github.com/we-clay/we-clay/sdk/message"
 	sdkplugin "github.com/we-clay/we-clay/sdk/plugin"
 )
@@ -88,6 +95,37 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	if err != nil {
 		return err
 	}
+	// 基础插件早于 core 登录启动；显式 Mock 在下载和建连之前进入独立路径。
+	var bridge *consolebridge.Bridge
+	keepConsole := false
+	if !opts.withoutPlugins {
+		cc := control.Config{DataDir: filepath.Join(filepath.Dir(cfg.DataDir), "console")}
+		if cfg.Console != nil {
+			cc = *cfg.Console
+			if cc.DataDir == "" {
+				cc.DataDir = filepath.Join(filepath.Dir(cfg.DataDir), "console")
+			}
+		}
+		cc.Capabilities = dashboardCapabilities()
+		cc.Disabled = cc.Disabled || opts.withoutDashboard
+		cc.DisableAI = cc.DisableAI || opts.withoutAI
+		keepConsole = !cc.Disabled
+		bridge = &consolebridge.Bridge{}
+		dashboardServer, startErr := dashboard.Start(runCtx, cc, bridge)
+		if startErr != nil {
+			return fmt.Errorf("控制台启动失败: %w", startErr)
+		}
+		bridge.Dashboard = dashboardServer
+		defer func() { bridge.Ready.Store(false); dashboardServer.Close() }()
+		if cc.Mock {
+			<-runCtx.Done()
+			return nil
+		}
+	}
+	if cfg.Console != nil && cfg.Console.Mock {
+		return errors.New("Mock 模式需要启用基础插件，不能与 WithoutPlugins 同时使用")
+	}
+	var managed *coreprocess.Managed
 	if cfg.Core != nil {
 		if cfg.Core.KeepAlive {
 			cfg, err = coreprocess.EnsureIndependent(runCtx, cfg)
@@ -104,20 +142,11 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 			if downloadErr != nil {
 				return downloadErr
 			}
-			process, startErr := coreprocess.Start(runCtx, binary, cfg)
-			if startErr != nil {
-				return startErr
+			managed, err = coreprocess.StartManaged(runCtx, binary, cfg, cancelCause)
+			if err != nil {
+				return err
 			}
-			defer func() { cancel(); process.Stop() }()
-			go func() {
-				select {
-				case <-process.Done():
-					if runCtx.Err() == nil {
-						cancelCause(process.ExitError())
-					}
-				case <-runCtx.Done():
-				}
-			}()
+			defer func() { cancel(); managed.Close() }()
 		}
 	}
 	oldConfig := config.Get
@@ -131,6 +160,25 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	oldClient := api.GetCore
 	api.GetCore = func() *api.Client { return client }
 	defer func() { api.GetCore = oldClient }()
+	if bridge != nil && managed != nil {
+		// 只有本次 Run 管理的 core 才开放重启；在线账号不能被此入口中断。
+		bridge.SetLoginRestarter(func(ctx context.Context) error {
+			return managed.RestartLogin(ctx, func(ctx context.Context) error {
+				var view struct {
+					Online bool   `json:"online"`
+					Status string `json:"status"`
+				}
+				if err := client.Get("/api/login/view").WithContext(ctx).DoJson(&view); err != nil {
+					return fmt.Errorf("暂时无法核实 core 登录状态，请稍后重试")
+				}
+				if view.Online || !strings.HasPrefix(view.Status, "登录流程已暂停") {
+					return fmt.Errorf("仅在登录流程暂停时允许重新扫码")
+				}
+				return nil
+			})
+		})
+		defer bridge.SetLoginRestarter(nil)
+	}
 
 	messageability.ResetReceipts()
 	defer messageability.ResetReceipts()
@@ -157,7 +205,7 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 		return nil
 	}
 	if cfg.Core != nil {
-		if err = coreprocess.WaitOnlineNotify(runCtx, client, *cfg.Core, reportConnection); err != nil {
+		if err = coreprocess.WaitOnlineNotify(runCtx, client, *cfg.Core, keepConsole, reportConnection); err != nil {
 			cancel()
 			return err
 		}
@@ -178,7 +226,11 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	}
 	contactability.SetSelf(&sdkcontact.SelfInfo{Username: username, Nickname: info.GetNickName().GetValue(), Alias: info.GetAlias(), Avatar: ext.GetSmallAvatarUrl(), Uin: info.GetUin(), Email: info.GetEmail().GetValue(), Mobile: info.GetMobile().GetValue()})
 	defer contactability.SetSelf(nil)
-	contactability.Initial(cacheDir)
+	if bridge != nil {
+		contactability.LoadCache(cacheDir)
+	} else {
+		contactability.Initial(cacheDir)
+	}
 	chatroomability.Initial(cacheDir)
 	defer ability.Destroy()
 	// 启动失败也回收已经启动的插件；停止回调先于缓存落盘及连接释放。
@@ -187,6 +239,12 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 		if err = plugin.Initial(runCtx, cfg.PluginsDir); err != nil {
 			return fmt.Errorf("插件初始化失败: %w", err)
 		}
+		if bridge != nil {
+			if err = plugin.RegisterFoundation(bridge.Dashboard, !opts.withoutDashboard && (cfg.Console == nil || !cfg.Console.Disabled), !opts.withoutAI && (cfg.Console == nil || !cfg.Console.DisableAI)); err != nil {
+				return err
+			}
+		}
+
 	}
 	if runCtx.Err() != nil {
 		return nil
@@ -208,6 +266,43 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 		hooks.Event = func(e *sdkplugin.Event) error {
 			return callHandler("OnEvent", func() error { return h(runCtx, direct, e) })
 		}
+	}
+	// 归档观察器先于可消费消息的业务回调执行；入库失败阻止当前批次确认。
+	if bridge != nil {
+		ready, receive, onEvent := hooks.Ready, hooks.Message, hooks.Event
+		// 联系人增量的群名、头像与会话状态都投影到控制台，不重新请求微信。
+		hooks.Event = func(e *sdkplugin.Event) error {
+			if e.GetTopic() == "contact::modify" {
+				if err := bridge.SyncContacts(); err != nil {
+					return err
+				}
+			}
+			if onEvent != nil {
+				return onEvent(e)
+			}
+			return nil
+		}
+		hooks.Ready = func() error {
+			if err := bridge.Online(); err != nil {
+				return err
+			}
+			if ready != nil {
+				return ready()
+			}
+			return nil
+		}
+		hooks.Message = func(m *message.Message) error {
+			if err := bridge.Record(m); err != nil {
+				return err
+			}
+			if receive != nil {
+				return receive(m)
+			}
+			return nil
+		}
+		defer bridge.Ready.Store(false)
+		// 必须先取消并等待读取任务，再落盘缓存、恢复全局 API 或释放账号资料。
+		defer func() { cancel(); bridge.WaitContactSync() }()
 	}
 	watchDone := make(chan struct{})
 	defer func() { cancel(); <-watchDone }()

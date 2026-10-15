@@ -49,7 +49,7 @@ func (u usernameStrategy) find(cache map[string]*contact.Contact) *contact.Conta
 	}
 	// 通过api获取联系人详情
 	res, err := contactapi.Get().Detail([]string{u.key})
-	if err != nil {
+	if err != nil || len(res.GetContactList()) != 1 || res.GetContactList()[0].GetUsername().GetValue() != u.key {
 		cache[u.key] = &def
 		return nil
 	}

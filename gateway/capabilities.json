@@ -174,21 +174,22 @@
   },
   "payment": {
     "label": "支付",
-    "enabled": [],
-    "placeholder": [
-      "GeneratePayQCode",
-      "GetBandCardList",
-      "CreateHongBao",
+    "enabled": [
       "ReceiveHongBao",
       "OpenHongBao",
       "GrabHongBao",
       "QueryHongBaoDetail",
       "QueryHongBaoList",
-      "CreatePreTransfer",
-      "ConfirmPreTransfer",
       "CollectMoney"
     ],
-    "evidence": "没有真实验收，保留占位"
+    "placeholder": [
+      "GeneratePayQCode",
+      "GetBandCardList",
+      "CreateHongBao",
+      "CreatePreTransfer",
+      "ConfirmPreTransfer"
+    ],
+    "evidence": "已对照 core v0.3.2 接通收红包、红包查询与确认收款，未执行真实资金验收；付款及支付账户查询继续保留占位。"
   },
   "report": {
     "label": "状态通知",
