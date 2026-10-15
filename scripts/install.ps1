@@ -3,6 +3,7 @@ param(
     [string]$KeyFile,
     [string]$DataDir = (Join-Path $env:LOCALAPPDATA 'we-clay'),
     [string]$CoreDataDir,
+    [string]$DeviceName,
     [switch]$NoRun
 )
 
@@ -142,6 +143,10 @@ if (-not [IO.Path]::IsPathRooted($DataDir)) { Fail 'DataDir 必须是绝对路�
 if ($CoreDataDir -and ((-not [IO.Path]::IsPathRooted($CoreDataDir)) -or (-not (Test-Path -LiteralPath $CoreDataDir -PathType Container)))) {
     Fail 'CoreDataDir 必须指向已存在的绝对目录，避免误建新设备'
 }
+if ($PSBoundParameters.ContainsKey('DeviceName') -and
+    ([string]::IsNullOrWhiteSpace($DeviceName) -or $DeviceName -match '[\x00\r\n]')) {
+    Fail 'DeviceName 不能为空或包含换行和 NUL 字符'
+}
 $architecture = [Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITEW6432')
 if (-not $architecture) { $architecture = [Environment]::GetEnvironmentVariable('PROCESSOR_ARCHITECTURE') }
 switch ($architecture.ToUpperInvariant()) {
@@ -218,6 +223,9 @@ try {
 
 Write-Host '[5/5] 保存运行配置和启动入口...'
 if ($CoreDataDir) { Write-AtomicText (Join-Path $DataDir 'core-data-dir.txt') "$CoreDataDir`n" }
+if ($PSBoundParameters.ContainsKey('DeviceName')) {
+    Write-AtomicText (Join-Path $DataDir 'device-name.txt') "$DeviceName`n"
+}
 $runner = @'
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSCommandPath
@@ -227,6 +235,12 @@ $arguments = @('--data-dir', $root, '--license-file', (Join-Path $root 'secrets\
 $oldCore = Join-Path $root 'core-data-dir.txt'
 if (Test-Path -LiteralPath $oldCore) {
     $arguments += @('--core-data-dir', [IO.File]::ReadAllText($oldCore).Trim())
+}
+$deviceNameFile = Join-Path $root 'device-name.txt'
+if (Test-Path -LiteralPath $deviceNameFile -PathType Leaf) {
+    $deviceName = [IO.File]::ReadAllText($deviceNameFile).TrimEnd([char[]]@([char]13, [char]10))
+    if ([string]::IsNullOrWhiteSpace($deviceName) -or $deviceName -match '[\x00\r\n]') { throw '设备名称配置无效' }
+    $arguments += @('--device-name', $deviceName)
 }
 & (Join-Path $root "bin\we-clay_$version.exe") @arguments @args
 exit $LASTEXITCODE

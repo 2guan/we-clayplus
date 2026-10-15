@@ -9,10 +9,11 @@ bucket_host='weclay.oss-cn-beijing.aliyuncs.com'
 
 usage() {
   cat <<'EOF'
-用法：install.sh [--key-file 授权文件] [--data-dir 本机目录] [--core-data-dir 旧微信账号目录] [--no-run]
+用法：install.sh [--key-file 授权文件] [--data-dir 本机目录] [--core-data-dir 旧微信账号目录] [--device-name 微信设备名称] [--no-run]
 
 不传 --key-file 时读取已安装的授权文件；首次安装会安全提示输入 Key。
 已有微信登录数据时，必须传 --core-data-dir 指向原来的 core 账号目录。
+--device-name 可选；不传时沿用此前保存的名称或 core 中的原设备名称。
 EOF
 }
 
@@ -22,15 +23,18 @@ stage() { printf '%s\n' "$1" >&2; }
 key_file=''
 data_dir=''
 core_data_dir=''
+device_name=''
+device_name_set=0
 run_after=1
 while (($#)); do
   case "$1" in
-    --key-file|--data-dir|--core-data-dir)
-      (($# >= 2)) || fail "$1 缺少路径"
+    --key-file|--data-dir|--core-data-dir|--device-name)
+      (($# >= 2)) || fail "$1 缺少参数值"
       case "$1" in
         --key-file) key_file=$2 ;;
         --data-dir) data_dir=$2 ;;
         --core-data-dir) core_data_dir=$2 ;;
+        --device-name) device_name=$2; device_name_set=1 ;;
       esac
       shift 2 ;;
     --no-run) run_after=0; shift ;;
@@ -64,6 +68,9 @@ esac
 [[ "$data_dir" = /* ]] || fail '--data-dir 必须是绝对路径'
 if [[ -n "$core_data_dir" ]]; then
   [[ "$core_data_dir" = /* && -d "$core_data_dir" ]] || fail '--core-data-dir 必须指向已存在的绝对目录，避免误建新设备'
+fi
+if ((device_name_set)); then
+  [[ -n "${device_name//[[:space:]]/}" && "$device_name" != *$'\n'* && "$device_name" != *$'\r'* ]] || fail '--device-name 不能为空、纯空白或包含换行'
 fi
 stage "准备安装 we-clay ${version}（${goos}/${goarch}）"
 
@@ -176,6 +183,12 @@ if [[ -n "$core_data_dir" ]]; then
   chmod 0600 "$old_core_tmp"
   mv -f "$old_core_tmp" "$data_dir/core-data-dir.txt"
 fi
+if ((device_name_set)); then
+  device_name_tmp=$(mktemp "$data_dir/.device-name.XXXXXX")
+  printf '%s\n' "$device_name" > "$device_name_tmp"
+  chmod 0600 "$device_name_tmp"
+  mv -f "$device_name_tmp" "$data_dir/device-name.txt"
+fi
 runner_tmp=$(mktemp "$data_dir/.run.XXXXXX")
 cat > "$runner_tmp" <<'EOF'
 #!/usr/bin/env bash
@@ -187,6 +200,10 @@ args=(--data-dir "$root" --license-file "$root/secrets/license.key")
 if [[ -f "$root/core-data-dir.txt" ]]; then
   IFS= read -r old_core < "$root/core-data-dir.txt"
   args+=(--core-data-dir "$old_core")
+fi
+if [[ -f "$root/device-name.txt" ]]; then
+  IFS= read -r device_name < "$root/device-name.txt"
+  [[ -n "$device_name" ]] && args+=(--device-name "$device_name")
 fi
 exec "$root/bin/we-clay_${version}" "${args[@]}" "$@"
 EOF
