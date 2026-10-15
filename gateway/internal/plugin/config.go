@@ -1,3 +1,6 @@
+// 文件名：config.go
+// 主要功能：读写插件 TOML 配置，保留显式设置的可选调度参数。
+// 作者：2guan
 package plugin
 
 import (
@@ -15,9 +18,9 @@ var configPath = filepath.Join(pluginDir, "config.toml") // 插件配置文件�
 // Config 插件配置
 type Config struct {
 	Enable    bool     `toml:"enable"`               // 是否启用插件
-	Next      *bool    `toml:"next,commented"`       // 插件成功处理之后是否继续执行下一个插件
-	Priority  *int32   `toml:"priority,commented"`   // 插件优先级
-	AlwaysRun *bool    `toml:"always_run,commented"` // 是否一直运行，忽略会话劫持
+	Next      *bool    `toml:"next,omitempty"`       // 插件成功处理之后是否继续执行下一个插件
+	Priority  *int32   `toml:"priority,omitempty"`   // 插件优先级
+	AlwaysRun *bool    `toml:"always_run,omitempty"` // 是否一直运行，忽略会话劫持
 	Mode      string   `toml:"mode"`                 // 插件限制模式：blacklist|whitelist
 	Limits    []string `toml:"limits"`               // 插件限制联系人列表
 	Config    any      `toml:"config"`               // 插件配置

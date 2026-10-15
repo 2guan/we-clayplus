@@ -5,7 +5,7 @@ data-restored*/
 logs/
 bin/
 dist/
-plugins/
+/runtime/plugins/
 config.local.toml
 .env
 .env.*
@@ -25,6 +25,11 @@ device*.json
 .vscode/
 go.work
 go.work.sum
+
+# 前端依赖与本地浏览器测试产物
+node_modules/
+playwright-report/
+test-results/
 
 # 独立 core 的本机进程记录，可能含 API 令牌
 gateway-core.json

@@ -1,3 +1,6 @@
+// 文件名：core.go
+// 主要功能：解析和校验独立 core 的运行配置及本机登录地址。
+// 作者：2guan
 package config
 
 import (
@@ -21,7 +24,7 @@ type CoreConfig struct {
 	KeepAlive        bool          `toml:"keep_alive"`        // 独立运行：Run 退出保留 core，后续 Run 复用。
 	CacheDir         string        `toml:"cache_dir"`         // 默认 ./runtime/core-bin，按仓库/版本/平台隔离。
 	DataDir          string        `toml:"data_dir"`          // 必填绝对路径，保存账号状态及 core.log。
-	LoginAddress     string        `toml:"login_address"`     // 默认 127.0.0.1:8086；"-" 关闭页面。
+	LoginAddress     string        `toml:"login_address"`     // 默认 127.0.0.1:8201；"-" 关闭页面。
 	Stage            string        `toml:"stage"`             // auto（默认）、login 或 resume；auto 检查会话文件是否存在。
 	GitHubTokenEnv   string        `toml:"github_token_env"`  // 默认 WE_CLAY_GITHUB_TOKEN；公开仓库可不设置。
 	StorageEncrypted bool          `toml:"storage_encrypted"` // 密码读取 WE_CLAY_STORAGE_PASSWORD。
@@ -50,7 +53,7 @@ func (c CoreConfig) Resolve() (CoreConfig, error) {
 		return c, fmt.Errorf("core.data_dir 必须显式填写固定的绝对路径；升级时请填写现有账号目录，避免创建新设备")
 	}
 	if c.LoginAddress == "" {
-		c.LoginAddress = "127.0.0.1:8086"
+		c.LoginAddress = "127.0.0.1:8201"
 	}
 	if c.Stage == "" {
 		c.Stage = "auto"

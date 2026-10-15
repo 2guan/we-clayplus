@@ -27,6 +27,7 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 		{"video", "video", "1789890000", false, true, &sdk.Message{Type: sdk.TypeVideo, Data: &sdk.Message_Video{Video: &sdk.VideoData{Media: &sdk.Media{Data: []byte("video")}, Thumb: []byte("thumb"), Duration: 1}}}},
 		{"file", "file", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeFile, Data: &sdk.Message_File{File: &sdk.FileData{Filename: "test.txt", Media: &sdk.Media{Data: []byte("file")}}}}},
 		{"link", "link", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppLink, Data: &sdk.Message_App{App: &sdk.AppData{Title: "test", Url: "https://example.invalid"}}}},
+		{"quote", "app", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppQuote, Data: &sdk.Message_App{App: &sdk.AppData{SubType: 57, Xml: `<appmsg><type>57</type><title>回复</title><refermsg><svrid>123</svrid></refermsg></appmsg>`}}}},
 		{"emoji", "emoji", "1789890000", false, true, &sdk.Message{Type: sdk.TypeEmoji, Data: &sdk.Message_Emoji{Emoji: &sdk.EmojiData{Media: &sdk.Media{Data: []byte("emoji"), Md5: "synthetic"}}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,9 +78,9 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 			}
 			defer conn.Close()
 			a := &ability{api: messageapi.New(conn)}
-			message := proto.Clone(tc.msg).(*sdk.Message)
-			message.Receiver = &contact.Contact{Username: "synthetic_peer"}
-			sent, err := a.Send(message)
+			cloned := proto.Clone(tc.msg).(*sdk.Message)
+			cloned.Receiver = &contact.Contact{Username: "synthetic_peer"}
+			sent, err := a.Send(cloned)
 			if err != nil {
 				t.Fatal(err)
 			}

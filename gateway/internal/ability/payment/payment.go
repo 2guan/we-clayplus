@@ -1,12 +1,18 @@
+// 文件名：payment.go
+// 主要功能：接通 core 支付接口，保留原始回执，拒绝空回执且不自动重试。
+// 作者：2guan
 // Package paymentability 提供支付能力的实现（直连型）。
 package paymentability
 
 import (
 	sdk "github.com/we-clay/we-clay/sdk/payment"
 
+	"fmt"
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
 	paymentapi "github.com/we-clay/we-clay/gateway/internal/api/payment"
 	sdkroot "github.com/we-clay/we-clay/sdk"
+	"net/url"
+	"strings"
 )
 
 // ability 支付能力实现（直连型）。
@@ -35,27 +41,137 @@ func (a ability) CreateHongBao(params sdk.CreateHongBaoParams) (*sdk.HongBaoResp
 
 // ReceiveHongBao 接收红包
 func (a ability) ReceiveHongBao(params sdk.ReceiveHongBaoParams) (*sdk.HongBaoResponse, error) {
-	return nil, sdkroot.NotImplemented("payment.ReceiveHongBao")
+	if e := validatePacket(params.NativeURL); e != nil {
+		return nil, e
+	}
+	if params.InWay < 0 {
+		return nil, fmt.Errorf("红包来源无效")
+	}
+	resp, err := a.api.ReceiveHongBao(paymentapi.ReceiveHongBaoParams(params))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("支付回执缺失，结果未确认，不应重试")
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil || resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("支付基础回执未确认")
+	}
+	if resp.GetCode() != 0 || resp.GetErrorType() != 0 {
+		return nil, fmt.Errorf("支付业务未成功，返回码 %d / %d", resp.GetCode(), resp.GetErrorType())
+	}
+	if b := resp.GetText(); b != nil && b.Size != nil && int(b.GetSize()) != len(b.Data) {
+		return nil, fmt.Errorf("红包回执长度不符")
+	}
+	return mapHongBaoResponse(resp), nil
 }
 
 // OpenHongBao 打开红包
 func (a ability) OpenHongBao(params sdk.OpenHongBaoParams) (*sdk.HongBaoResponse, error) {
-	return nil, sdkroot.NotImplemented("payment.OpenHongBao")
+	if e := validatePacket(params.NativeURL); e != nil {
+		return nil, e
+	}
+	if params.TimingIdentifier == "" || params.SendUserName == "" {
+		return nil, fmt.Errorf("缺少拆红包凭据")
+	}
+	resp, err := a.api.OpenHongBao(paymentapi.OpenHongBaoParams(params))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("支付回执缺失，结果未确认，不应重试")
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil || resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("支付基础回执未确认")
+	}
+	if resp.GetCode() != 0 || resp.GetErrorType() != 0 {
+		return nil, fmt.Errorf("支付业务未成功，返回码 %d / %d", resp.GetCode(), resp.GetErrorType())
+	}
+	if b := resp.GetText(); b != nil && b.Size != nil && int(b.GetSize()) != len(b.Data) {
+		return nil, fmt.Errorf("红包回执长度不符")
+	}
+	return mapHongBaoResponse(resp), nil
 }
 
 // GrabHongBao 抢红包
 func (a ability) GrabHongBao(params sdk.GrabHongBaoParams) (*sdk.HongBaoResponse, error) {
-	return nil, sdkroot.NotImplemented("payment.GrabHongBao")
+	if e := validatePacket(params.NativeURL); e != nil {
+		return nil, e
+	}
+	if params.InWay < 0 {
+		return nil, fmt.Errorf("红包来源无效")
+	}
+	resp, err := a.api.GrabHongBao(paymentapi.GrabHongBaoParams(params))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("支付回执缺失，结果未确认，不应重试")
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil || resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("支付基础回执未确认")
+	}
+	if resp.GetCode() != 0 || resp.GetErrorType() != 0 {
+		return nil, fmt.Errorf("支付业务未成功，返回码 %d / %d", resp.GetCode(), resp.GetErrorType())
+	}
+	if b := resp.GetText(); b != nil && b.Size != nil && int(b.GetSize()) != len(b.Data) {
+		return nil, fmt.Errorf("红包回执长度不符")
+	}
+	return mapHongBaoResponse(resp), nil
 }
 
 // QueryHongBaoDetail 查询红包领取详情
 func (a ability) QueryHongBaoDetail(params sdk.QueryHongBaoDetailParams) (*sdk.HongBaoResponse, error) {
-	return nil, sdkroot.NotImplemented("payment.QueryHongBaoDetail")
+	if e := validatePacket(params.NativeURL); e != nil {
+		return nil, e
+	}
+	if params.SendUserName == "" {
+		return nil, fmt.Errorf("缺少发送人")
+	}
+	resp, err := a.api.QueryHongBaoDetail(paymentapi.QueryHongBaoDetailParams(params))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("支付回执缺失，结果未确认，不应重试")
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil || resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("支付基础回执未确认")
+	}
+	if resp.GetCode() != 0 || resp.GetErrorType() != 0 {
+		return nil, fmt.Errorf("支付业务未成功，返回码 %d / %d", resp.GetCode(), resp.GetErrorType())
+	}
+	if b := resp.GetText(); b != nil && b.Size != nil && int(b.GetSize()) != len(b.Data) {
+		return nil, fmt.Errorf("红包回执长度不符")
+	}
+	return mapHongBaoResponse(resp), nil
 }
 
 // QueryHongBaoList 查询红包领取列表
 func (a ability) QueryHongBaoList(params sdk.QueryHongBaoListParams) (*sdk.HongBaoResponse, error) {
-	return nil, sdkroot.NotImplemented("payment.QueryHongBaoList")
+	if e := validatePacket(params.NativeURL); e != nil {
+		return nil, e
+	}
+	if params.Offset < 0 || params.Limit < 0 {
+		return nil, fmt.Errorf("分页参数无效")
+	}
+	resp, err := a.api.QueryHongBaoList(paymentapi.QueryHongBaoListParams(params))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("支付回执缺失，结果未确认，不应重试")
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil || resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("支付基础回执未确认")
+	}
+	if resp.GetCode() != 0 || resp.GetErrorType() != 0 {
+		return nil, fmt.Errorf("支付业务未成功，返回码 %d / %d", resp.GetCode(), resp.GetErrorType())
+	}
+	if b := resp.GetText(); b != nil && b.Size != nil && int(b.GetSize()) != len(b.Data) {
+		return nil, fmt.Errorf("红包回执长度不符")
+	}
+	return mapHongBaoResponse(resp), nil
 }
 
 // CreatePreTransfer 创建转账
@@ -70,7 +186,23 @@ func (a ability) ConfirmPreTransfer(params sdk.ConfirmPreTransferParams) (*sdk.T
 
 // CollectMoney 确认收款
 func (a ability) CollectMoney(params sdk.CollectMoneyParams) (*sdk.TenPayResponse, error) {
-	return nil, sdkroot.NotImplemented("payment.CollectMoney")
+	if params.InvalidTime == "" || params.TransferID == "" || params.TransactionID == "" || params.ToUserName == "" {
+		return nil, fmt.Errorf("缺少原始转账票据")
+	}
+	resp, err := a.api.CollectMoney(paymentapi.CollectMoneyParams(params))
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("支付回执缺失，结果未确认，不应重试")
+	}
+	if resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil || resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("支付基础回执未确认")
+	}
+	if resp.GetCode() != 0 || resp.GetErrorType() != 0 {
+		return nil, fmt.Errorf("支付业务未成功，返回码 %d / %d", resp.GetCode(), resp.GetErrorType())
+	}
+	return mapTenPayResponse(resp), nil
 }
 
 func mapBaseResult(resp *baseapi.BaseResponse) *sdk.BaseResult {
@@ -133,4 +265,17 @@ func mapHongBaoResponse(resp *paymentapi.HongBaoResponse) *sdk.HongBaoResponse {
 		ErrorType:    resp.GetErrorType(),
 		ErrorMessage: resp.GetErrorMessage(),
 	}
+}
+
+// 接收票据必须来自微信红包协议；本层不读取支付凭据，也不猜测密码加密算法。
+func validatePacket(raw string) error {
+	u, e := url.Parse(raw)
+	if e != nil || u.Scheme != "wxpay" || !strings.EqualFold(u.Host, "c2cbizmessagehandler") {
+		return fmt.Errorf("红包票据地址无效")
+	}
+	q, e := url.ParseQuery(u.RawQuery)
+	if e != nil || q.Get("msgtype") == "" || q.Get("channelid") == "" || q.Get("sendid") == "" {
+		return fmt.Errorf("红包票据字段缺失")
+	}
+	return nil
 }

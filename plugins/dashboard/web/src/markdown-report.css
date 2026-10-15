@@ -1,0 +1,25 @@
+/* 文件名：markdown-report.css
+ * 主要功能：报告排版、公式与表格横向滚动，继承全站亮暗主题。
+ * 作者：2guan
+ */
+.markdown-report { min-width: 0; max-width: 100%; color: var(--text); line-height: 1.8; white-space: normal; overflow-wrap: anywhere; }
+.markdown-report > :first-child { margin-top: 0; }
+.markdown-report h1, .markdown-report h2, .markdown-report h3, .markdown-report h4 { margin: 1.4em 0 .6em; line-height: 1.4; font-weight: 600; }
+.markdown-report h1 { font-size: 1.55em; }
+.markdown-report h2 { font-size: 1.3em; }
+.markdown-report h3 { font-size: 1.12em; }
+.markdown-report p, .markdown-report ul, .markdown-report ol { margin: .75em 0; }
+.markdown-report ul, .markdown-report ol { padding-left: 1.6em; }
+.markdown-report blockquote { margin: 1em 0; padding: .2em 1em; border-left: 3px solid var(--accent); color: var(--muted); }
+.markdown-report a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.markdown-report pre { max-width: 100%; overflow-x: auto; padding: 14px; border: 1px solid var(--border); border-radius: 8px; white-space: pre; }
+.markdown-report code { font-size: .9em; background: color-mix(in srgb, var(--text) 5%, transparent); border-radius: 3px; padding: .1em .3em; }
+.markdown-report pre code { background: transparent; padding: 0; }
+.markdown-report hr { border: 0; border-top: 1px solid var(--border); margin: 1.5em 0; }
+.markdown-report .report-table-scroll { max-width: 100%; overflow-x: auto; }
+.markdown-report table { width: 100%; border-collapse: collapse; font-size: .95em; }
+.markdown-report th, .markdown-report td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+.markdown-report th { background: color-mix(in srgb, var(--text) 5%, transparent); }
+/* 长公式只在公式区滚动，手机端不会撑宽报告或整页。 */
+.markdown-report .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: .4em 0; }
+.markdown-report .katex { font-size: 1.08em; }

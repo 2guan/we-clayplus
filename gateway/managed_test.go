@@ -1,3 +1,6 @@
+// 文件名：managed_test.go
+// 主要功能：使用独立临时目录和临时控制台端口验证 gateway 生命周期，避免与开发预览冲突。
+// 作者：2guan
 package gateway_test
 
 import (
@@ -7,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/we-clay/we-clay/sdk/control"
 	"io"
 	"net"
 	"os"
@@ -122,7 +126,7 @@ func managedFixture(t *testing.T, mode string) gateway.Config {
 	}
 	address := listener.Addr().String()
 	listener.Close()
-	config := gateway.Config{
+	config := gateway.Config{Console: &control.Config{Address: "127.0.0.1:0"},
 		CoreAddress: address, CoreToken: "synthetic-managed-token", DataDir: filepath.Join(root, "gateway"), PluginsDir: filepath.Join(root, "plugins"),
 		Core: &gateway.CoreConfig{Version: "v0.0.0-test", CacheDir: filepath.Join(root, "bin"), DataDir: filepath.Join(root, "core"), LoginAddress: "-", GitHubTokenEnv: "WE_CLAY_TEST_RELEASE_TOKEN", StartupTimeout: 5 * time.Second, LoginTimeout: 5 * time.Second},
 	}

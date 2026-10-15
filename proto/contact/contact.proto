@@ -29,6 +29,8 @@ message Contact {
   ContactType type = 6; // 联系人类型
   string v1 = 7; // 搜索返回的验证用户名；仅用于好友申请，不保证是可发消息的 wxid
   string v2 = 8; // 搜索返回的 antispam_ticket；敏感票据，不应记录日志或持久化
+  optional bool pinned = 9; // 微信置顶；缺失表示尚未获取，不能当作 false。
+  optional bool muted = 10; // 群消息免打扰；仅对明确返回的群通知状态赋值。
   oneof data {
     Friend friend = 20; // 好友数据
     Chatroom chatroom = 21; // 群组数据

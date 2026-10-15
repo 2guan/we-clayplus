@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.4 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.8.0 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.7.4
+go get github.com/we-clay/we-clay@v0.8.0
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -87,7 +87,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.7.4
+go get github.com/we-clay/we-clay@v0.8.0
 ```
 
 ### 2 · 调用 Run
@@ -159,7 +159,7 @@ go run .
 ```
 
 `Run` 会下载当前平台的二进制、校验 SHA-256、启动 core，并等待登录。
-打开 [localhost:8086](http://127.0.0.1:8086) 完成 Mac 扫码；登录成功并完成事件订阅后触发 `OnReady`，随后通过 `OnMessage` 接收消息。
+打开 [localhost:8201](http://127.0.0.1:8201) 完成 Mac 扫码；登录成功并完成事件订阅后触发 `OnReady`，随后通过 `OnMessage` 接收消息。
 后续启动复用本地缓存，并尝试恢复已有会话。按 Ctrl+C 会清理插件及本次启动的 core 子进程，保留账号状态。
 
 <details>
@@ -228,7 +228,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.4
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.8.0
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -257,12 +257,64 @@ flowchart LR
 | **SDK** | 业务类型、能力接口与插件通信封装 | 编译进你的程序或插件 |
 | **core** | 微信协议、登录与底层会话 | 独立二进制服务 |
 
-gateway 与 core 统一使用 gRPC，默认端口 `8088`。浏览器登录页面由 core 的 HTTP `8086` 提供。
+gateway 与 core 统一使用 gRPC，默认端口 `8088`。浏览器登录页面由 core 的 HTTP `8201` 提供。
 协议、确认语义及重连策略见[gRPC 通信](docs/gRPC通信.md)。
+
+## Dashboard 与 AI 基础插件
+
+Dashboard 与 AI 是 `gateway.Run` 默认注册的内建插件，共用本地状态库、模型配置和任务执行器；无需另起 Dashboard 或 AI 服务。Dashboard 默认监听 `http://127.0.0.1:8208`。它和 core 的微信扫码登录页（默认 `http://127.0.0.1:8201`）是两个独立页面。
+
+### 能力
+
+- **Dashboard 工作台：**查看运行状态、消息与 Token 统计；浏览会话、消息、联系人和媒体；在聊天页发送文字、图片、文件、语音及微信表情；管理模型、插件、任务、日志和控制台设置。桌面与手机布局均可使用，并支持亮色／暗色主题。
+- **AI 模型中心：**配置供应商、模型和能力，分别管理对话、视觉、语音识别、语音合成、图片及视频处理流水线；使用模型实验室测试连接与任务，配置提示词、并发和预算等行为限制。支持 OpenAI 兼容接口、Gemini 和 Anthropic 的已接入能力，实际可用模型取决于供应商接口及模型本身。
+- **智能洞察与自动回复：**对选定会话生成分析报告，支持流式显示和截断识别；自动回复可设置会话范围、模型、人设及行为限制。自动回复默认关闭，启用后也应先配置允许名单并在工作台检查结果。
+- **内建防护：**提示词防护与上下文清洗默认注册并开启，可在插件中心调整规则、模式并离线验证。处理记录仅管理员可见；清洗不会改写原始聊天归档，也不能保证识别所有攻击。
+- **扩展业务插件：**提供定时任务、消息统计、词云、好友自动通过、入群欢迎、每日摘要、新闻、视频解析、音乐、表情包、今天吃什么和摸鱼日报。通过插件中心配置，通过工作台预览、管理素材、确认发送和查看记录。真实模式下业务插件默认关闭；自动行为需要启用插件并配置名单。新闻及音乐、视频解析、表情搜索等外部服务需要自行配置兼容地址。
+
+### 启动与使用
+
+**脱机浏览界面：**在仓库根目录运行：
+
+```sh
+make mock
+```
+
+打开 `http://127.0.0.1:8208`，即可查看页面、切换演示场景和预览工作台。Mock 使用虚构数据与独立数据库，不启动 core、不连接微信或真实模型，也不会访问真实控制台数据；首次编译可能需要 Go 依赖。按 Ctrl+C 退出。
+
+**连接真实微信：**准备本机 OSS 只读凭据及 `WE_CLAY_AUTH_KEY`，在仓库根目录运行：
+
+```sh
+make run
+```
+
+打开 `http://127.0.0.1:8208` 创建本地 Dashboard 管理员，再到 `http://127.0.0.1:8201` 扫码登录微信。两处登录相互独立。`make run` 会启动 Mac 模式 core 并使用本地真实会话；不要把运行数据、凭据或真实聊天内容提交到仓库。若已有独立运行且已登录的 core，使用 `make attach` 启动控制台并连接它；该命令不会下载、启动或停止 core。真实启动细节见[本机真实微信验收](docs/控制台与AI.md#本机真实微信验收)。
+
+**嵌入自己的 Go 应用：**直接调用 `gateway.Run` 时 Dashboard 和 AI 默认启用；用选项按需关闭：
+
+```go
+gateway.Run(ctx, cfg) // 默认启用 Dashboard 与 AI
+gateway.Run(ctx, cfg, gateway.WithoutDashboard()) // 关闭 Web 页面，保留 AI
+gateway.Run(ctx, cfg, gateway.WithoutAI())       // 保留 Dashboard，关闭 AI
+```
+
+也可在 TOML 中设置监听地址、数据目录或禁用项：
+
+```toml
+[console]
+address = "127.0.0.1:8208"
+data_dir = "./runtime/console"
+disabled = false
+disable_ai = false
+```
+
+进入“插件中心”启用并配置所需能力，再到“工作台”查看操作说明、预览任务和结果；工作台中的手动发送操作需确认，自动回复及事件插件按启用状态和名单执行。模型连接、能力支持及外部服务仍须按实际配置验证。未登录微信的页面和 Mock 成功结果只用于离线体验，不代表真实账号或供应商验收通过。
+
+完整页面说明、配置字段、已实现范围和限制见[控制台与 AI](docs/控制台与AI.md)；完整真实启动流程见[运行指南](docs/运行指南.md)。
 
 ## 多套独立运行
 
-同一个程序可以启动多次，每套各用独立的 core gRPC 端口、登录页端口和账号/gateway 数据目录。8086/8088 只是默认值，无需新增实例管理 API。见[两套完整配置与启动示例](docs/多套运行.md)。
+同一个程序可以启动多次，每套各用独立的 core gRPC 端口、登录页端口和账号/gateway 数据目录。8201/8088 只是默认值，无需新增实例管理 API。见[两套完整配置与启动示例](docs/多套运行.md)。
 
 ## 私有 OSS 分发
 
@@ -310,7 +362,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 ## 当前状态
 
-**v0.7.4 更新：** 新增私聊和群聊拍一拍入口，搭配 core v0.4.4 使用。Mac 模式下，core HTTP 接口的私聊与群聊请求均得到微信明确成功回执，手机端确认显示；SDK/gateway 调用链完成离线验证，尚未单独真机复验。结果不确定时不自动重试。
+**v0.8.0 更新：** 内建 Dashboard 与 AI 基础插件，控制台默认监听 `127.0.0.1:8208`，core 登录页默认改为 `127.0.0.1:8201`；旧端口配置升级时须核对。新增私聊和群聊拍一拍入口，搭配 core v0.4.4 使用。Mac 模式下，core HTTP 接口的私聊与群聊请求均得到微信明确成功回执，手机端确认显示；SDK/gateway 调用链完成离线验证，尚未单独真机复验。结果不确定时不自动重试。
 
 **v0.5.5 增加独立 core 与表情包下载**：`KeepAlive` 保留 core 进程，`StopCore` 显式停止；`Message.Download` 统一处理微信表情 CDN。见[独立 core](docs/独立core.md)与[媒体下载](docs/媒体下载.md)。
 
@@ -326,7 +378,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 
 **v0.5.4 接通朋友圈留言与回复**，提供[真机试用示例](docs/直接接入.md#给指定朋友圈留言或回复)。头像上传自 v0.5.3 起接通；这两项均完成离线验证，待真机验收。此前接口修复见[接口契约核对](docs/接口契约核对.md)。
 
-**13 个能力域，129 个 SDK 方法：55 个已接通，74 个仅保留占位。**
+**13 个能力域，129 个 SDK 方法：61 个已接通，68 个仅保留占位。**
 另提供 `client.SendText` 和 `client.SendCard` 便捷入口；插件和直接 Client 复用同一份能力实现。
 
 - **历史真机记录**：Mac 模式下，核心链路已测试消息媒体、联系人、群聊、标签、朋友圈等操作，具体范围见下表后的说明。
@@ -340,7 +392,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 <!-- capabilities:start -->
 | Client 字段 | 已接通的方法 | 保留占位的方法 |
 | --- | --- | --- |
-| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Download` | — |
+| `Message` · 消息 | `Send`、`Forward`、`Revoke`、`Pat`、`Download` | — |
 | `Contact` · 联系人 | `Get`、`List`、`GetSelf`、`SetRemark`、`AddFriend`、`VerifyFriend`、`Search`、`GetOwner` | `Delete`、`BlacklistAdd`、`BlacklistRemove` |
 | `Chatroom` · 群聊 | `Create`、`GetInfo`、`GetQRCode`、`InviteMember`、`SetName`、`SetAnnouncement`、`SetRemark`、`Save`、`SetAdmin`、`ListMembers`、`GetMember`、`GetMembersDetail` | `FacingCreate`、`AddMember`、`RemoveMember`、`RemoveAdmin`、`TransferOwner`、`Quit`、`ScanJoin`、`ScanJoinEnterprise`、`ConsentJoin` |
 | `Moments` · 朋友圈 | `Timeline`、`UserPage`、`Detail`、`Comment`、`Like`、`Unlike`、`Post`、`Upload`、`Sync` | `Delete`、`DeleteComment`、`SetPrivacy` |
@@ -350,7 +402,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | `Login` · 登录 | — | `Login`、`Init`、`Refresh`、`Wakeup`、`Logout`、`PasswordLogin` |
 | `Miniapp` · 小程序 | `GetRecord` | `JSLogin`、`QrcodeAuthLogin`、`GetRuntimeSession`、`GetSessionQRCode`、`OperateWxData`、`CloudCallFunction`、`SendVerifyCode`、`CheckVerifyCode`、`AddMobile`、`DelMobile`、`GetAllMobile`、`GetRandomAvatar`、`AddAvatar`、`UploadAvatarImg`、`AddRecord`、`GetUserOpenID`、`OauthSdkApp`、`ThirdAppGrant` |
 | `Official` · 公众号 | — | `Follow`、`Quit`、`MpGetA8Key`、`JSAPIPreVerify`、`OauthAuthorize`、`ReadArticle`、`LikeArticle` |
-| `Payment` · 支付 | — | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CreatePreTransfer`、`ConfirmPreTransfer`、`CollectMoney` |
+| `Payment` · 支付 | `ReceiveHongBao`、`OpenHongBao`、`GrabHongBao`、`QueryHongBaoDetail`、`QueryHongBaoList`、`CollectMoney` | `GeneratePayQCode`、`GetBandCardList`、`CreateHongBao`、`CreatePreTransfer`、`ConfirmPreTransfer` |
 | `Report` · 状态通知 | `StartTyping`、`StopTyping` | `ReadMessage` |
 | `User` · 当前账号 | `GetProfile`、`GetQRCode`、`GetSafetyInfo`、`GetBoundHardDevices`、`UploadAvatar` | `UpdateProfile`、`SetPrivacy`、`SetAlias`、`VerifyPassword`、`SetPassword`、`SendVerifyMobile`、`BindMobile`、`BindEmail`、`SendVerifyEmail`、`DelSafeDevice`、`ReportMotion`、`GetCert` |
 <!-- capabilities:end -->
@@ -371,7 +423,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 | 登录 | Run 已负责 Mac 登录等待和会话恢复；单独调用这些登录方法未逐项验收，保留占位。 |
 | 小程序 | 仅使用记录查询通过；其他接口缺少测试 appID 或未测。 |
 | 公众号 | 没有完整真实验收，保留占位。 |
-| 支付 | 没有真实验收，保留占位。 |
+| 支付 | 红包领取/查询与确认收款已接通，未执行真实资金验收；付款及支付账户查询保留占位。 |
 | 状态通知 | 开始/停止输入仅收到成功回执，未手机观察；已读通知未测。 |
 | 当前账号 | 资料、个人二维码、安全设备/绑定硬件查询有历史验收；头像上传已接通并完成离线验证，待真机验收；其他资料/安全写操作保留占位。 |
 
@@ -383,7 +435,7 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 - 通用应用消息、聊天记录、音乐等未验证发送类型返回占位错误。朋友圈纯文字/单图历史发布成功；朋友圈视频上传曾失败，当前保留占位。
 
 **运行边界：** 每进程一个活动 gateway，同一 core 一个事件订阅者。事件去重为内存状态，业务需要持久化处理重放。
-core v0.3.0 的 macOS ARM64 附件已验证下载、校验、启动、gRPC 鉴权和二维码生成；本轮没有扫码。
+core v0.3.1 的 macOS ARM64 附件已验证下载、SHA-256 校验、缓存复用和帮助命令；本次未启动微信登录。此前 v0.3.0 已验证启动、gRPC 鉴权和二维码生成，未扫码。验证范围见 [core 发布](docs/core发布.md#已验证的组合)。
 完整调用示例见[直接接入](docs/直接接入.md)，机器可读清单见 [capabilities.json](gateway/capabilities.json)。
 
 令牌与账号状态仅保存在本地，插件只加载可信程序。部署与提交要求见 [SECURITY.md](SECURITY.md)。

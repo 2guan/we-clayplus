@@ -25,8 +25,10 @@ type Handlers struct {
 }
 
 type runOptions struct {
-	handlers       Handlers
-	withoutPlugins bool
+	handlers         Handlers
+	withoutPlugins   bool
+	withoutDashboard bool
+	withoutAI        bool
 }
 
 // Option 配置直接接入行为，不写入 TOML。
@@ -54,3 +56,9 @@ func invokeHandler(name string, fn func() error) (err error) {
 	}
 	return nil
 }
+
+// WithoutDashboard 仅关闭 Web 监听，保留 AI 基础插件。
+func WithoutDashboard() Option { return func(o *runOptions) { o.withoutDashboard = true } }
+
+// WithoutAI 关闭 AI 基础插件，控制台和扩展插件继续运行。
+func WithoutAI() Option { return func(o *runOptions) { o.withoutAI = true } }
