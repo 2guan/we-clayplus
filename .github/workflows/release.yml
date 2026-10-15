@@ -47,6 +47,7 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]]
           git merge-base --is-ancestor HEAD origin/main
+          test -s "docs/releases/${VERSION}.md"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
@@ -89,3 +90,26 @@ jobs:
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           OSS_SESSION_TOKEN: ${{ secrets.OSS_SESSION_TOKEN }}
         run: python scripts/release_we_clay.py publish --directory dist
+
+  release-notes:
+    needs: release
+    if: github.repository == 'we-clay/we-clay' && github.event.repository.private == true
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 发布中文版本说明
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          notes="docs/releases/${VERSION}.md"
+          test -s "$notes"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" --title "we-clay ${VERSION}" --notes-file "$notes"
+          else
+            gh release create "$VERSION" --verify-tag --title "we-clay ${VERSION}" --notes-file "$notes"
+          fi
