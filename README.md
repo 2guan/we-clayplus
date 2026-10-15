@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.2 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.7.3 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 <br />
 
 ```sh
-go get github.com/we-clay/we-clay@v0.7.2
+go get github.com/we-clay/we-clay@v0.7.3
 ```
 
 **导入 `gateway`，在自己的程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -87,7 +87,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.7.2
+go get github.com/we-clay/we-clay@v0.7.3
 ```
 
 ### 2 · 调用 Run
@@ -149,8 +149,8 @@ func main() {
 将 `WE_CLAY_CORE_VERSION` 设为私有 OSS 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
 
 ```sh
-# macOS / Linux：先确认 Actions 已完成发布 core v0.4.1
-export WE_CLAY_CORE_VERSION='v0.4.1'
+# macOS / Linux：先确认 Actions 已完成发布 core v0.4.3
+export WE_CLAY_CORE_VERSION='v0.4.3'
 # 通过本机受信任的环境配置提供 WE_CLAY_AUTH_KEY（运行授权 Key）
 # 通过本机受信任的环境配置提供 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（只读权限）
 # 填你已有账号目录的绝对路径；新部署才选择新目录
@@ -228,7 +228,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.2
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.7.3
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -313,6 +313,8 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 **v0.5.5 增加独立 core 与表情包下载**：`KeepAlive` 保留 core 进程，`StopCore` 显式停止；`Message.Download` 统一处理微信表情 CDN。见[独立 core](docs/独立core.md)与[媒体下载](docs/媒体下载.md)。
 
 **v0.7.0 更新：** 接入 core 运行授权 Key、支持每套实例选择不同环境变量，并检测独立 core 的 Key 变更。详见[运行授权](docs/运行授权.md)。
+
+**v0.7.3 更新：** 区分文件上传通知与完成消息；上传中明确拒绝下载。已完成附件按需分块读取，大文件走 core v0.4.3 的 CDN 路径，校验明文长度和 MD5。实测 769,693 B 与 294,168,750 B 文件经 SDK 到 core 全链路下载，见[媒体下载](docs/媒体下载.md)。
 
 **v0.7.2 更新：** 移除 SDK 中的静态内置表情名称目录，展示用映射及图片由应用前端自行管理。
 
