@@ -46,6 +46,11 @@ func (c *Client) SendText(receiver, content string) (*message.Send_Response, err
 	})
 }
 
+// Pat 在私聊中拍一拍指定微信 ID。群聊请调用 Message.Pat(roomID, memberID)。
+func (c *Client) Pat(username string) (*message.Pat_Response, error) {
+	return c.Message.Pat(username, username)
+}
+
 func clientCall[T any](s *clientState, name string, fn func() (T, error)) (value T, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

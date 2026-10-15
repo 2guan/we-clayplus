@@ -67,7 +67,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 | 领域 | 提供的接口 | SDK |
 | --- | --- | --- |
-| **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回，支持表情包下载 | [message](sdk/message/ability.go) |
+| **消息与媒体** | 文字、图片、语音、视频、文件；转发、下载、撤回，支持表情包下载；拍一拍为实验性接口 | [message](sdk/message/ability.go) |
 | **联系人** | 查询、备注、搜索、好友申请与验证 | [contact](sdk/contact/ability.go) |
 | **群聊** | 创建、成员查询、邀请、群名、公告与管理 | [chatroom](sdk/chatroom/ability.go) |
 | **朋友圈** | 时间线、指定好友主页、发布、点赞、取消点赞与评论 | [moments](sdk/moments/ability.go) |

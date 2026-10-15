@@ -188,3 +188,12 @@ message DownloadFileResponse {
   optional uint32 chunk_size = 7;                   // 数据长度
   optional .api.base.Buffer chunk = 8;               // 文件数据
 }
+
+// SendPatResponse 镜像 core 的微信拍一拍回执。
+message SendPatResponse {
+  optional .api.base.BaseResponse base_response = 1;
+  optional string self_message = 3;
+  optional string suffix = 4;
+  optional uint64 id = 5;
+  optional int64 suffix_version = 6;
+}

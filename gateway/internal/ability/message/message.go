@@ -395,6 +395,31 @@ func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response
 	return &sdk.Revoke_Response{Code: 0}, nil
 }
 
+// Pat 在私聊或群聊里发送一次拍一拍。当前底层协议仍在实测阶段，
+// 只有 core 明确返回成功才视为完成；结果不明时不得自动重试。
+func (a *ability) Pat(receiver, pattedUsername string) (*sdk.Pat_Response, error) {
+	if receiver == "" || pattedUsername == "" {
+		return nil, errors.New("拍一拍需要会话 ID 和被拍者微信 ID")
+	}
+	if err := ensureOutboundReady(); err != nil {
+		return nil, err
+	}
+	resp, err := a.api.Pat(receiver, pattedUsername)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil {
+		return nil, errors.New("拍一拍回执不完整，结果未确认，请勿自动重试")
+	}
+	if code := resp.GetBaseResponse().GetCode(); code != 0 {
+		return nil, fmt.Errorf("拍一拍失败，返回码 %d", code)
+	}
+	return &sdk.Pat_Response{
+		Id: resp.GetId(), SelfMessage: resp.GetSelfMessage(),
+		Suffix: resp.GetSuffix(), SuffixVersion: resp.GetSuffixVersion(),
+	}, nil
+}
+
 // Download 下载媒体资源
 func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 	if msg == nil {

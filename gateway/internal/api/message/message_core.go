@@ -260,6 +260,20 @@ func (w remote) RevokeWithClientID(receiver string, newMsgId uint64, clientMsgId
 	return &resp, nil
 }
 
+// Pat 通过 core 的 Invoke 发送一次拍一拍；网络结果不明时不自动重试。
+func (w remote) Pat(receiver, pattedUsername string) (*SendPatResponse, error) {
+	if receiver == "" || pattedUsername == "" {
+		return nil, errors.New("拍一拍需要会话 ID 和被拍者微信 ID")
+	}
+	var resp SendPatResponse
+	if err := w.core().Post("/api/message/pat").Body(map[string]any{
+		"receiver": receiver, "patted_username": pattedUsername, "experimental": true,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // DownloadImg 下载消息图片
 func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error) {
 	b, err := w.core().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).DoBinary()

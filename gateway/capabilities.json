@@ -5,10 +5,11 @@
       "Send",
       "Forward",
       "Revoke",
+      "Pat",
       "Download"
     ],
     "placeholder": [],
-    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；部分媒体仅回执或格式校验"
+    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；拍一拍是需 core 显式开启的实验性候选协议，尚未真机验证"
   },
   "contact": {
     "label": "联系人",
