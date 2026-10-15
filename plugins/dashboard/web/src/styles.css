@@ -1764,14 +1764,13 @@ td code {
   padding: 7px 2px;
   background: transparent;
 }
-/* 输入区保持中性焦点，键盘仍可辨识焦点位置，不使用全局绿色光晕。 */
+/* 消息输入时以光标提示焦点，不显示额外边框或光晕。 */
 .composer textarea:focus {
   box-shadow: none;
   border-color: transparent;
 }
 .composer textarea:focus-visible {
-  outline: 1px solid var(--border);
-  outline-offset: -1px;
+  outline: none;
 }
 .emoji-anchor {
   position: relative;
