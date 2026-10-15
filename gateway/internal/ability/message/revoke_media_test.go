@@ -12,6 +12,7 @@ import (
 	"github.com/we-clay/we-clay/gateway/internal/coretest"
 	"github.com/we-clay/we-clay/sdk/contact"
 	sdk "github.com/we-clay/we-clay/sdk/message"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
@@ -76,9 +77,9 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 			}
 			defer conn.Close()
 			a := &ability{api: messageapi.New(conn)}
-			copy := *tc.msg
-			copy.Receiver = &contact.Contact{Username: "synthetic_peer"}
-			sent, err := a.Send(&copy)
+			message := proto.Clone(tc.msg).(*sdk.Message)
+			message.Receiver = &contact.Contact{Username: "synthetic_peer"}
+			sent, err := a.Send(message)
 			if err != nil {
 				t.Fatal(err)
 			}
