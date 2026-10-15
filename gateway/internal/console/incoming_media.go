@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-func incomingMedia(ctx context.Context, c control.Command) ([]byte, error) {
+func incomingMediaReader(ctx context.Context, c control.Command) (io.ReadCloser, error) {
 	var m message.Message
 	if len(c.Params) > 256<<10 || protojson.Unmarshal(c.Params, &m) != nil {
 		return nil, fmt.Errorf("媒体票据无效")
@@ -39,18 +39,30 @@ func incomingMedia(ctx context.Context, c control.Command) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	reader, err := message.Instance.Download(&m)
+	if c.Operation == "message-file" && m.GetType().GetCode() != message.TypeAppFileAttach.Code {
+		return nil, fmt.Errorf("不是已完成的文件附件")
+	}
+	return message.Instance.Download(&m)
+}
+
+func incomingMedia(ctx context.Context, c control.Command) ([]byte, error) {
+	reader, err := incomingMediaReader(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
 	data, err := io.ReadAll(io.LimitReader(reader, (16<<20)+1))
-	if err != nil || len(data) == 0 || len(data) > 16<<20 {
+	if err != nil {
+		return nil, fmt.Errorf("下载媒体失败：%w", err)
+	}
+	if len(data) == 0 || len(data) > 16<<20 {
 		return nil, fmt.Errorf("下载媒体为空或过大")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	var m message.Message
+	_ = protojson.Unmarshal(c.Params, &m)
 	if m.GetType().GetCode() == 34 {
 		return decodeIncomingVoice(ctx, data)
 	}

@@ -5,6 +5,7 @@
 package messageapi
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
@@ -299,7 +300,75 @@ func (w remote) DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceL
 	return &resp, nil
 }
 
-// DownloadFile 下载文件附件
+const (
+	maxAttachmentDownloadSize = 1 << 30
+	maxCDNCiphertextSize      = maxAttachmentDownloadSize + 16 // PKCS#7 末块可比明文多 16 字节
+	maxAttachmentChunkSize    = 64 << 10
+	maxCDNAttachmentChunkSize = 256 << 10
+)
+
+// CDNAttachmentChunkLimit 只为已确认的 type7 大文件 ID 放宽至 256 KiB。
+// 其他 CDN ID 继续使用普通附件的 64 KiB 上限。
+func CDNAttachmentChunkLimit(fileID string) uint32 {
+	if len(fileID) != 228 {
+		return maxAttachmentChunkSize
+	}
+	decoded, err := hex.DecodeString(fileID)
+	if err != nil || len(decoded) != 114 || decoded[0] != 0x7f {
+		return maxAttachmentChunkSize
+	}
+	return maxCDNAttachmentChunkSize
+}
+
+// DownloadCDNAttachmentChunk 使用独立的 CDN 分片接口。fileID 与 aesKey
+// 只放在 gRPC 请求体中，不进入 URL 或日志。
+func (w remote) DownloadCDNAttachmentChunk(fileID, aesKey string, offset, chunkSize uint32) ([]byte, error) {
+	if fileID == "" || len(fileID) > 4096 || len(aesKey) != 32 ||
+		offset >= maxCDNCiphertextSize || offset%16 != 0 || chunkSize == 0 || chunkSize%16 != 0 || chunkSize > CDNAttachmentChunkLimit(fileID) ||
+		uint64(offset)+uint64(chunkSize) > maxCDNCiphertextSize {
+		return nil, errors.New("invalid CDN attachment identity, offset or chunk size")
+	}
+	if _, err := hex.DecodeString(aesKey); err != nil {
+		return nil, errors.New("invalid CDN attachment AES key")
+	}
+	data, err := w.core().Post("/api/cdn/download/attachment/chunk").Body(map[string]any{
+		"file_id": fileID, "aes_key": aesKey, "offset": offset, "chunk_size": chunkSize,
+	}).DoBinary()
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 || uint32(len(data)) > chunkSize {
+		return nil, errors.New("CDN attachment chunk size mismatch")
+	}
+	return data, nil
+}
+
+// DownloadFileChunk 只取一个分块，避免大附件在 gateway 内组装成一条响应。
+func (w remote) DownloadFileChunk(receiver, fileId, appID string, totalSize, offset, chunkSize uint32) (*DownloadFileResponse, error) {
+	if receiver == "" || fileId == "" || totalSize == 0 || totalSize > maxAttachmentDownloadSize ||
+		offset >= totalSize || chunkSize == 0 || chunkSize > maxAttachmentChunkSize || chunkSize > totalSize-offset {
+		return nil, errors.New("invalid attachment identity, size, offset or chunk size")
+	}
+	var resp DownloadFileResponse
+	if err := w.core().Post("/api/message/download/file").Body(map[string]any{
+		"app_id": appID, "attach_id": fileId, "username": receiver, "size": totalSize, "offset": offset, "chunk_size": chunkSize,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	chunk := resp.GetChunk().GetData()
+	if resp.GetBaseResponse() != nil && resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("attachment download rejected with code %d", resp.GetBaseResponse().GetCode())
+	}
+	if resp.GetChunk() == nil || resp.GetOffset() != offset || resp.GetSize() != totalSize || len(chunk) == 0 ||
+		uint32(len(chunk)) > chunkSize || resp.GetChunkSize() != uint32(len(chunk)) ||
+		(resp.GetChunk().Size != nil && resp.GetChunk().GetSize() != uint32(len(chunk))) ||
+		(resp.GetMediaId() != "" && resp.GetMediaId() != fileId) {
+		return nil, errors.New("attachment chunk receipt mismatch")
+	}
+	return &resp, nil
+}
+
+// DownloadFile 保留小附件整块响应，SDK 下载改用 DownloadFileChunk 流式读取。
 func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) (*DownloadFileResponse, error) {
 	if aesKey != "" {
 		return nil, errors.New("attachment download requires an attach ID, not a CDN AES key")
@@ -310,18 +379,15 @@ func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) 
 	data := make([]byte, 0, totalSize)
 	var last *DownloadFileResponse
 	for offset := uint32(0); offset < totalSize; {
-		var resp DownloadFileResponse
 		length := min(totalSize-offset, uint32(32<<10))
-		if err := w.core().Post("/api/message/download/file").Body(map[string]any{"attach_id": fileId, "username": receiver, "size": totalSize, "offset": offset, "chunk_size": length}).DoProto(&resp); err != nil {
+		resp, err := w.DownloadFileChunk(receiver, fileId, "", totalSize, offset, length)
+		if err != nil {
 			return nil, err
 		}
 		chunk := resp.GetChunk().GetData()
-		if resp.GetOffset() != offset || resp.GetSize() != totalSize || len(chunk) == 0 || uint32(len(chunk)) > length || resp.GetChunkSize() != uint32(len(chunk)) {
-			return nil, errors.New("attachment chunk receipt mismatch")
-		}
 		data = append(data, chunk...)
 		offset += uint32(len(chunk))
-		last = &resp
+		last = resp
 	}
 	last.Offset = proto.Uint32(0)
 	last.ChunkSize = proto.Uint32(uint32(len(data)))

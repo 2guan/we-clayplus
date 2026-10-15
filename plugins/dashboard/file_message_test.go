@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime"
 	"net/http/httptest"
 	"strings"
@@ -21,11 +22,11 @@ type fileHost struct {
 
 func (h *fileHost) Execute(_ context.Context, c control.Command) (any, error) {
 	var m message.Message
-	if c.Operation != "message-media" || c.Target != "fixture-peer" || c.ID != "9007199254740993" || protojson.Unmarshal(c.Params, &m) != nil || m.GetType().GetCode() != 4906 || m.GetSender().GetUsername() != c.Target || !strings.Contains(m.GetApp().GetXml(), "fixture-attachment") {
+	if c.Operation != "message-file" || c.Target != "fixture-peer" || c.ID != "9007199254740993" || protojson.Unmarshal(c.Params, &m) != nil || m.GetType().GetCode() != 4906 || m.GetSender().GetUsername() != c.Target || !strings.Contains(m.GetApp().GetXml(), "fixture-attachment") {
 		h.t.Fatal("lost original attachment or conversation identity")
 	}
 	h.calls++
-	return []byte("<html>fixture attachment</html>"), nil
+	return io.NopCloser(strings.NewReader("<html>fixture attachment</html>")), nil
 }
 func TestHistoricalFileDownload(t *testing.T) {
 	s := newServer(t, false)
@@ -98,5 +99,26 @@ func TestHistoricalFileDownload(t *testing.T) {
 	}
 	if !strings.Contains(attachmentDisposition("../report.txt"), "report.txt") || strings.Contains(attachmentDisposition("bad\r\nname"), "\r\n") {
 		t.Fatal("unsafe download header")
+	}
+}
+
+func TestHistoricalLargeCDNFileDescriptor(t *testing.T) {
+	s := newServer(t, false)
+	m := Message{ID: "9007199254740993", Target: "fixture-peer", Kind: "file", Source: "wechat"}
+	raw := `<msg><appmsg><type>6</type><title>large.bin</title><appattach><cdnattachurl>fixture-cdn-id</cdnattachurl><aeskey>00112233445566778899aabbccddeeff</aeskey><totallen>294168750</totallen></appattach></appmsg></msg>`
+	if err := s.RememberQuoteSource(m, raw); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := s.fileDescriptor(m)
+	var msg message.Message
+	if err != nil || protojson.Unmarshal([]byte(descriptor), &msg) != nil || msg.GetApp().GetXml() != raw || msg.GetId() != 9007199254740993 {
+		t.Fatal("large CDN descriptor lost", err)
+	}
+	raw = strings.Replace(raw, "<type>6</type>", "<type>74</type>", 1)
+	if err := s.RememberQuoteSource(m, raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.fileDescriptor(m); err == nil {
+		t.Fatal("upload notice became downloadable")
 	}
 }

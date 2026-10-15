@@ -114,6 +114,8 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 			return nil, fmt.Errorf("好友验证参数无效")
 		}
 		return nil, contact.Instance.VerifyFriend(q.V1, q.V2, q.Scene)
+	case "message-file":
+		return incomingMediaReader(ctx, c)
 	case "message-media":
 		return incomingMedia(ctx, c)
 	case "payment-claim":

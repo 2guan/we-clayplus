@@ -68,3 +68,29 @@ func TestIncomingFileBinding(t *testing.T) {
 		t.Fatal("invalid request reached downloader")
 	}
 }
+
+func TestIncomingFileStreamBinding(t *testing.T) {
+	oldContact, oldMessage := contact.Instance, message.Instance
+	contact.Instance = messageContactFixture{}
+	f := &incomingFileFixture{}
+	message.Instance = f
+	t.Cleanup(func() { contact.Instance = oldContact; message.Instance = oldMessage })
+	m := &message.Message{Id: 42, Type: message.TypeAppFileAttach, Sender: &contact.Contact{Username: "fixture-peer"}}
+	for _, typ := range []*message.Type{message.TypeAppFileAttach, message.TypeAppFileNotify, message.TypeImage} {
+		m.Type = typ
+		raw, _ := protojson.Marshal(m)
+		reader, err := incomingMediaReader(context.Background(), control.Command{Operation: "message-file", ID: "42", Target: "fixture-peer", Params: raw})
+		if typ.Code == message.TypeAppFileAttach.Code {
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader.Close()
+		} else if err == nil {
+			reader.Close()
+			t.Fatal("non-completed attachment accepted")
+		}
+	}
+	if f.calls != 1 {
+		t.Fatal("invalid stream request reached downloader")
+	}
+}

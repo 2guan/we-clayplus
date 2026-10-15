@@ -1,9 +1,10 @@
 package message
 
 import (
-	"bytes"
 	"context"
 	"io"
+	"sync"
+	"sync/atomic"
 
 	"github.com/we-clay/we-clay/sdk"
 	"google.golang.org/grpc"
@@ -39,26 +40,65 @@ func (c Client) Revoke(receiver string, newMsgId uint64) (*Revoke_Response, erro
 	})
 }
 
-// Download 下载媒体资源（server-stream）
+// Download 下载媒体资源（server-stream）。调用方须关闭 reader；流中的错误会在 Read 时返回。
 func (c Client) Download(msg *Message) (io.ReadCloser, error) {
-	stream, err := c.Client.Download(context.Background(), &Download_Request{Message: msg})
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := c.Client.Download(ctx, &Download_Request{Message: msg})
 	if err != nil {
+		cancel()
 		return nil, err
 	}
+	return &downloadReader{stream: stream, cancel: cancel}, nil
+}
 
-	var buf bytes.Buffer
-	for {
-		resp, err := stream.Recv()
-		if err == io.EOF {
-			break
+type downloadReader struct {
+	stream grpc.ServerStreamingClient[Download_Response]
+	cancel context.CancelFunc
+	readMu sync.Mutex
+	closed atomic.Bool
+	data   []byte
+	err    error
+}
+
+func (r *downloadReader) Read(p []byte) (int, error) {
+	if r.closed.Load() {
+		return 0, io.ErrClosedPipe
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	r.readMu.Lock()
+	defer r.readMu.Unlock()
+	if r.closed.Load() {
+		return 0, io.ErrClosedPipe
+	}
+	for len(r.data) == 0 {
+		if r.err != nil {
+			return 0, r.err
+		}
+		resp, err := r.stream.Recv()
+		if r.closed.Load() {
+			return 0, io.ErrClosedPipe
 		}
 		if err != nil {
-			return nil, err
+			r.err = err
+			r.cancel()
+			return 0, err
 		}
-		buf.Write(resp.Data)
+		if resp != nil {
+			r.data = resp.GetData()
+		}
 	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, nil
+}
 
-	return io.NopCloser(&buf), nil
+func (r *downloadReader) Close() error {
+	if !r.closed.Swap(true) {
+		r.cancel()
+	}
+	return nil
 }
 
 // Server 实现 MessageServiceServer 接口，将 gRPC 请求委托给 Ability 实现

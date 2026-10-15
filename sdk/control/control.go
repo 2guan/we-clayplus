@@ -28,6 +28,7 @@ type Command struct {
 }
 
 // Host 由 gateway 注入；Mock 模式根本不调用此接口。
+// message-file 返回 io.ReadCloser，由调用方读取至 EOF 并关闭；仅用于进程内附件下载。
 type Host interface {
 	Execute(context.Context, Command) (any, error)
 }

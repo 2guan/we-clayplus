@@ -315,7 +315,7 @@ core v0.3.1 的接受群邀请接口仍为占位，自动通过插件**只处理
 
 ## 本机真实微信验收
 
-执行 `make run` 从私有 OSS 下载并校验 core v0.4.2（Mac 模式），启动真实控制台。运行前通过受信任的本机环境配置提供 `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`（可选 `OSS_SESSION_TOKEN`）和 `WE_CLAY_AUTH_KEY`，不要把凭据写入仓库。可用 `WE_CLAY_CORE_VERSION` 指定其他已发布的固定版本。后台访问 `http://127.0.0.1:8208`，core 登录 HTTP 监听 `127.0.0.1:8201`；gRPC 仍为 `127.0.0.1:8088`。普通 `go test` 不会启动真实验收。
+执行 `make run` 从私有 OSS 下载并校验 core v0.4.3（Mac 模式），启动真实控制台。运行前通过受信任的本机环境配置提供 `OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`（可选 `OSS_SESSION_TOKEN`）和 `WE_CLAY_AUTH_KEY`，不要把凭据写入仓库。可用 `WE_CLAY_CORE_VERSION` 指定其他已发布的固定版本。后台访问 `http://127.0.0.1:8208`，core 登录 HTTP 监听 `127.0.0.1:8201`；gRPC 仍为 `127.0.0.1:8088`。普通 `go test` 不会启动真实验收。
 
 首次在后台直接创建管理员账号，无需初始化凭据。真实控制台数据保存在 `runtime/console/`，微信会话默认沿用 `runtime/core/`；已有其他账号目录时，设置 `WE_CLAY_DATA_DIR` 为其绝对路径，升级时不得换新目录。真实数据与 `make mock` 的 `runtime/mock-console/` 隔离。不需要重新编译前端即可切换运行模式。`make attach` 只连接已登录的独立 core，不下载或重启 core。
 

@@ -59,13 +59,15 @@ func (s *Server) fileDescriptor(m Message) (string, error) {
 		App struct {
 			Type   int `xml:"type"`
 			Attach struct {
-				ID   string `xml:"attachid"`
-				Size uint32 `xml:"totallen"`
+				ID     string `xml:"attachid"`
+				CDNID  string `xml:"cdnattachurl"`
+				AESKey string `xml:"aeskey"`
+				Size   uint32 `xml:"totallen"`
 			} `xml:"appattach"`
 		} `xml:"appmsg"`
 	}
-	if len(raw) > 128<<10 || xml.Unmarshal([]byte(raw), &v) != nil || v.App.Type != 6 || v.App.Attach.ID == "" || v.App.Attach.Size == 0 || v.App.Attach.Size > 16<<20 {
-		return "", fmt.Errorf("附件信息不完整或文件超过 16 MiB")
+	if len(raw) > 128<<10 || xml.Unmarshal([]byte(raw), &v) != nil || v.App.Type != 6 || (v.App.Attach.ID == "" && (v.App.Attach.CDNID == "" || v.App.Attach.AESKey == "")) || v.App.Attach.Size == 0 || v.App.Attach.Size > 1<<30 {
+		return "", fmt.Errorf("附件信息不完整或文件超过 1 GiB")
 	}
 	id, err := strconv.ParseInt(m.ID, 10, 64)
 	if err != nil || id <= 0 {

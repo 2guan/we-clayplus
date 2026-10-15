@@ -145,6 +145,10 @@ func (s *Server) messageMedia(w http.ResponseWriter, r *http.Request) {
 		if m.ID != r.URL.Query().Get("id") || m.Target != r.URL.Query().Get("target") || !(m.Kind == "image" || m.Kind == "audio" || m.Kind == "file") {
 			continue
 		}
+		if m.Kind == "file" {
+			s.serveMessageFile(w, r, m)
+			return
+		}
 		data, mime, err := s.loadMessageMedia(r.Context(), m)
 		if err != nil {
 			writeError(w, 502, err.Error())

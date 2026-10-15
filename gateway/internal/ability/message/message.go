@@ -26,6 +26,8 @@ import (
 	api "github.com/we-clay/we-clay/gateway/internal/api/message"
 	"github.com/we-clay/we-clay/sdk/contact"
 	sdk "github.com/we-clay/we-clay/sdk/message"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ability 消息能力实现
@@ -361,6 +363,8 @@ func (a *ability) Forward(msg *sdk.Message, receiver string) (*sdk.Forward_Respo
 			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
 		}
 		return &sdk.Forward_Response{NewId: resp.GetNewId()}, nil
+	case sdk.TypeAppFileNotify.Code:
+		return nil, status.Error(codes.FailedPrecondition, "文件仍在上传，尚不可转发；请等待附件完成消息")
 	case sdk.TypeAppFileAttach.Code:
 		raw, err := messageXML(msg)
 		if err != nil {
@@ -478,6 +482,8 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetData().GetData())), nil
+	case sdk.TypeAppFileNotify.Code:
+		return nil, status.Error(codes.FailedPrecondition, "文件仍在上传，尚不可下载；请等待附件完成消息")
 	case sdk.TypeAppFileAttach.Code:
 		raw, err := messageXML(msg)
 		if err != nil {
@@ -485,23 +491,33 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 		}
 		var item struct {
 			App struct {
+				AppID  string `xml:"appid,attr"`
+				MD5    string `xml:"md5"`
 				Attach struct {
-					ID   string `xml:"attachid"`
-					Size uint32 `xml:"totallen"`
+					ID     string `xml:"attachid"`
+					Size   uint32 `xml:"totallen"`
+					CDNID  string `xml:"cdnattachurl"`
+					AESKey string `xml:"aeskey"`
 				} `xml:"appattach"`
 			} `xml:"appmsg"`
 		}
 		if err = xml.Unmarshal([]byte(raw), &item); err != nil {
 			return nil, errors.New("文件消息 XML 无法解析")
 		}
-		if item.App.Attach.ID == "" || item.App.Attach.Size == 0 {
-			return nil, errors.New("文件消息缺少附件 ID 或长度")
+		if item.App.Attach.Size == 0 {
+			return nil, status.Error(codes.FailedPrecondition, "文件附件尚未上传完成，缺少文件长度")
 		}
-		resp, err := a.api.DownloadFile(receiver, item.App.Attach.ID, "", item.App.Attach.Size)
-		if err != nil {
-			return nil, err
+		// CDN 完成消息的 attachid 是复合标识，不能直接交给旧 CGI。
+		if item.App.Attach.CDNID != "" || item.App.Attach.AESKey != "" || strings.HasPrefix(item.App.Attach.ID, "@cdn_") {
+			if item.App.Attach.CDNID == "" || item.App.Attach.AESKey == "" {
+				return nil, status.Error(codes.FailedPrecondition, "文件附件尚未上传完成，缺少 CDN 下载信息")
+			}
+			return newCDNAttachmentReader(a.api, item.App.Attach.CDNID, item.App.Attach.AESKey, item.App.MD5, item.App.Attach.Size)
 		}
-		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
+		if item.App.Attach.ID == "" {
+			return nil, status.Error(codes.FailedPrecondition, "文件附件尚未上传完成，缺少附件 ID")
+		}
+		return newAttachmentReader(a.api, receiver, item.App.Attach.ID, item.App.AppID, item.App.Attach.Size)
 	default:
 		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Download: type=%d", msg.GetType().GetCode()))
 	}

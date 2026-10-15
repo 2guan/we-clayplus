@@ -47,4 +47,8 @@ type MessageService interface {
 	DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceLength uint32) (*DownloadVoiceResponse, error)
 	// DownloadFile 下载文件附件
 	DownloadFile(receiver, fileId, aesKey string, totalSize uint32) (*DownloadFileResponse, error)
+	// DownloadFileChunk 按偏移下载一个附件分块；大文件调用方应逐块消费。
+	DownloadFileChunk(receiver, fileId, appID string, totalSize, offset, chunkSize uint32) (*DownloadFileResponse, error)
+	// DownloadCDNAttachmentChunk 下载一个已上传完成的 CDN 附件明文分块。
+	DownloadCDNAttachmentChunk(fileID, aesKey string, offset, chunkSize uint32) ([]byte, error)
 }
