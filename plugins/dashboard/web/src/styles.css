@@ -505,6 +505,10 @@ td code {
 .search kbd {
   color: var(--muted);
 }
+.search .conversation-search-clear {
+  width: 24px;
+  height: 24px;
+}
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1351,6 +1355,14 @@ td code {
 .wechat-rail .selected {
   color: var(--accent-bright);
 }
+.wechat-rail .wechat-focus-toggle {
+  margin-top: auto;
+  border-radius: 6px;
+}
+.wechat-rail .wechat-focus-toggle:hover {
+  color: #fff;
+  background: #ffffff12;
+}
 .conversation-list {
   width: 253px;
   flex-shrink: 0;
@@ -1364,16 +1376,67 @@ td code {
 }
 .conversation-list > .search {
   margin: 18px 13px 13px;
-  background: var(--panel);
+  --input: var(--panel);
+  background: var(--input);
   border: none;
 }
 .conversation-list > .search input {
   font-size: 11px;
   padding: 7px 0;
 }
+.conversation-scroll-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
 .conversations {
   overflow: auto;
-  flex: 1;
+  height: 100%;
+  scrollbar-width: none;
+}
+.conversations::-webkit-scrollbar {
+  display: none;
+}
+.conversation-scroll-thumb {
+  position: absolute;
+  right: 0;
+  width: 24px;
+  opacity: 0;
+  pointer-events: none;
+  touch-action: none;
+}
+.conversation-scroll-thumb::before {
+  content: "";
+  position: absolute;
+  inset: 3px 2px 3px auto;
+  width: 6px;
+  border-radius: 3px;
+  background: var(--muted);
+}
+.conversation-scroll-thumb.visible {
+  opacity: 0.7;
+  pointer-events: auto;
+}
+.scroll-on-activity {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.scroll-on-activity.is-scrolling {
+  scrollbar-color: var(--muted) transparent;
+}
+.scroll-on-activity::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-on-activity::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-on-activity::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+.scroll-on-activity.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--muted);
 }
 .conversation {
   width: 100%;
@@ -3467,7 +3530,7 @@ td code {
   }
   .conversation-list > .search {
     margin: 7px 15px 13px;
-    background: var(--bg);
+    --input: var(--bg);
     border-radius: 6px;
   }
   .conversation-list > .search input {
@@ -4469,3 +4532,34 @@ button.workspace { width: 100%; }
 .report-prompt-inline .report-prompt-chevron { margin-left: auto; }
 .report-prompt-inline[open] .report-prompt-chevron { transform: rotate(180deg); }
 .report-prompt-inline .report-prompt-full { margin-top: 8px; max-height: 240px; padding: 12px; font-size: 12px; }
+
+/* 专注模式由微信页面自身控制，离开模块后自动恢复外层布局。 */
+.app-shell:has(.wechat-focused) {
+  padding: 0;
+}
+.app-shell:has(.wechat-focused) > .sidebar,
+.app-shell:has(.wechat-focused) > .mobile-tabs,
+.app-shell:has(.wechat-focused) > .nav-backdrop,
+.app-shell:has(.wechat-focused) > .main-shell > :not(.main-content) {
+  display: none;
+}
+.app-shell:has(.wechat-focused) .chat-content {
+  padding: 0;
+}
+.wechat-page.wechat-focused {
+  border: 0;
+  border-radius: 0;
+}
+.wechat-focused > .wechat-rail {
+  display: flex;
+}
+@media (max-width: 767px) {
+  .wechat-focused > .conversation-list {
+    flex: 1;
+    min-width: 0;
+  }
+  .wechat-focused .wechat-focus-toggle {
+    width: 44px;
+    height: 44px;
+  }
+}

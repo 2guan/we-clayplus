@@ -2,6 +2,40 @@
 // 主要功能：脱机验证置顶排序及免打扰群红点，不执行真实微信设置操作。
 // 作者：2guan
 import {test,expect} from '@playwright/test';
+test('置顶底纹铺满会话宽度，覆盖式滚动条支持滚动、拖动及自动隐藏',async({page})=>{
+ await page.route('**/api/state',async route=>{
+  const response=await route.fetch();const state=await response.json();
+  state.contacts=Array.from({length:50},(_,i)=>({...state.contacts[0],id:`scroll-fixture-${i}`,name:`滚动测试 ${i}`,remark:'',kind:'friend',pinned:i<5,time:'2026-01-01T10:00:00Z',preview:'测试消息'}));
+  await route.fulfill({json:state});
+ });
+ await page.goto('/#wechat');
+ const list=page.locator('.conversations');
+ const thumb=page.getByRole('scrollbar',{name:'滚动会话列表'});
+ const pinned=page.locator('.conversation.pinned:not(.active)').first();
+ await expect(pinned).toBeVisible();
+ for(const theme of ['light','dark']) {
+  await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+  const row=await pinned.boundingBox();const area=await list.boundingBox();
+  expect(row!.x+row!.width).toBeCloseTo(area!.x+area!.width,1);
+  expect(await list.evaluate(el=>el.offsetWidth-el.clientWidth)).toBe(0);
+  expect(await pinned.evaluate(el=>getComputedStyle(el).backgroundColor)).not.toBe(await page.locator('.conversation-list').evaluate(el=>getComputedStyle(el).backgroundColor));
+ }
+ await expect(thumb).toHaveCSS('opacity','0');
+ await list.hover();await page.mouse.wheel(0,180);
+ await expect(thumb).toHaveCSS('opacity','0.7');
+ const box=await thumb.boundingBox();const before=await list.evaluate(el=>el.scrollTop);
+ await page.mouse.move(box!.x+box!.width/2,box!.y+box!.height/2);
+ await page.mouse.down();await page.mouse.move(box!.x+box!.width/2,box!.y+box!.height/2+60);await page.mouse.up();
+ await expect.poll(()=>list.evaluate(el=>el.scrollTop)).toBeGreaterThan(before);
+ await expect(thumb).toHaveCSS('opacity','0');
+ await thumb.focus();await thumb.press('Home');
+ await expect.poll(()=>list.evaluate(el=>el.scrollTop)).toBe(0);
+ await thumb.press('End');
+ await expect.poll(()=>list.evaluate(el=>Math.abs(el.scrollHeight-el.clientHeight-el.scrollTop))).toBeLessThan(1);
+ await page.getByRole('textbox',{name:'搜索会话'}).fill('无匹配会话');
+ await expect(thumb).toHaveCount(0);
+});
+
 test('微信置顶排序与群免打扰红点',async({page})=>{
  await page.route('**/api/state',async route=>{const r=await route.fetch();const s=await r.json();const base=s.contacts[0];s.contacts=[
  {...base,id:'fixture-normal',name:'普通会话',remark:'',kind:'friend',pinned:false,unread:8,time:'2026-10-14T10:00:00Z'},

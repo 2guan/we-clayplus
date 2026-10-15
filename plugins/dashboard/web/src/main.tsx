@@ -472,6 +472,10 @@ function App() {
         }
       />
     );
+  const sidebarUnread = state.contacts.reduce(
+    (sum, c) => sum + (!c.muted && c.kind !== "official" ? c.unread : 0),
+    0,
+  );
   return (
     <div className={`app-shell ${page === "wechat" ? "chat-shell" : ""}`}>
       <a
@@ -529,9 +533,9 @@ function App() {
                 <Icon size={20} weight={page === id ? "fill" : "regular"} />
                 <span>{label}</span>
                 {id === "wechat" &&
-                  state.contacts.some((c) => c.unread > 0) && (
+                  sidebarUnread > 0 && (
                     <i className="nav-unread">
-                      {state.contacts.reduce((sum, c) => sum + c.unread, 0)}
+                      {sidebarUnread}
                     </i>
                   )}
               </a>

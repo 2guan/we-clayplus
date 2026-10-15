@@ -35,6 +35,8 @@ import {
   SlidersHorizontal,
   X,
   DownloadSimple,
+  ArrowsOutSimple,
+  ArrowsInSimple,
 } from "@phosphor-icons/react";
 import type { Contact, Message, PageProps } from "./types";
 import { Avatar, Empty, Modal, Toggle } from "./ui";
@@ -42,10 +44,25 @@ import { clock, dateTime, readFile } from "./api";
 import { EmojiPicker, AttachmentPreview, VoiceComposer } from "./ChatTools";
 import { mergeFileMessages } from "./fileMessages";
 import { compareContacts, matchesContact } from "./contactSearch";
+import { ConversationScroller } from "./ConversationScroller";
+
+function useScrollActivity() {
+  const [scrolling, setScrolling] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const onScroll = () => {
+    setScrolling(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setScrolling(false), 700);
+  };
+  return { scrolling, onScroll };
+}
 
 // 桌面保留三栏，手机以 mobileOpen 切换列表与聊天；会话草稿按目标 ID 隔离。
 export default function Chat(props: PageProps) {
   const { state, act, notify } = props;
+  const [focused, setFocused] = useState(false);
+  const messageScroll = useScrollActivity();
   const chatMessages = useMemo(() => mergeFileMessages(state.messages), [state.messages]);
   // 分类写入地址，刷新或从外部进入公众号会话时仍落在正确列表。
   const initialParams = new URLSearchParams(location.hash.split("?")[1]);
@@ -69,6 +86,7 @@ export default function Chat(props: PageProps) {
     () => !!new URLSearchParams(location.hash.split("?")[1]).get("target"),
   );
   const [search, setSearch] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [details, setDetails] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
@@ -365,7 +383,7 @@ export default function Chat(props: PageProps) {
     );
   };
   return (
-    <div className={`wechat-page ${mobileOpen ? "conversation-open" : ""}`}>
+    <div className={`wechat-page ${mobileOpen ? "conversation-open" : ""} ${focused ? "wechat-focused" : ""}`}>
       {avatarMenu && (
         <AvatarMentionMenu
           target={avatarMenu}
@@ -406,6 +424,15 @@ export default function Chat(props: PageProps) {
         <button onClick={() => setMoments(true)} aria-label="朋友圈">
           <Aperture size={23} />
         </button>
+        <button
+          className="wechat-focus-toggle"
+          onClick={() => setFocused((value) => !value)}
+          aria-label={focused ? "退出微信专注模式" : "进入微信专注模式"}
+          title={focused ? "退出微信专注模式" : "进入微信专注模式"}
+          aria-pressed={focused}
+        >
+          {focused ? <ArrowsInSimple size={20} /> : <ArrowsOutSimple size={20} />}
+        </button>
       </div>
       <aside className="conversation-list">
         <div className="conversation-header">
@@ -434,17 +461,31 @@ export default function Chat(props: PageProps) {
             <Aperture size={22} />
           </button>
         </div>
-        <label className="search compact">
+        <div className="search compact">
           <MagnifyingGlass size={17} />
           <input
+            ref={searchInput}
             aria-label="搜索会话"
             placeholder="搜索会话…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <kbd>⌕</kbd>
-        </label>
-        <div className="conversations">
+          {search && (
+            <button
+              type="button"
+              className="icon-button conversation-search-clear"
+              aria-label="清空搜索"
+              title="清空搜索"
+              onClick={() => {
+                setSearch("");
+                searchInput.current?.focus();
+              }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <ConversationScroller>
           {conversations.map((c) => (
             <button
               key={c.id}
@@ -543,7 +584,7 @@ export default function Chat(props: PageProps) {
               }
             />
           )}
-        </div>
+        </ConversationScroller>
         <div className="conversation-foot">
           <span className="status-dot" />
           {conversations.length} 个会话 · {state.mock ? "虚构演示" : "本机同步"}
@@ -630,7 +671,10 @@ export default function Chat(props: PageProps) {
                 </button>
               </div>
             </div>
-            <div className="message-list">
+            <div
+              className={`message-list scroll-on-activity${messageScroll.scrolling ? " is-scrolling" : ""}`}
+              onScroll={messageScroll.onScroll}
+            >
               <div className="history-label">
                 {state.mock ? "以下为虚构演示消息" : "仅展示接入后的已归档消息"}
               </div>

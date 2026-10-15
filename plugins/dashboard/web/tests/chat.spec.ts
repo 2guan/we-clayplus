@@ -104,8 +104,8 @@ test("表情可分类搜索并插入光标，私聊与群聊使用同一列表",
   await expect(
     page.locator(".conversation").filter({ hasText: group.name }),
   ).toBeVisible();
-  // 聊天、公众号/订阅号和朋友圈各有独立入口，群聊仍与好友共用聊天列表。
-  await expect(page.locator(".wechat-rail button")).toHaveCount(3);
+  // 聊天、公众号/订阅号、朋友圈及专注模式各有独立入口。
+  await expect(page.locator(".wechat-rail button")).toHaveCount(4);
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
     await page.getByRole("button", { name: "插入表情" }).click();
