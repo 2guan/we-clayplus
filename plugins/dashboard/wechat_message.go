@@ -9,6 +9,43 @@ import (
 	"strings"
 )
 
+func parseRevokeNotice(raw string) (id, content string, ok bool) {
+	var notice struct {
+		Type string `xml:"type,attr"`
+		Body struct {
+			ID       string `xml:"newmsgid"`
+			LegacyID string `xml:"msgid"`
+			Replaced string `xml:"replacemsg"`
+		} `xml:"revokemsg"`
+	}
+	if xml.Unmarshal([]byte(raw), &notice) != nil || notice.Type != "revokemsg" {
+		return "", "", false
+	}
+	id = strings.TrimSpace(notice.Body.ID)
+	if id == "" {
+		id = strings.TrimSpace(notice.Body.LegacyID)
+	}
+	return id, strings.TrimSpace(notice.Body.Replaced), true
+}
+
+func applyRevokeNotice(v *State, id, content string) bool {
+	content = resolveNotice(*v, Message{Kind: "system", Content: content}).Content
+	for i := range v.Messages {
+		m := &v.Messages[i]
+		if m.ID != id {
+			continue
+		}
+		if strings.Contains(content, "你撤回") || strings.Contains(content, "我撤回") {
+			m.Status = "revoked"
+		} else {
+			m.Status = "revoked_by_other"
+			m.Content = content
+		}
+		return true
+	}
+	return false
+}
+
 // MessageArticle 保存展示必要字段，不把原始 XML 或客户端配置传给浏览器。
 type MessageArticle struct {
 	Title       string `json:"title"`
@@ -62,6 +99,9 @@ func ParseWechatMessage(m Message, raw string) (Message, bool) {
 		return m, true
 	}
 	if root.XMLName.Local == "sysmsg" && m.Kind == "system" {
+		if _, _, revoke := parseRevokeNotice(raw); revoke {
+			return m, false
+		}
 		// 这些通知更新客户端配置、红点和内部任务，没有用户可阅读的聊天正文。
 		switch root.Type {
 		case "dynacfg", "functionmsg", "gamecenter", "newtips", "sns", "gog_wcs_plugin_config", "GetClientCheckForMinorDevice", "ClientCheckGetExtInfo":
@@ -148,6 +188,14 @@ func applyPublisher(v *State, m Message) {
 
 // normalizeWechatArchive 升级已归档的系统通知，并重建预览，避免列表继续显示配置 XML。
 func normalizeWechatArchive(v *State) {
+	for _, m := range v.Messages {
+		if m.Kind == "system" {
+			if id, content, ok := parseRevokeNotice(m.Content); ok && id != "" {
+				applyRevokeNotice(v, id, content)
+			}
+		}
+	}
+	// 先更新原消息，再复制归档，避免原消息早于撤回通知时丢失更新。
 	messages := make([]Message, 0, len(v.Messages))
 	for _, m := range v.Messages {
 		if next, keep := ParseWechatMessage(m, m.Content); keep {

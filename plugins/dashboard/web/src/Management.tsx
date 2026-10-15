@@ -25,6 +25,8 @@ import {
 import type { Contact, PageProps, Plugin } from "./types";
 import { Avatar, Badge, Empty, Modal, SettingsForm, Tabs, Toggle } from "./ui";
 import { TargetForm } from "./Chat";
+import { PersonPopover } from "./Moments";
+import { RoomProfile } from "./RoomProfile";
 import { DeleteReportButton, ReportMetadata, reportLabel, TaskBadge, TaskList, TaskResult } from "./ModelTasks";
 import { dateTime, download, request } from "./api";
 
@@ -41,6 +43,11 @@ export function Contacts(props: PageProps) {
   };
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Contact | null>(null);
+  const [profile, setProfile] = useState<{
+    contact: Contact;
+    anchor: HTMLElement;
+  } | null>(null);
+  const [groupProfile, setGroupProfile] = useState<Contact | null>(null);
   const contacts = state.contacts.filter(
     (c) =>
       c.kind === tab &&
@@ -114,7 +121,7 @@ export function Contacts(props: PageProps) {
             共 {contacts.length} 个{kindLabels[tab]}
           </span>
         </div>
-        <div className="table-scroll">
+        <div className="table-scroll contacts-table">
           <table>
             <thead>
               <tr>
@@ -129,8 +136,18 @@ export function Contacts(props: PageProps) {
               {contacts.map((c) => (
                 <tr key={c.id}>
                   <td>
-                    <div className="contact-cell">
-                      <div className="avatar-wrap">
+                    <button
+                      type="button"
+                      className="contact-cell contact-profile-trigger"
+                      aria-haspopup="dialog"
+                      onClick={(e) =>
+                        c.kind === "group"
+                          ? setGroupProfile(c)
+                          : setProfile({ contact: c, anchor: e.currentTarget })
+                      }
+                      aria-label={`查看${c.remark || c.name}资料`}
+                    >
+                      <span className="avatar-wrap">
                         <Avatar
                           src={c.avatar}
                           name={c.name}
@@ -144,12 +161,12 @@ export function Contacts(props: PageProps) {
                             title="自动模式"
                           />
                         )}
-                      </div>
-                      <div>
+                      </span>
+                      <span>
                         <strong>{c.remark || c.name}</strong>
                         <small>{c.remark ? c.name : "未设置备注"}</small>
-                      </div>
-                    </div>
+                      </span>
+                    </button>
                   </td>
                   <td>
                     <code>{c.id}</code>
@@ -221,6 +238,65 @@ export function Contacts(props: PageProps) {
             </tbody>
           </table>
         </div>
+        <div className="contact-cards">
+          {contacts.map((c) => (
+            <article className="contact-card" key={c.id}>
+              <button
+                type="button"
+                className="contact-card-main"
+                aria-haspopup="dialog"
+                onClick={(e) =>
+                  c.kind === "group"
+                    ? setGroupProfile(c)
+                    : setProfile({ contact: c, anchor: e.currentTarget })
+                }
+                aria-label={`查看${c.remark || c.name}资料`}
+              >
+                <Avatar
+                  src={c.avatar}
+                  name={c.name}
+                  group={c.kind === "group"}
+                />
+                <span className="contact-card-content">
+                  <span className="contact-card-heading">
+                    <strong>{c.name || c.id}</strong>
+                    <span className="contact-card-remark">
+                      备注：{c.remark || "未设置"}
+                    </span>
+                  </span>
+                  <span className="contact-card-detail">
+                    <span className="contact-card-id">微信 ID：{c.id}</span>
+                    <span className="contact-card-mode">
+                      回复：
+                      {c.mode_inherited ? (
+                        <>
+                          默认（
+                          {state.settings[`reply.default_${c.kind}`] === "自动"
+                            ? "自动"
+                            : "手动"}
+                          ）
+                        </>
+                      ) : c.mode === "auto" ? (
+                        "自动"
+                      ) : (
+                        "手动"
+                      )}
+                    </span>
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="icon-button contact-card-edit"
+                onClick={() => setSelected(c)}
+                aria-label={`编辑 ${c.name || c.id} 专属设置`}
+                title="编辑专属设置"
+              >
+                <PencilSimple size={18} />
+              </button>
+            </article>
+          ))}
+        </div>
         {!contacts.length && (
           <Empty
             title="没有找到联系人"
@@ -242,6 +318,28 @@ export function Contacts(props: PageProps) {
           />
         )}
       </Modal>
+      {profile && (
+        <PersonPopover
+          {...props}
+          person={{
+            id: profile.contact.id,
+            name: profile.contact.name,
+            anchor: profile.anchor,
+          }}
+          onClose={() => setProfile(null)}
+          onChat={(contact) => {
+            setProfile(null);
+            location.hash = `#wechat?target=${encodeURIComponent(contact.id)}`;
+          }}
+        />
+      )}
+      {groupProfile && (
+        <RoomProfile
+          {...props}
+          contact={groupProfile}
+          onClose={() => setGroupProfile(null)}
+        />
+      )}
     </div>
   );
 }

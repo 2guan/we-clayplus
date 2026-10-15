@@ -33,9 +33,11 @@ func TestWechatSystemMessages(t *testing.T) {
 	if _, keep := ParseWechatMessage(Message{Kind: "text", Content: raw}, raw); !keep {
 		t.Fatal("误删普通用户文字")
 	}
-	m, keep := ParseWechatMessage(Message{Kind: "system"}, `<sysmsg type="revokemsg"><revokemsg><replacemsg><![CDATA[对方撤回了一条消息]]></replacemsg></revokemsg></sysmsg>`)
-	if !keep || m.Content != "对方撤回了一条消息" {
-		t.Fatal("撤回提示解析失败")
+	if _, keep := ParseWechatMessage(Message{Kind: "system"}, `<sysmsg type="revokemsg"><revokemsg><replacemsg><![CDATA[对方撤回了一条消息]]></replacemsg></revokemsg></sysmsg>`); keep {
+		t.Fatal("撤回通知重复进入聊天")
+	}
+	if id, content, ok := parseRevokeNotice(`<sysmsg type="revokemsg"><revokemsg><newmsgid>123</newmsgid><replacemsg><![CDATA[对方撤回了一条消息]]></replacemsg></revokemsg></sysmsg>`); !ok || id != "123" || content != "对方撤回了一条消息" {
+		t.Fatal("撤回原消息关联解析失败")
 	}
 	if _, keep := ParseWechatMessage(Message{}, `<msg><op id="5"><name>HandOffMaster</name></op></msg>`); keep {
 		t.Fatal("同步通知泄漏")
@@ -44,6 +46,48 @@ func TestWechatSystemMessages(t *testing.T) {
 	normalizeWechatArchive(&v)
 	if len(v.Messages) != 0 || v.Contacts[0].Preview != "" {
 		t.Fatal("历史配置通知未清理")
+	}
+}
+
+func TestWechatRevokeArchive(t *testing.T) {
+	for _, self := range []bool{false, true} {
+		content, status := "对方撤回了一条消息", "revoked_by_other"
+		if self {
+			content, status = "你撤回了一条消息", "revoked"
+		}
+		notice := Message{Kind: "system", Content: `<sysmsg type="revokemsg"><revokemsg><newmsgid>123</newmsgid><replacemsg>` + content + `</replacemsg></revokemsg></sysmsg>`}
+		original := Message{ID: "123", Target: "fixture-peer", Kind: "text", Content: "原消息", Self: self}
+		for _, messages := range [][]Message{{original, notice}, {notice, original}} {
+			v := State{Messages: messages}
+			normalizeWechatArchive(&v)
+			normalizeWechatArchive(&v)
+			if len(v.Messages) != 1 || v.Messages[0].ID != "123" || v.Messages[0].Status != status {
+				t.Fatalf("历史撤回状态丢失或通知重复：%+v", v.Messages)
+			}
+			if !self && v.Messages[0].Content != content {
+				t.Fatal("对方撤回提示丢失")
+			}
+		}
+	}
+}
+
+func TestWechatRevokeRecord(t *testing.T) {
+	s := newServer(t, false)
+	if err := s.store.change(func(v *State) error {
+		v.Messages = []Message{{ID: "123", Target: "fixture-peer", Kind: "text", Content: "原消息"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	notice := Message{ID: "456", Target: "fixture-peer", Kind: "system", Content: `<sysmsg type="revokemsg"><revokemsg><newmsgid>123</newmsgid><replacemsg>对方撤回了一条消息</replacemsg></revokemsg></sysmsg>`}
+	for range 2 {
+		if err := s.Record(notice); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v := s.store.snapshot()
+	if len(v.Messages) != 1 || v.Messages[0].Status != "revoked_by_other" || v.Messages[0].Content != "对方撤回了一条消息" {
+		t.Fatalf("撤回事件未更新原消息：%+v", v.Messages)
 	}
 }
 

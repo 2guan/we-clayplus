@@ -2554,6 +2554,24 @@ td code {
   align-items: center;
   gap: 12px;
 }
+.contact-profile-trigger {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.contact-profile-trigger:hover strong,
+.contact-profile-trigger:focus-visible strong {
+  color: var(--accent);
+}
+.contact-profile-trigger:focus-visible,
+.contact-card-main:focus-visible,
+.contact-card-edit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .contact-cell strong {
   font-size: 12px;
   white-space: nowrap;
@@ -2565,6 +2583,9 @@ td code {
   width: 36px;
   height: 36px;
   font-size: 16px;
+}
+.contact-cards {
+  display: none;
 }
 .settings-column {
   max-width: 1000px;
@@ -3787,6 +3808,96 @@ td code {
   }
   .contact-cell small {
     font-size: 9px;
+  }
+  .contacts-table {
+    display: none;
+  }
+  .contact-cards {
+    display: grid;
+    gap: 8px;
+    padding: 0 12px 12px;
+  }
+  .contact-card {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 9px 7px 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--panel);
+  }
+  .contact-card-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    min-height: 54px;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    background: transparent;
+    cursor: pointer;
+  }
+  .contact-card-main > .avatar {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    font-size: 17px;
+  }
+  .contact-card-content,
+  .contact-card-heading,
+  .contact-card-detail {
+    display: flex;
+    min-width: 0;
+  }
+  .contact-card-content {
+    flex: 1;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .contact-card-heading {
+    align-items: baseline;
+    gap: 8px;
+  }
+  .contact-card-heading strong {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .contact-card-remark {
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .contact-card-detail {
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .contact-card-id {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .contact-card-mode {
+    flex: none;
+    color: var(--text);
+  }
+  .contact-card-edit {
+    flex: none;
+    width: 44px;
+    height: 44px;
   }
   .settings-card > .section-heading {
     padding: 19px;

@@ -562,6 +562,22 @@ func (s *Server) SetContacts(contacts []Contact) error {
 
 // Record 在 ACK 之前持久化去重记录；生成任务异步执行，不阻塞微信事件流。
 func (s *Server) Record(m Message) error {
+	if m.Kind == "system" {
+		if id, content, ok := parseRevokeNotice(m.Content); ok && id != "" {
+			updated := false
+			err := s.store.change(func(v *State) error {
+				updated = applyRevokeNotice(v, id, content)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			if updated {
+				s.notify()
+				return nil
+			}
+		}
+	}
 	var keep bool
 	m, keep = ParseWechatMessage(m, m.Content)
 	if !keep {

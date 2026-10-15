@@ -58,6 +58,26 @@ function useScrollActivity() {
   return { scrolling, onScroll };
 }
 
+const lastSectionKey = "weclay.wechat.lastSection";
+const lastTargetKey = (section: "chats" | "official") =>
+  `weclay.wechat.lastTarget.${section}`;
+
+function readPreference(key: string) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function savePreference(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // 会话偏好不可用时仍允许正常使用聊天。
+  }
+}
+
 // 桌面保留三栏，手机以 mobileOpen 切换列表与聊天；会话草稿按目标 ID 隔离。
 export default function Chat(props: PageProps) {
   const { state, act, notify } = props;
@@ -66,26 +86,44 @@ export default function Chat(props: PageProps) {
   const chatMessages = useMemo(() => mergeFileMessages(state.messages), [state.messages]);
   // 分类写入地址，刷新或从外部进入公众号会话时仍落在正确列表。
   const initialParams = new URLSearchParams(location.hash.split("?")[1]);
-  const [section, setSection] = useState<"chats" | "official">(() =>
-    initialParams.get("tab") === "official" ||
-    state.contacts.some(
-      (c) => c.id === initialParams.get("target") && c.kind === "official",
+  const initialRouteTarget = initialParams.get("target") || "";
+  const initialRouteContact = state.contacts.find(
+    (c) => c.id === initialRouteTarget,
+  );
+  const initialSection: "chats" | "official" =
+    initialRouteContact
+      ? initialRouteContact.kind === "official"
+        ? "official"
+        : "chats"
+      : initialParams.has("tab")
+        ? initialParams.get("tab") === "official"
+          ? "official"
+          : "chats"
+        : readPreference(lastSectionKey) === "official"
+          ? "official"
+          : "chats";
+  const initialSavedTarget = readPreference(lastTargetKey(initialSection));
+  const [section, setSection] = useState<"chats" | "official">(initialSection);
+  const [selected, select] = useState<string>(() => {
+    if (initialRouteContact) return initialRouteContact.id;
+    return state.contacts.some(
+      (c) =>
+        c.id === initialSavedTarget &&
+        (c.kind === "official") === (initialSection === "official"),
     )
-      ? "official"
-      : "chats",
-  );
-  const [selected, select] = useState<string>(
-    () =>
-      new URLSearchParams(location.hash.split("?")[1]).get("target") ||
-      state.contacts.find(
-        (c) => (c.kind === "official") === (section === "official"),
-      )?.id ||
-      "",
-  );
+      ? initialSavedTarget
+      : "";
+  });
   const [mobileOpen, setMobileOpen] = useState(
     () => !!new URLSearchParams(location.hash.split("?")[1]).get("target"),
   );
   const [search, setSearch] = useState("");
+  const [routeHash, setRouteHash] = useState(location.hash);
+  useEffect(() => {
+    const restoreRoute = () => setRouteHash(location.hash);
+    window.addEventListener("hashchange", restoreRoute);
+    return () => window.removeEventListener("hashchange", restoreRoute);
+  }, []);
   const searchInput = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [details, setDetails] = useState(false);
@@ -230,10 +268,15 @@ export default function Chat(props: PageProps) {
         ? targetContact.kind === "official"
           ? "official"
           : "chats"
-        : params.get("tab") === "official"
-          ? "official"
-          : "chats",
+        : params.has("tab")
+          ? params.get("tab") === "official" ? "official" : "chats"
+          : readPreference(lastSectionKey) === "official" ? "official" : "chats",
     );
+    if (targetContact) {
+      const targetSection = targetContact.kind === "official" ? "official" : "chats";
+      savePreference(lastSectionKey, targetSection);
+      savePreference(lastTargetKey(targetSection), targetContact.id);
+    }
     if (target && target !== selected) {
       // 浏览器历史或外部入口切换会话时，同样隔离文字、附件和引用。
       setDrafts((previous) => ({ ...previous, [selected]: text }));
@@ -250,8 +293,11 @@ export default function Chat(props: PageProps) {
       setStickerManagerOpen(false);
       setEmojiOpen(false);
     }
-  }, [location.hash, state.contacts]);
+  }, [routeHash, state.contacts]);
   const choose = (c: Contact) => {
+    const nextSection = c.kind === "official" ? "official" : "chats";
+    savePreference(lastSectionKey, nextSection);
+    savePreference(lastTargetKey(nextSection), c.id);
     setDrafts({ ...drafts, [selected]: text });
     selectedRef.current = c.id;
     select(c.id);
@@ -281,6 +327,7 @@ export default function Chat(props: PageProps) {
       return;
     }
     setDrafts((previous) => ({ ...previous, [selected]: text }));
+    savePreference(lastSectionKey, next);
     setSection(next);
     select("");
     selectedRef.current = "";
@@ -699,8 +746,10 @@ export default function Chat(props: PageProps) {
                   {(index === 0 || index % 5 === 0) && (
                     <div className="message-time">{dateTime(m.time)}</div>
                   )}
-                  {m.status === "revoked" ? (
-                    <div className="system-message">你撤回了一条消息</div>
+                  {m.status === "revoked" || m.status === "revoked_by_other" ? (
+                    <div className="system-message">
+                      {m.status === "revoked_by_other" ? m.content : "你撤回了一条消息"}
+                    </div>
                   ) : m.kind === "system" ? (
                     <div className="system-message">{m.content}</div>
                   ) : (
