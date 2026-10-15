@@ -1,3 +1,6 @@
+// 文件名：sync.go
+// 主要功能：合并联系人增量资料，保留关系分类并发布变更。
+// 作者：2guan
 package contactability
 
 import (
@@ -72,9 +75,34 @@ func mergeContact(old *sdk.Contact, data *messageapi.ModifyContact) *sdk.Contact
 	} else if hasField(data, "small_avatar_url") {
 		next.Avatar = data.GetSmallAvatarUrl()
 	}
-	if hasField(data, "chatroom_owner") {
+	mergeConversation(next, data.BitMask, data.BitValue, data.ChatroomNotify)
+	if (strings.HasSuffix(next.Username, "@chatroom") || strings.HasSuffix(next.Username, "@im.chatroom")) || data.GetChatroomOwner() != "" {
 		next.Type = sdk.ContactType_CONTACT_TYPE_CHATROOM
-		next.Data = &sdk.Contact_Chatroom{Chatroom: &sdk.Chatroom{Owner: data.GetChatroomOwner()}}
+		// 增量明确清空群名时也应用相同回退规则，不显示群 ID。
+		if strings.TrimSpace(next.Nickname) == "" {
+			names := []string{}
+			for _, m := range data.GetMembers().GetList() {
+				name := m.GetDisplayName()
+				if strings.TrimSpace(name) == "" {
+					name = m.GetNickname()
+				}
+				names = append(names, name)
+			}
+			next.Nickname = memberRoomName(names)
+		}
+
+		// next 已深拷贝；只合并明确存在的群字段，保留其他增量未携带的人数。
+		room := next.GetChatroom()
+		if room == nil {
+			room = &sdk.Chatroom{}
+		}
+		if hasField(data, "chatroom_owner") {
+			room.Owner = data.GetChatroomOwner()
+		}
+		if data.GetMembers() != nil && hasField(data.GetMembers(), "count") {
+			room.MemberCount = data.GetMembers().GetCount()
+		}
+		next.Data = &sdk.Contact_Chatroom{Chatroom: room}
 		return next
 	}
 	if hasField(data, "gender") || hasField(data, "country") || hasField(data, "province") || hasField(data, "city") || hasField(data, "signature") {
@@ -117,6 +145,10 @@ func cloneContact(contact *sdk.Contact) *sdk.Contact {
 func getTypeFromUsername(username string) sdk.ContactType {
 	if username == "" {
 		return sdk.ContactType_CONTACT_TYPE_UNSPECIFIED
+	}
+	// 增量通知未必带群主字段，仍可通过协议群标识确认群聊。
+	if strings.HasSuffix(username, "@chatroom") || strings.HasSuffix(username, "@im.chatroom") {
+		return sdk.ContactType_CONTACT_TYPE_CHATROOM
 	}
 	if slices.Contains(specials, username) {
 		return sdk.ContactType_CONTACT_TYPE_SPECIAL
