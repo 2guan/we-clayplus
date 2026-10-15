@@ -25,6 +25,7 @@ export type Contact = {
 };
 export type Message = {
   rich?: {
+    file_notice_id?: string;
     title?: string;
     description?: string;
     amount?: string;
@@ -125,6 +126,7 @@ export type User = {
   enabled: boolean;
 };
 export type Task = {
+  insight?: { type: "conversation" | "group" | "moments"; prompt: string; target_name?: string };
   source?: string;
   delivery?: "sending" | "sent" | "unknown";
   id: string;

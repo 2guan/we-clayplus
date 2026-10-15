@@ -3,7 +3,7 @@
 // 作者：2guan
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import PinyinMatch from "pinyin-match";
+import PinyinMatch from "pinyin-match/src/simplified.js";
 import { Avatar } from "./ui";
 import type { GroupMember } from "./useGroupAvatars";
 import "./chat-mentions.css";

@@ -93,19 +93,28 @@ type Record struct {
 	Message   string `json:"message"`
 	Target    string `json:"target,omitempty"`
 }
+
+// InsightInfo 保存报告生成时的展示信息，后续联系人改名不改变历史报告。
+type InsightInfo struct {
+	Type       string `json:"type"`
+	Prompt     string `json:"prompt"`
+	TargetName string `json:"target_name,omitempty"`
+}
+
 type Task struct {
-	Source   string `json:"source,omitempty"`   // 区分微信自动回复与手动模型测试。
-	Delivery string `json:"delivery,omitempty"` // 语音发送独立于合成任务，阻止重复及未知结果重试。
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Name     string `json:"name"`
-	Status   string `json:"status"`
-	Created  string `json:"created"`
-	Result   string `json:"result"`
-	Error    string `json:"error,omitempty"`
-	Input    string `json:"input"`
-	Model    string `json:"model"`
-	Target   string `json:"target,omitempty"`
+	Insight  *InsightInfo `json:"insight,omitempty"`
+	Source   string       `json:"source,omitempty"`   // 区分微信自动回复与手动模型测试。
+	Delivery string       `json:"delivery,omitempty"` // 语音发送独立于合成任务，阻止重复及未知结果重试。
+	ID       string       `json:"id"`
+	Kind     string       `json:"kind"`
+	Name     string       `json:"name"`
+	Status   string       `json:"status"`
+	Created  string       `json:"created"`
+	Result   string       `json:"result"`
+	Error    string       `json:"error,omitempty"`
+	Input    string       `json:"input"`
+	Model    string       `json:"model"`
+	Target   string       `json:"target,omitempty"`
 }
 
 // Vendor 将厂商凭据与具体模型分离；Key 只用于写入，读取状态不包含明文。

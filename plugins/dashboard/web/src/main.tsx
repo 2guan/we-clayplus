@@ -13,6 +13,7 @@ import {
   TerminalWindow,
   GearSix,
   CaretDown,
+  SidebarSimple,
   List,
   X,
   SignOut,
@@ -255,6 +256,14 @@ function App() {
     location.hash.slice(1).split("?")[0] || "overview",
   );
   const [mobileNav, setMobileNav] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("weclay.sidebarCollapsed") === "true"; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("weclay.sidebarCollapsed", String(sidebarCollapsed)); }
+    catch { /* 浏览器禁用存储时，仍允许本次会话收缩导航。 */ }
+  }, [sidebarCollapsed]);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [connected, setConnected] = useState(true);
@@ -341,6 +350,22 @@ function App() {
   const brandName = String(
     state?.settings["brand.name"] || auth?.brandName || "we-clay",
   );
+  const robotName = state?.account.name?.trim();
+  const robotPhoto = state?.account.photo || state?.account.avatar || "";
+  useEffect(() => {
+    const icon = document.createElement("link");
+    icon.rel = "icon";
+    const fallback = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#39775a"/><text x="16" y="23" text-anchor="middle" font-family="sans-serif" font-size="22" fill="white">W</text></svg>');
+    icon.href = fallback;
+    document.head.appendChild(icon);
+    const image = new Image();
+    if (/^https?:\/\//.test(robotPhoto)) {
+      const url = `/api/wechat-image?url=${encodeURIComponent(robotPhoto)}`;
+      image.onload = () => { icon.href = url; };
+      image.src = url;
+    }
+    return () => { image.onload = null; icon.remove(); };
+  }, [robotPhoto]);
   useEffect(() => {
     const authPage =
       previewAuth ||
@@ -354,8 +379,10 @@ function App() {
         ? "登录"
         : "初始化"
       : pages.find((p) => p[0] === page)?.[1] || "控制台";
-    document.title = `${title} · ${brandName}`;
-  }, [page, brandName, auth, previewAuth]);
+    document.title = authPage
+      ? `${title} · ${brandName}`
+      : `${robotName || brandName} · ${title}`;
+  }, [page, brandName, robotName, auth, previewAuth]);
   if (!auth)
     return (
       <div className="startup">
@@ -464,8 +491,8 @@ function App() {
           onClick={() => setMobileNav(false)}
         />
       )}
-      <aside className={`sidebar ${mobileNav ? "open" : ""}`}>
-        <a href="#overview" className="brand">
+      <aside id="sidebar" className={`sidebar ${mobileNav ? "open" : ""} ${sidebarCollapsed ? "collapsed" : ""}`}>
+        <a href="#overview" className="brand" aria-label={`${brandName} 总览`} title={brandName}>
           <span className="brand-mark">W</span>
           <div>
             <strong>{brandName}</strong>
@@ -494,6 +521,8 @@ function App() {
               {i === 6 && <span className="nav-caption second">管理</span>}
               <a
                 href={`#${id}`}
+                aria-label={label}
+                title={label}
                 aria-current={page === id ? "page" : undefined}
                 className={page === id ? "active" : ""}
               >
@@ -513,6 +542,7 @@ function App() {
           <div className="user-menu">
             <button
               className="user-info"
+              title="修改密码"
               aria-label="修改密码"
               aria-haspopup="dialog"
               onClick={() => setPasswordOpen(true)}
@@ -527,6 +557,7 @@ function App() {
             </button>
             <button
               className="icon-button"
+              title="退出登录"
               aria-label="退出登录"
               onClick={() => {
                 if (state.mock) {
@@ -554,6 +585,17 @@ function App() {
             aria-label="打开导航"
           >
             <List size={23} />
+          </button>
+          <button
+            type="button"
+            className="icon-button sidebar-toggle"
+            aria-label={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+            aria-expanded={!sidebarCollapsed}
+            aria-controls="sidebar"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+          >
+            <SidebarSimple size={20} aria-hidden="true" />
           </button>
           {/* 顶栏集中展示服务状态，页面标题保留在内容区。 */}
           <div className="connection-status" aria-live="polite">

@@ -593,6 +593,8 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 			}
 			s.authMu.Unlock()
 		}
+	case "delete-report":
+		err = s.deleteReport(q.ID)
 	case "cancel-task":
 		s.taskMu.Lock()
 		if cancel := s.taskCancel[q.ID]; cancel != nil {

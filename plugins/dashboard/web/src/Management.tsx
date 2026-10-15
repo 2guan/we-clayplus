@@ -8,7 +8,7 @@ import { PluginConfiguration } from "./PluginConfiguration";
 import { BusinessWorkbench, businessIDs } from "./BusinessWorkbench";
 import { SafetyWorkbench } from "./SafetyWorkbench";
 import { PluginUsage } from "./PluginUsage";
-import PinyinMatch from "pinyin-match";
+import { compareContacts, matchesContact } from "./contactSearch";
 import {
   MagnifyingGlass,
   Plus,
@@ -25,7 +25,7 @@ import {
 import type { Contact, PageProps, Plugin } from "./types";
 import { Avatar, Badge, Empty, Modal, SettingsForm, Tabs, Toggle } from "./ui";
 import { TargetForm } from "./Chat";
-import { TaskBadge, TaskList, TaskResult } from "./ModelTasks";
+import { DeleteReportButton, ReportMetadata, reportLabel, TaskBadge, TaskList, TaskResult } from "./ModelTasks";
 import { dateTime, download, request } from "./api";
 
 // 联系人详情复用微信会话策略表单，避免两处编辑逻辑不一致。
@@ -44,10 +44,8 @@ export function Contacts(props: PageProps) {
   const contacts = state.contacts.filter(
     (c) =>
       c.kind === tab &&
-      `${c.name}${c.remark}${c.id}${c.tags.join("")}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+      matchesContact(c, search),
+  ).sort(compareContacts);
   return (
     <div className="page">
       <div className="page-toolbar">
@@ -80,24 +78,24 @@ export function Contacts(props: PageProps) {
         onChange={setTab}
         items={[
           [
-            "official",
-            `公众号 / 订阅号 (${state.contacts.filter((c) => c.kind === "official").length})`,
-          ],
-          [
-            "enterprise",
-            `企业微信 (${state.contacts.filter((c) => c.kind === "enterprise").length})`,
-          ],
-          [
-            "system",
-            `系统账号 (${state.contacts.filter((c) => c.kind === "system").length})`,
-          ],
-          [
             "friend",
             `微信好友 (${state.contacts.filter((c) => c.kind === "friend").length})`,
           ],
           [
             "group",
             `微信群聊 (${state.contacts.filter((c) => c.kind === "group").length})`,
+          ],
+          [
+            "official",
+            `公众号 / 订阅号 (${state.contacts.filter((c) => c.kind === "official").length})`,
+          ],
+          [
+            "system",
+            `系统账号 (${state.contacts.filter((c) => c.kind === "system").length})`,
+          ],
+          [
+            "enterprise",
+            `企业微信 (${state.contacts.filter((c) => c.kind === "enterprise").length})`,
           ],
         ]}
       />
@@ -477,8 +475,20 @@ function defaultInsightPrompt(tab: string) {
 }
 
 // 输入与报告并排展示；对象和资料同时过滤，避免选中一个好友却分析全部朋友圈。
+function localMinute(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 export function Insights(props: PageProps) {
   const { state, notify, refresh, act } = props;
+  const sortedContacts = useMemo(() => [...state.contacts].sort(compareContacts), [state.contacts]);
+  const availableFor = (value: string) => sortedContacts.filter(c =>
+    value === "moments" ? c.kind === "friend" : value === "group" ? c.kind === "group" : ["friend", "group"].includes(c.kind));
+  const targetKey = (value: string) => `weclay.insightTarget:${props.user.id}:${state.account.id}:${value}`;
+  const rememberedTarget = (value: string, available: Contact[]) => {
+    try { const id = localStorage.getItem(targetKey(value)); return available.find(c => c.id === id)?.id; }
+    catch { return undefined; }
+  };
   const initial =
     new URLSearchParams(location.hash.split("?")[1]).get("tab") ||
     "conversation";
@@ -487,19 +497,17 @@ export function Insights(props: PageProps) {
       ? initial
       : "conversation",
   );
-  const [target, setTarget] = useState(
-    state.contacts.find((c) =>
-      initial === "moments"
-        ? c.kind === "friend"
-        : initial === "group"
-          ? c.kind === "group"
-          : ["friend", "group"].includes(c.kind),
-    )?.id || "",
-  );
+  const [target, setTarget] = useState(() => {
+    const available = availableFor(initial);
+    return rememberedTarget(initial, available) || available[0]?.id || "";
+  });
   const [targetSearch, setTargetSearch] = useState<string | null>(null);
   const [targetOpen, setTargetOpen] = useState(false);
   const [activeOption, setActiveOption] = useState(0);
   const [range, setRange] = useState("50");
+  const [rangeMode, setRangeMode] = useState<"count" | "time">("count");
+  const [rangeStart, setRangeStart] = useState(() => localMinute(new Date(new Date().setHours(0, 0, 0, 0))));
+  const [rangeEnd, setRangeEnd] = useState(() => localMinute(new Date()));
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const [modelSelections, setModelSelections] = useState<
     Record<string, string>
@@ -510,7 +518,7 @@ export function Insights(props: PageProps) {
   useEffect(() => {
     setFetchedCount(null);
     setProgress("");
-  }, [target, range, tab]);
+  }, [target, range, tab, rangeMode, rangeStart, rangeEnd]);
   const [reportID, setReportID] = useState("");
   const [streamedReport, setStreamedReport] = useState("");
   const reportBodyRef = useRef<HTMLDivElement>(null);
@@ -528,23 +536,16 @@ export function Insights(props: PageProps) {
   const setPrompt = (value: string) =>
     setPrompts((old) => ({ ...old, [tab]: value }));
   // 朋友圈严格限定好友；切换类型后立即选择有效对象，不保留失效的群聊 ID。
-  const contacts = state.contacts.filter((c) =>
-    tab === "moments"
-      ? c.kind === "friend"
-      : tab === "group"
-        ? c.kind === "group"
-        : ["friend", "group"].includes(c.kind),
-  );
+  const contacts = availableFor(tab);
   const selected = contacts.find((c) => c.id === target);
+  useEffect(() => {
+    if (selected) {
+      try { localStorage.setItem(targetKey(tab), selected.id); } catch { /* 存储不可用时仍可正常选择。 */ }
+    }
+  }, [tab, selected?.id, state.account.id, props.user.id]);
   // 拼音字典随前端本地打包，搜索不会向外部服务发送联系人信息。
   const query = (targetSearch || "").trim();
-  const matches = contacts.filter(
-    (c) =>
-      !query ||
-      [c.name, c.remark, c.id].some((text) =>
-        PinyinMatch.match(text || "", query),
-      ),
-  );
+  const matches = contacts.filter(c => matchesContact(c, query));
   const options = matches.slice(0, 50);
   const chooseTarget = (contact: Contact) => {
     setTarget(contact.id);
@@ -560,9 +561,9 @@ export function Insights(props: PageProps) {
       ? Number(range)
       : 0;
   const reports = state.tasks.filter((t) => t.kind === "insight");
+  const currentReports = reports.filter((t) => t.insight?.type === tab);
   const report =
-    reports.find((t) => t.id === reportID) ||
-    (!reportID ? reports.at(-1) : undefined);
+    currentReports.find((t) => t.id === reportID) || currentReports.at(-1);
   useEffect(() => {
     setStreamedReport("");
     if (!report || report.kind !== "insight" || !["queued", "running"].includes(report.status)) return;
@@ -589,24 +590,31 @@ export function Insights(props: PageProps) {
     const body = reportBodyRef.current;
     if (body && followReportRef.current) body.scrollTop = body.scrollHeight;
   }, [streamedReport]);
-  const messages = state.messages
-    .filter((m) => m.target === selected?.id)
-    .slice(-amount);
-  const count = amount ? messages.length : 0;
+  const byTime = tab !== "moments" && rangeMode === "time";
+  const startTime = Date.parse(rangeStart);
+  // 日期控件精度为分钟，包含结束分钟内的全部消息。
+  const endTime = Date.parse(rangeEnd) + 60000;
+  const validTime = Number.isFinite(startTime) && Number.isFinite(endTime) && startTime < endTime;
+  const rangeError = byTime
+    ? !rangeStart || !rangeEnd ? "请选择开始和结束时间" : !validTime ? "结束时间不能早于开始时间" : ""
+    : !amount ? "请输入大于零的整数条数" : "";
+  const availableMessages = state.messages.filter((m) => m.target === selected?.id);
+  const messages = byTime
+    ? validTime ? availableMessages.filter((m) => {
+        const time = Date.parse(m.time);
+        return time >= startTime && time < endTime;
+      }) : []
+    : amount ? availableMessages.slice(-amount) : [];
+  const count = messages.length;
   const changeTab = (value: string) => {
     setTab(value);
+    setReportID("");
     setTargetSearch(null);
     setTargetOpen(false);
     setActiveOption(0);
-    const available = state.contacts.filter((c) =>
-      value === "moments"
-        ? c.kind === "friend"
-        : value === "group"
-          ? c.kind === "group"
-          : ["friend", "group"].includes(c.kind),
-    );
+    const available = availableFor(value);
     setTarget(
-      available.find((c) => c.id === target)?.id || available[0]?.id || "",
+      rememberedTarget(value, available) || available.find((c) => c.id === target)?.id || available[0]?.id || "",
     );
     history.replaceState(null, "", `#insights?tab=${value}`);
   };
@@ -616,9 +624,9 @@ export function Insights(props: PageProps) {
       document.getElementById("insight-target")?.focus();
       return;
     }
-    if (!amount) {
-      notify("请输入大于零的整数条数");
-      document.getElementById("insight-range")?.focus();
+    if (rangeError) {
+      notify(rangeError);
+      document.getElementById(byTime ? !rangeStart ? "insight-range-start" : "insight-range-end" : "insight-range")?.focus();
       return;
     }
     if (!prompt.trim()) {
@@ -627,7 +635,7 @@ export function Insights(props: PageProps) {
       return;
     }
     if (!count && tab !== "moments") {
-      notify("此会话暂无可分析的已归档消息");
+      notify(byTime ? "所选时间段内暂无可分析的已归档消息" : "此会话暂无可分析的已归档消息");
       return;
     }
     setBusy(true);
@@ -645,6 +653,7 @@ export function Insights(props: PageProps) {
       const result = await request<{ id: string }>("/api/tasks", {
         images: loaded?.images,
         kind: "insight",
+        insight: { type: tab, prompt: prompt.trim() },
         target: selected.id,
         model: modelID || undefined,
         prompt: `${prompt.trim()}${loaded?.skippedImages ? `\n\n图片读取说明：有 ${loaded.skippedImages} 张朋友圈缩略图无法读取，已跳过；请仅依据成功附带的图片和动态文字分析，不要推测缺失图片内容。` : ""}\n\n分析对象：${selected.name}`,
@@ -697,7 +706,7 @@ export function Insights(props: PageProps) {
         ]}
       />
       {tab === "history" ? (
-        <TaskList {...props} state={{ ...state, tasks: reports }} />
+        <TaskList {...props} state={{ ...state, tasks: reports }} reportsOnly onReportDeleted={() => setReportID("")} />
       ) : (
         <div className="insight-workspace">
           <form
@@ -808,12 +817,24 @@ export function Insights(props: PageProps) {
                 </div>
               )}
             </div>
-            <label htmlFor="insight-range">
-              {tab === "moments" ? "朋友圈条数" : "消息范围"}
-              <div className="insight-range-input">
-                <span>最近</span>
+            <fieldset className="insight-range-fields">
+              <legend>{tab === "moments" ? "朋友圈条数" : "消息范围"}</legend>
+              {tab !== "moments" && <div className="insight-range-mode" role="group" aria-label="消息范围模式">
+                <button type="button" aria-pressed={rangeMode === "count"} onClick={() => setRangeMode("count")}>条数</button>
+                <button type="button" aria-pressed={rangeMode === "time"} onClick={() => setRangeMode("time")}>时间段</button>
+              </div>}
+              {byTime ? <div className="insight-time-range">
+                <label htmlFor="insight-range-start">开始时间
+                  <input id="insight-range-start" type="datetime-local" required step="60" max={rangeEnd || undefined} value={rangeStart} onChange={e => setRangeStart(e.target.value)} />
+                </label>
+                <label htmlFor="insight-range-end">结束时间
+                  <input id="insight-range-end" type="datetime-local" required step="60" min={rangeStart || undefined} value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} />
+                </label>
+                <small>按本地时间筛选，包含开始和结束分钟。</small>
+              </div> : (
                 <input
                   id="insight-range"
+                  aria-label={tab === "moments" ? "朋友圈条数" : "消息范围"}
                   type="number"
                   inputMode="numeric"
                   min="1"
@@ -822,9 +843,8 @@ export function Insights(props: PageProps) {
                   value={range}
                   onChange={(e) => setRange(e.target.value)}
                 />
-                <span>条</span>
-              </div>
-            </label>
+              )}
+            </fieldset>
             <label htmlFor="insight-model">
               分析模型
               <select
@@ -893,13 +913,13 @@ export function Insights(props: PageProps) {
                       : `将读取最近 ${amount} 条朋友圈及图片缩略图`
                   : !selected
                     ? "请从搜索结果中选择对象"
-                    : !amount
-                      ? "请输入大于零的整数条数"
+                    : rangeError
+                      ? rangeError
                       : count
-                        ? `实际读取 ${count} 条${tab === "moments" ? "朋友圈内容" : "消息"}${count < amount ? `（不足 ${amount} 条）` : ""}`
+                        ? `实际读取 ${count} 条消息${!byTime && count < amount ? `（不足 ${amount} 条）` : ""}`
                         : tab === "moments"
                           ? "当前好友暂无已归档的朋友圈内容"
-                          : "当前会话暂无已归档消息"}
+                          : byTime ? "所选时间段内暂无已归档消息" : "当前会话暂无已归档消息"}
               </p>
               <p className="insight-limit-note">
                 {tab === "moments"
@@ -921,19 +941,16 @@ export function Insights(props: PageProps) {
               </h2>
               {report && <TaskBadge task={report} />}
             </div>
-            {reports.length > 0 && (
+            {currentReports.length > 0 && (
               <div className="insight-report-tools">
                 <select
                   aria-label="选择分析报告"
                   value={report?.id || ""}
                   onChange={(e) => setReportID(e.target.value)}
                 >
-                  {!report && <option value="">正在加载新报告…</option>}
-                  {[...reports].reverse().map((t) => (
+                  {[...currentReports].reverse().map((t) => (
                     <option key={t.id} value={t.id}>
-                      {dateTime(t.created)} ·{" "}
-                      {state.contacts.find((c) => c.id === t.target)?.name ||
-                        t.name}
+                      {reportLabel(t, state.contacts)}
                     </option>
                   ))}
                 </select>
@@ -947,6 +964,7 @@ export function Insights(props: PageProps) {
                     <DownloadSimple size={18} />
                   </button>
                 )}
+                {report && <DeleteReportButton task={report} act={act} notify={notify} onDeleted={() => setReportID("")} />}
                 {report && ["running", "queued"].includes(report.status) && (
                   <button
                     className="button"
@@ -971,6 +989,7 @@ export function Insights(props: PageProps) {
             >
               {report ? (
                 <>
+                  <ReportMetadata task={report} contacts={state.contacts} notify={notify} />
                   <TaskResult task={streamedReport ? { ...report, result: streamedReport } : report} />
                   {report.status === "running" && streamedReport && (
                     <p className="insight-stream-status" aria-live="polite">正在接收模型输出…</p>
@@ -978,7 +997,7 @@ export function Insights(props: PageProps) {
                 </>
               ) : (
                 <Empty
-                  title={busy || reportID ? "正在加载报告" : "等待生成报告"}
+                  title={busy ? "正在加载报告" : "等待生成报告"}
                   text="在左侧选择对象和分析重点，报告将在这里展示。"
                 />
               )}

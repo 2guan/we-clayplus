@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -73,7 +74,10 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 	}
 	ctx, cancel := context.WithCancel(parent)
 	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), startedAt: time.Now(), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
-	if err = s.initBehaviors(); err == nil {
+	if err = s.restoreFileArchive(); err == nil {
+		err = s.initBehaviors()
+	}
+	if err == nil {
 		err = s.initBusiness()
 	}
 	if err == nil {
@@ -204,6 +208,7 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 			state := s.store.snapshot()
+			state.Tasks = slices.DeleteFunc(state.Tasks, func(t Task) bool { return t.Status == "deleted" })
 			state.Users = []User{}
 			if u.Role != "admin" {
 				// 防护自定义规则与会话覆盖仅通过管理员配置接口提供。
@@ -501,6 +506,9 @@ func addLog(v *State, level, component, text string) {
 }
 func (s *Server) SetAccount(a Account) error {
 	err := s.store.switchAccount(a)
+	if err == nil {
+		err = s.restoreFileArchive()
+	}
 	s.notify()
 	return err
 }

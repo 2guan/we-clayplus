@@ -7,7 +7,8 @@ test.beforeEach(async ({ request }) => {
   await request.post("/api/action", { data: { kind: "mock-reset" } });
 });
 
-test("八个页面无异常并保持同源访问", async ({ page }) => {
+test("八个页面无异常并保持同源访问", async ({ page, request }) => {
+  const state = await (await request.get("/api/state")).json();
   const errors: string[] = [];
   const outbound: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -30,7 +31,7 @@ test("八个页面无异常并保持同源访问", async ({ page }) => {
     ["settings", "系统设置"],
   ]) {
     await page.goto("/#" + route);
-    await expect(page).toHaveTitle(`${title} · we-clay`);
+    await expect(page).toHaveTitle(`${state.account.name} · ${title}`);
     await expect(page.locator(".topbar .connection-status")).toContainText(
       "服务连接正常",
     );

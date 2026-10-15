@@ -32,14 +32,17 @@ import (
 )
 
 type Bridge struct {
-	contactSync   atomic.Bool
-	contactSyncMu sync.Mutex
-	contactSyncWG sync.WaitGroup
-	closing       bool
-	restartMu     sync.RWMutex
-	restartLogin  func(context.Context) error
-	Ready         atomic.Bool
-	Dashboard     *dashboard.Server
+	contactSync      atomic.Bool
+	contactSyncMu    sync.Mutex
+	contactSyncWG    sync.WaitGroup
+	closing          bool
+	groupSyncPending map[string]bool
+	groupSyncAttempt map[string]time.Time
+	groupSyncRunning bool
+	restartMu        sync.RWMutex
+	restartLogin     func(context.Context) error
+	Ready            atomic.Bool
+	Dashboard        *dashboard.Server
 }
 
 // SetLoginRestarter 在 Run 完成初始化后安装回调，避免 HTTP 请求与生命周期赋值竞争。
@@ -358,6 +361,8 @@ func (b *Bridge) Record(m *message.Message) error {
 	if own {
 		target = m.GetReceiver().GetUsername()
 	}
+	// 先完成消息归档，再异步补齐新群资料，避免阻塞接收或覆盖会话预览。
+	defer func() { b.startGroupSync(target) }()
 	senderID := m.GetSender().GetUsername()
 	sender := m.GetSender().GetNickname()
 	if m.GetMember() != nil {
@@ -423,7 +428,7 @@ func (b *Bridge) Record(m *message.Message) error {
 	if err := b.Dashboard.RememberQuoteSource(record, raw); err != nil {
 		return err
 	}
-	if kind == "image" || kind == "audio" {
+	if kind == "image" || kind == "audio" || (record.Kind == "file" && m.GetType().GetCode() == message.TypeAppFileAttach.Code) {
 		descriptor, err := protojson.Marshal(m)
 		if err != nil {
 			return err

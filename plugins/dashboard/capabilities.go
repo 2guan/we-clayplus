@@ -28,7 +28,7 @@ func (s *Server) Submit(q ai.Request) (string, error) {
 // Task 返回不可变副本；结果中不包含提供商凭据。
 func (s *Server) Task(id string) (Task, error) {
 	for _, t := range s.store.snapshot().Tasks {
-		if t.ID == id {
+		if t.ID == id && t.Status != "deleted" {
 			return t, nil
 		}
 	}

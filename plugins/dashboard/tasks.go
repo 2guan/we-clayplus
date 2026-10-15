@@ -18,7 +18,10 @@ import (
 )
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request, u User) {
-	var q ai.Request
+	var q struct {
+		ai.Request
+		Insight *InsightInfo `json:"insight,omitempty"`
+	}
 	if !decode(w, r, &q) {
 		return
 	}
@@ -36,7 +39,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request, u User) {
 		q.Source = "analysis"
 	}
 	// 后台测试与分析不因传入 target 而获得自动发送或工具执行权。
-	id, err := s.queue(q)
+	id, err := s.queueTask(q.Request, q.Insight)
 	if err != nil {
 		writeError(w, 400, err.Error())
 		return
@@ -44,6 +47,10 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request, u User) {
 	writeJSON(w, 202, map[string]string{"id": id})
 }
 func (s *Server) queue(q ai.Request) (string, error) {
+	return s.queueTask(q, nil)
+}
+
+func (s *Server) queueTask(q ai.Request, insight *InsightInfo) (string, error) {
 	if s.cfg.DisableAI {
 		return "", fmt.Errorf("AI 已在启动配置中停用")
 	}
@@ -54,6 +61,23 @@ func (s *Server) queue(q ai.Request) (string, error) {
 		return "", fmt.Errorf("语音模式无效")
 	}
 	state := s.store.snapshot()
+	if insight != nil {
+		if q.Kind != "insight" || !slices.Contains([]string{"conversation", "group", "moments"}, insight.Type) || strings.TrimSpace(insight.Prompt) == "" || len(insight.Prompt) > 64<<10 {
+			return "", fmt.Errorf("分析报告类型或提示词无效")
+		}
+		// 名称从当前账号的通讯录获取，不信任客户端提供的展示名称。
+		info := InsightInfo{Type: insight.Type, Prompt: insight.Prompt}
+		for _, c := range state.Contacts {
+			if c.ID == q.Target {
+				info.TargetName = c.Name
+				if c.Remark != "" {
+					info.TargetName = c.Remark
+				}
+				break
+			}
+		}
+		insight = &info
+	}
 	if !slices.ContainsFunc(state.Plugins, func(p Plugin) bool { return p.ID == "ai" && p.Enabled }) {
 		return "", fmt.Errorf("AI 插件已停用")
 	}
@@ -107,6 +131,10 @@ func (s *Server) queue(q ai.Request) (string, error) {
 	id := randomID()
 	s.taskCancel[id] = cancel
 	t := Task{Source: q.Source, ID: id, Kind: q.Kind, Name: map[string]string{"chat": "对话测试", "vision": "图片理解", "audio": "音频识别", "video": "视频理解", "tts": "语音合成", "image": "图片生成", "video_generation": "视频生成", "insight": "会话洞察"}[q.Kind], Status: "queued", Created: time.Now().Format(time.RFC3339), Input: q.Prompt, Target: q.Target}
+	t.Insight = insight
+	if insight != nil {
+		t.Name = map[string]string{"conversation": "会话总结", "group": "群聊分析", "moments": "朋友圈内容"}[insight.Type]
+	}
 	if err := s.store.change(func(v *State) error { v.Tasks = append(v.Tasks, t); return nil }); err != nil {
 		cancel()
 		delete(s.taskCancel, id)
@@ -233,6 +261,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	}
 	for _, m := range candidates {
 		used = m.Name
+		s.updateTask(id, func(t *Task) { t.Model = used })
 		key := ""
 		if !s.cfg.Mock {
 			secretID := m.VendorID
@@ -386,11 +415,41 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		s.safetyNotice(q.Target, err)
 	}
 }
+func (s *Server) deleteReport(id string) error {
+	err := s.store.change(func(v *State) error {
+		for i, t := range v.Tasks {
+			if t.ID != id || t.Kind != "insight" || t.Status == "deleted" {
+				continue
+			}
+			if t.Status == "queued" || t.Status == "running" {
+				return fmt.Errorf("请先取消正在生成的报告")
+			}
+			// 清除报告和输入，仅保留调用时间占位，避免删除报告重置每日调用限额。
+			v.Tasks[i] = Task{ID: t.ID, Created: t.Created, Status: "deleted"}
+			return nil
+		}
+		return fmt.Errorf("分析报告不存在")
+	})
+	if err == nil {
+		s.streamMu.Lock()
+		if stream := s.taskStreams[id]; stream != nil {
+			stream.text = ""
+			if !stream.done {
+				stream.done = true
+				close(stream.wake)
+			}
+			delete(s.taskStreams, id)
+		}
+		s.streamMu.Unlock()
+	}
+	return err
+}
+
 func (s *Server) updateTask(id string, fn func(*Task)) {
 	_ = s.store.change(func(v *State) error {
 		for i := range v.Tasks {
 			if v.Tasks[i].ID == id {
-				if v.Tasks[i].Status != "cancelled" {
+				if v.Tasks[i].Status != "cancelled" && v.Tasks[i].Status != "deleted" {
 					fn(&v.Tasks[i])
 				}
 				break

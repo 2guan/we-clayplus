@@ -282,7 +282,7 @@ test("微信结构化消息与移动端布局", async ({ page, request }) => {
     "这是引用原文",
   );
   await expect(
-    page.getByRole("img", { name: "微笑", exact: true }),
+    page.getByRole("img", { name: "[微笑]", exact: true }),
   ).toHaveCount(1);
   await expect(
     page.getByRole("link", { name: "在地图中查看" }),

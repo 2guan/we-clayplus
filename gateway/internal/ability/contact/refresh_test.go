@@ -94,7 +94,7 @@ func TestReconnectSkipsKnownContacts(t *testing.T) {
 	cacheDir = t.TempDir()
 	instance.cache = map[string]*sdk.Contact{}
 	for _, id := range []string{"fixture-good", "fixture-invalid", "fixture-group@chatroom"} {
-		instance.cache[id] = &sdk.Contact{Username: id, Nickname: "已同步"}
+		instance.cache[id] = &sdk.Contact{Username: id, Nickname: "已同步", Avatar: "https://wx.qlogo.cn/fixture"}
 	}
 	f := &countingDetailFixture{}
 	instance.api = f
@@ -104,10 +104,25 @@ func TestReconnectSkipsKnownContacts(t *testing.T) {
 	if f.calls != 0 {
 		t.Fatalf("重连重复扫描已有联系人：%d", f.calls)
 	}
+	instance.cache["fixture-group@chatroom"].Avatar = ""
+	if err := RefreshMissingWithProgress(nil); err != nil || f.calls != 1 || instance.cache["fixture-group@chatroom"].Avatar == "" {
+		t.Fatal("有群名但缺头像的群未补齐", err)
+	}
+	f.calls = 0
 	if err := RefreshWithProgress(nil); err != nil {
 		t.Fatal(err)
 	}
 	if f.calls == 0 {
 		t.Fatal("显式刷新未读取资料")
+	}
+}
+
+func TestContactListOrderIsStable(t *testing.T) {
+	a := &ability{cache: map[string]*sdk.Contact{"fixture-b": {Username: "fixture-b"}, "fixture-a": {Username: "fixture-a"}, "fixture-c": {Username: "fixture-c"}}}
+	for i := 0; i < 20; i++ {
+		items := a.List()
+		if len(items) != 3 || items[0].Username != "fixture-a" || items[1].Username != "fixture-b" || items[2].Username != "fixture-c" {
+			t.Fatal("缓存遍历改变联系人顺序")
+		}
 	}
 }

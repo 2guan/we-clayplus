@@ -162,6 +162,9 @@ func refreshContacts(progress func() error, missingOnly bool, additionalIDs ...s
 	known := map[string]bool{}
 	for _, c := range instance.List() {
 		known[c.Username] = c.Nickname != "" && c.Nickname != c.Username
+		if strings.HasSuffix(c.Username, "@chatroom") || strings.HasSuffix(c.Username, "@im.chatroom") {
+			known[c.Username] = known[c.Username] && c.Avatar != ""
+		}
 	}
 	if missingOnly {
 		list = slices.DeleteFunc(list, func(id string) bool { return known[id] })
@@ -293,18 +296,26 @@ func RefreshOne(key string) (*sdk.Contact, error) {
 		return nil, fmt.Errorf("联系人不存在：%s", key)
 	}
 
-	detail, err := instance.api.Detail([]string{contact.Username})
+	return RefreshUsername(contact.Username)
+}
+
+// RefreshUsername 按协议标识补齐新会话，无需预先存在于通讯录缓存。
+func RefreshUsername(username string) (*sdk.Contact, error) {
+	if strings.TrimSpace(username) == "" {
+		return nil, fmt.Errorf("联系人标识不能为空")
+	}
+	detail, err := instance.api.Detail([]string{username})
 	if err != nil {
-		return nil, fmt.Errorf("[contact ability] 获取联系人 [%s] 详细信息失败: %w", contact.Username, err)
+		return nil, fmt.Errorf("获取会话资料失败: %w", err)
 	}
 	list := detail.GetContactList()
-	if len(list) == 0 {
-		return nil, fmt.Errorf("联系人不存在：%s", key)
+	if len(list) != 1 || list[0].GetUsername().GetValue() != username {
+		return nil, fmt.Errorf("会话资料回执标识不匹配")
 	}
 
 	build, err := Build(list[0])
 	if err != nil {
-		return nil, fmt.Errorf("[contact ability] 构建联系人 [%s] 失败: %w", contact.Username, err)
+		return nil, fmt.Errorf("解析会话资料失败: %w", err)
 	}
 	instance.cacheMu.Lock()
 	instance.cache[build.Username] = build
@@ -330,8 +341,9 @@ func (a *ability) GetSelf() *sdk.SelfInfo {
 
 // Get 按键查询缓存联系人，支持前缀：username::（默认）、nickname::、remark::
 func (a *ability) Get(key string) *sdk.Contact {
-	a.cacheMu.RLock()
-	defer a.cacheMu.RUnlock()
+	// username 查询未命中时会写入缓存，不能持有读锁执行。
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
 	if c := getStrategy(key).find(a.cache); c != nil {
 		return cloneContact(c)
 	}
@@ -359,6 +371,8 @@ func (a *ability) List() []*sdk.Contact {
 	for _, c := range a.cache {
 		result = append(result, cloneContact(c))
 	}
+	// map 遍历无固定顺序；缓存投影不能让页面默认对象随增量更新变化。
+	sort.Slice(result, func(i, j int) bool { return result[i].Username < result[j].Username })
 	return result
 }
 

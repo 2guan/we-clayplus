@@ -5,7 +5,13 @@ package console
 
 import (
 	"context"
+	"github.com/we-clay/we-clay/sdk/contact"
+	"github.com/we-clay/we-clay/sdk/control"
+	"github.com/we-clay/we-clay/sdk/message"
+	"google.golang.org/protobuf/encoding/protojson"
+	"io"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -24,5 +30,41 @@ func TestIncomingVoiceRoundTrip(t *testing.T) {
 	}
 	if _, err := decodeIncomingVoice(context.Background(), []byte("bad")); err == nil {
 		t.Fatal("接受无效音频")
+	}
+}
+
+type incomingFileFixture struct {
+	message.Ability
+	calls int
+}
+
+func (f *incomingFileFixture) Download(m *message.Message) (io.ReadCloser, error) {
+	f.calls++
+	return io.NopCloser(strings.NewReader("fixture-file")), nil
+}
+func TestIncomingFileBinding(t *testing.T) {
+	oldContact, oldMessage := contact.Instance, message.Instance
+	contact.Instance = messageContactFixture{}
+	f := &incomingFileFixture{}
+	message.Instance = f
+	t.Cleanup(func() { contact.Instance = oldContact; message.Instance = oldMessage })
+	m := &message.Message{Id: 9007199254740993, Type: message.TypeAppFileAttach, Sender: &contact.Contact{Username: "fixture-peer"}, Data: &message.Message_App{App: &message.AppData{Xml: "<msg><appmsg><type>6</type></appmsg></msg>"}}}
+	raw, _ := protojson.Marshal(m)
+	c := control.Command{ID: "9007199254740993", Target: "fixture-peer", Params: raw}
+	b, e := incomingMedia(context.Background(), c)
+	if e != nil || string(b) != "fixture-file" {
+		t.Fatal("file rejected", e)
+	}
+	c.Target = "other"
+	if _, e = incomingMedia(context.Background(), c); e == nil {
+		t.Fatal("cross-conversation file accepted")
+	}
+	c.Target = "fixture-peer"
+	c.ID = "9007199254740992"
+	if _, e = incomingMedia(context.Background(), c); e == nil {
+		t.Fatal("wrong message accepted")
+	}
+	if f.calls != 1 {
+		t.Fatal("invalid request reached downloader")
 	}
 }

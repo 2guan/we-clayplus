@@ -270,16 +270,11 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	// 归档观察器先于可消费消息的业务回调执行；入库失败阻止当前批次确认。
 	if bridge != nil {
 		ready, receive, onEvent := hooks.Ready, hooks.Message, hooks.Event
-		// 联系人增量包含明确的会话状态变化时，仅投影缓存到控制台，不重新请求微信。
+		// 联系人增量的群名、头像与会话状态都投影到控制台，不重新请求微信。
 		hooks.Event = func(e *sdkplugin.Event) error {
 			if e.GetTopic() == "contact::modify" {
-				for _, c := range e.GetChange().GetChanges() {
-					if c.GetPath() == "pinned" || c.GetPath() == "muted" || (c.GetPath() == "chatroom" || c.GetPath() == "chatroom.memberCount") {
-						if err := bridge.SyncContacts(); err != nil {
-							return err
-						}
-						break
-					}
+				if err := bridge.SyncContacts(); err != nil {
+					return err
 				}
 			}
 			if onEvent != nil {

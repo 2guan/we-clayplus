@@ -9,7 +9,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +20,11 @@ import (
 )
 
 func (s *Server) messageMediaKey(m Message) string {
-	return fmt.Sprintf("message-media:%x", sha256.Sum256([]byte(s.store.snapshot().Account.ID+"\x00"+m.Target+"\x00"+m.ID)))
+	return accountMessageMediaKey(s.store.snapshot().Account.ID, m)
+}
+
+func accountMessageMediaKey(account string, m Message) string {
+	return fmt.Sprintf("message-media:%x", sha256.Sum256([]byte(account+"\x00"+m.Target+"\x00"+m.ID)))
 }
 
 // 只有可信 SDK 接收路径调用；票据不放进浏览器状态或普通日志。
@@ -29,7 +35,9 @@ func (s *Server) RecordMedia(m Message, descriptor []byte) error {
 	if err := s.store.putSecret(s.messageMediaKey(m), string(descriptor)); err != nil {
 		return err
 	}
-	m.Content = map[string]string{"image": "[图片]", "audio": "[语音]"}[m.Kind]
+	if label := (map[string]string{"image": "[图片]", "audio": "[语音]"})[m.Kind]; label != "" {
+		m.Content = label
+	}
 	return s.Record(m)
 }
 
@@ -53,8 +61,11 @@ func (s *Server) loadMessageMedia(ctx context.Context, m Message) ([]byte, strin
 		return nil, "", fmt.Errorf("当前媒体不可用")
 	}
 	secret, err := s.store.getSecret(s.messageMediaKey(m))
+	if err != nil && m.Kind == "file" {
+		secret, err = s.fileDescriptor(m)
+	}
 	if err != nil {
-		return nil, "", fmt.Errorf("此历史媒体未保存下载票据，请重新发送图片或语音")
+		return nil, "", fmt.Errorf("此历史媒体缺少可用下载信息，请在微信中查看或重新发送")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -70,7 +81,11 @@ func (s *Server) loadMessageMedia(ctx context.Context, m Message) ([]byte, strin
 	if m.Kind == "image" && !strings.HasPrefix(mime, "image/") || m.Kind == "audio" && !(len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WAVE") {
 		return nil, "", fmt.Errorf("会话媒体类型无效")
 	}
-	path, err := s.saveMedia(data, mime)
+	cacheType := mime
+	if m.Kind == "file" {
+		cacheType = "application/octet-stream"
+	}
+	path, err := s.saveMedia(data, cacheType)
 	if err != nil {
 		return nil, "", err
 	}
@@ -127,7 +142,7 @@ func (s *Server) messageMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, m := range s.store.snapshot().Messages {
-		if m.ID != r.URL.Query().Get("id") || m.Target != r.URL.Query().Get("target") || !(m.Kind == "image" || m.Kind == "audio") {
+		if m.ID != r.URL.Query().Get("id") || m.Target != r.URL.Query().Get("target") || !(m.Kind == "image" || m.Kind == "audio" || m.Kind == "file") {
 			continue
 		}
 		data, mime, err := s.loadMessageMedia(r.Context(), m)
@@ -135,7 +150,10 @@ func (s *Server) messageMedia(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 502, err.Error())
 			return
 		}
-		if !(strings.HasPrefix(mime, "image/") && mime != "image/svg+xml" || strings.HasPrefix(mime, "audio/")) {
+		if m.Kind == "file" {
+			w.Header().Set("Content-Disposition", attachmentDisposition(m.Content))
+			mime = "application/octet-stream"
+		} else if !(strings.HasPrefix(mime, "image/") && mime != "image/svg+xml" || strings.HasPrefix(mime, "audio/")) {
 			writeError(w, 502, "媒体类型不受支持")
 			return
 		}
@@ -146,4 +164,14 @@ func (s *Server) messageMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeError(w, 404, "媒体不存在")
+}
+
+// 所有文件强制下载，文件名不允许路径或换行注入响应头。
+func attachmentDisposition(name string) string {
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	name = strings.NewReplacer("\r", "", "\n", "").Replace(name)
+	if name == "" || name == "." || name == "/" {
+		name = "attachment"
+	}
+	return mime.FormatMediaType("attachment", map[string]string{"filename": name})
 }

@@ -15,7 +15,7 @@ import { PaymentDialog } from "./PaymentDialog";
 import { MessageMenu, type MessageMenuTarget } from "./MessageMenu";
 import { StickerLibrary, StickerPicker } from "./StickerLibrary";
 import { WechatMessage } from "./WechatMessage";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MagnifyingGlass,
   ChatCircleDots,
@@ -40,10 +40,13 @@ import type { Contact, Message, PageProps } from "./types";
 import { Avatar, Empty, Modal, Toggle } from "./ui";
 import { clock, dateTime, readFile } from "./api";
 import { EmojiPicker, AttachmentPreview, VoiceComposer } from "./ChatTools";
+import { mergeFileMessages } from "./fileMessages";
+import { compareContacts, matchesContact } from "./contactSearch";
 
 // 桌面保留三栏，手机以 mobileOpen 切换列表与聊天；会话草稿按目标 ID 隔离。
 export default function Chat(props: PageProps) {
   const { state, act, notify } = props;
+  const chatMessages = useMemo(() => mergeFileMessages(state.messages), [state.messages]);
   // 分类写入地址，刷新或从外部进入公众号会话时仍落在正确列表。
   const initialParams = new URLSearchParams(location.hash.split("?")[1]);
   const [section, setSection] = useState<"chats" | "official">(() =>
@@ -89,10 +92,38 @@ export default function Chat(props: PageProps) {
   const selectedRef = useRef(selected);
   const [quote, setQuote] = useState<Message | null>(null);
   const [quotePreview, setQuotePreview] = useState<Message | null>(null);
+  const [downloads, setDownloads] = useState<Set<string>>(new Set());
+  const downloadFile = async (message: Message) => {
+    const key = `${message.target}:${message.id}`;
+    if (downloads.has(key)) return;
+    setDownloads((current) => new Set(current).add(key));
+    try {
+      const response = await fetch(
+        `/api/message-media?target=${encodeURIComponent(message.target)}&id=${encodeURIComponent(message.id)}`,
+      );
+      if (!response.ok) throw new Error("文件下载失败，请稍后重试或在微信中打开");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = message.content;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      notify("文件下载失败，请稍后重试或在微信中打开");
+    } finally {
+      setDownloads((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
   const openQuote = (message: Message) => {
-    const original = state.messages.find(
+    const original = chatMessages.find(
       (item) =>
-        item.target === message.target && item.id === message.rich?.quote_id,
+        item.target === message.target && (item.id === message.rich?.quote_id || item.displayID === message.rich?.quote_id),
     );
     if (!original || original.status === "revoked") {
       notify("引用原消息未归档或已撤回，暂时无法打开");
@@ -121,9 +152,9 @@ export default function Chat(props: PageProps) {
     .filter((c) => !!search || !!c.time || !!c.preview || c.id === selected)
     .sort(
       (a, b) =>
-        Number(b.pinned) - Number(a.pinned) || b.time.localeCompare(a.time),
+        Number(b.pinned) - Number(a.pinned) || b.time.localeCompare(a.time) || compareContacts(a, b),
     )
-    .filter((c) => `${c.name}${c.remark}${c.preview}`.includes(search));
+    .filter((c) => matchesContact(c, search, c.preview));
   const officialUnread = state.contacts
     .filter((c) => c.kind === "official")
     .reduce((total, c) => total + c.unread, 0);
@@ -138,7 +169,7 @@ export default function Chat(props: PageProps) {
         t.kind === "chat" &&
         ["queued", "running"].includes(t.status),
     );
-  const messages = state.messages
+  const messages = chatMessages
     .filter((m) => m.target === selected)
     .slice(-100);
   const group = useGroupAvatars(current?.kind === "group" ? current.id : "");
@@ -165,8 +196,10 @@ export default function Chat(props: PageProps) {
     setAvatarMenu(null);
   }, [selected]);
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [selected, messages.length]);
+    const list = end.current?.parentElement;
+    if (list) list.scrollTop = list.scrollHeight;
+    // 列表最多显示 100 条，满额后条数不变，需跟随最后一条消息更新。
+  }, [selected, messages.at(-1)?.id]);
   useEffect(() => {
     const target = new URLSearchParams(location.hash.split("?")[1]).get(
       "target",
@@ -602,7 +635,7 @@ export default function Chat(props: PageProps) {
                 {state.mock ? "以下为虚构演示消息" : "仅展示接入后的已归档消息"}
               </div>
               {messages.map((m, index) => (
-                <div key={m.id}>
+                <div key={m.displayID || m.id}>
                   {(index === 0 || index % 5 === 0) && (
                     <div className="message-time">{dateTime(m.time)}</div>
                   )}
@@ -748,13 +781,20 @@ export default function Chat(props: PageProps) {
                                 <FileText size={33} />
                                 <span>
                                   {m.content}
-                                  <small>文件附件</small>
+                                  <small>{m.rich?.description || "文件附件"}</small>
                                 </span>
-                                {m.media && (
+                                {m.rich?.status !== "uploading" && (
                                   <a
-                                    href={m.media}
-                                    download
+                                    href={`/api/message-media?target=${encodeURIComponent(m.target)}&id=${encodeURIComponent(m.id)}`}
+                                    download={m.content}
                                     aria-label="下载文件"
+                                    aria-busy={downloads.has(`${m.target}:${m.id}`)}
+                                    aria-disabled={downloads.has(`${m.target}:${m.id}`)}
+                                    title={downloads.has(`${m.target}:${m.id}`) ? "正在下载…" : "下载文件"}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      void downloadFile(m);
+                                    }}
                                   >
                                     <DownloadSimple size={20} />
                                   </a>
@@ -1129,9 +1169,14 @@ export default function Chat(props: PageProps) {
             ) : quotePreview.kind === "file" ? (
               <>
                 <p>{quotePreview.content}</p>
-                {quotePreview.media && (
-                  <a href={quotePreview.media} download>
-                    下载文件
+                {quotePreview.rich?.status !== "uploading" && (
+                  <a href={`/api/message-media?target=${encodeURIComponent(quotePreview.target)}&id=${encodeURIComponent(quotePreview.id)}`} download={quotePreview.content}
+                    aria-disabled={downloads.has(`${quotePreview.target}:${quotePreview.id}`)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void downloadFile(quotePreview);
+                    }}>
+                    {downloads.has(`${quotePreview.target}:${quotePreview.id}`) ? "正在下载…" : "下载文件"}
                   </a>
                 )}
               </>

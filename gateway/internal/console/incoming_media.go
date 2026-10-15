@@ -33,7 +33,7 @@ func incomingMedia(ctx context.Context, c control.Command) ([]byte, error) {
 	if target == self.Username {
 		target = m.GetReceiver().GetUsername()
 	}
-	if target != c.Target || strconv.FormatUint(uint64(m.GetId()), 10) != c.ID || (m.GetType().GetCode() != 3 && m.GetType().GetCode() != 34) {
+	if target != c.Target || strconv.FormatUint(uint64(m.GetId()), 10) != c.ID || (m.GetType().GetCode() != 3 && m.GetType().GetCode() != 34 && m.GetType().GetCode() != message.TypeAppFileAttach.Code) {
 		return nil, fmt.Errorf("媒体与目标会话不匹配")
 	}
 	if err := ctx.Err(); err != nil {

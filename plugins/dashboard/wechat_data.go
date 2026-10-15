@@ -9,6 +9,18 @@ import (
 	"strings"
 )
 
+// NeedsContactProfile 用于新会话的按需补齐，不在消息接收路径复制完整归档。
+func (s *Server) NeedsContactProfile(id string) bool {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	for _, c := range s.store.state.Contacts {
+		if c.ID == id {
+			return c.Name == "" || c.Name == id || c.Avatar == ""
+		}
+	}
+	return true
+}
+
 // ensureConversation 不把陌生会话冒充好友；联系人未同步也能显示已收到的消息。
 func ensureConversation(v *State, m Message) {
 	if m.Target == "" {
