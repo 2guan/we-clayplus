@@ -9,6 +9,7 @@ plugins_dir = "./runtime/gateway/plugins"
 # 保持整个 [core] 段注释时，连接已有 core。
 # [core]
 # auth_key_env = "WE_CLAY_AUTH_KEY" # 运行授权：只填环境变量名，不能填 Key
+# download_auth_base_url = "https://nww.hihfy.com/we-clay-auth" # 默认值；Key 下载 core 时调用此服务
 # repository = "we-clay/core-release"
 # version = "v0.4.5"
 # keep_alive = false # true 时必须将 data_dir 改为固定的绝对账号目录
@@ -27,7 +28,7 @@ plugins_dir = "./runtime/gateway/plugins"
 # prefix = "core"
 # endpoint = "https://oss-cn-beijing.aliyuncs.com"
 # cname = false
-# 凭据只从 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / 可选 OSS_SESSION_TOKEN 环境读取。
+# 默认用 auth_key_env 指向的 Key 换取短时下载链接；原有 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET 仍可成对使用。
 
 # Dashboard 与 AI 默认启用；Mock 只允许回环地址，运行期间不访问 core 或模型供应商。
 [console]

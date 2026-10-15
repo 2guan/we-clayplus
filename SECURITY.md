@@ -40,7 +40,7 @@ Mock 免登录演示只允许回环监听及本机 Host，使用独立 `mock.db`
 
 ## 私有 OSS
 
-OSS 下载凭据仅从环境读取；不传给 core，不写入配置与缓存回执。用户侧 RAM 权限仅需 weclay/core/* 的 GetObject。Actions 写入凭据不得分发给客户端。下载通过 HTTPS，拒绝重定向以防签名/STS 票据外泄，记录错误时不输出原始 OSS 响应或签名 URL。
+默认通过运行授权 Key 向 HTTPS 授权服务申请私有 OSS 的短时下载链接；Key 只发给授权服务，签名链接只访问配置的 OSS Bucket/Endpoint，不落盘、不传给 core。保留原有 OSS AK/SK 读取方式：凭据仅从环境读取，不传给 core，不写入配置与缓存回执；用户侧 RAM 权限仅需 weclay/core/* 的 GetObject。Actions 写入凭据不得分发给客户端。下载拒绝重定向，记录错误时不输出原始 OSS 响应或签名 URL。清单中的大小和 SHA-256 校验保持不变。
 
 ## core 运行授权
 

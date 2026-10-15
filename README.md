@@ -77,7 +77,7 @@ Run 自动下载、校验并启动指定版本的 core。数据保留在本地�
 
 ## 快速开始
 
-**准备：** Go 1.26+、私有 we-clay 仓库读取权限，已发布 core 的 OSS 只读凭据，以及 core v0.4.0 起所需的运行授权 Key。接入时不需要 core 源码。
+**准备：** Go 1.26+、私有 we-clay 仓库读取权限，以及 core v0.4.0 起所需的运行授权 Key。配置私有 OSS 下载源后，gateway 可用同一个 Key 取得短时下载链接；已有 OSS 只读 AK/SK 配置仍可使用。接入时不需要 core 源码。
 安装私有模块前设置 `GOPRIVATE=github.com/we-clay/*` 并配置 GitHub 的 Git 读取凭据；凭据不要写进 go.mod 或仓库。
 
 ### 1 · 添加依赖
@@ -152,7 +152,7 @@ func main() {
 # macOS / Linux：先确认 Actions 已完成发布 core v0.4.5
 export WE_CLAY_CORE_VERSION='v0.4.5'
 # 通过本机受信任的环境配置提供 WE_CLAY_AUTH_KEY（运行授权 Key）
-# 通过本机受信任的环境配置提供 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（只读权限）
+# 默认不需要 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET
 # 填你已有账号目录的绝对路径；新部署才选择新目录
 export WE_CLAY_DATA_DIR='/absolute/path/to/existing/core-data'
 go run .

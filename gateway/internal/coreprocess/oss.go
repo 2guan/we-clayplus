@@ -45,8 +45,12 @@ func (d downloader) ensureOSS(ctx context.Context, cfg config.CoreConfig) (strin
 	if path, err := cached(ctx, cacheDirectory(cfg, name), want); !errors.Is(err, os.ErrNotExist) {
 		return path, err
 	}
-	if os.Getenv("OSS_ACCESS_KEY_ID") == "" || os.Getenv("OSS_ACCESS_KEY_SECRET") == "" {
-		return "", errors.New("私有 OSS 下载需要 OSS_ACCESS_KEY_ID 和 OSS_ACCESS_KEY_SECRET；请配置只读凭据环境变量")
+	id, secret := os.Getenv("OSS_ACCESS_KEY_ID"), os.Getenv("OSS_ACCESS_KEY_SECRET")
+	if (id == "") != (secret == "") {
+		return "", errors.New("OSS_ACCESS_KEY_ID 和 OSS_ACCESS_KEY_SECRET 必须同时设置，或同时留空以使用授权 Key 下载")
+	}
+	if id == "" {
+		return d.ensureSignedOSS(ctx, cfg, want)
 	}
 	// 显式关闭 SDK 调试日志和重定向，签名与临时票据不输出、不转发给其他站点。
 	client := *d.client
@@ -76,27 +80,38 @@ func (d downloader) ensureOSS(ctx context.Context, cfg config.CoreConfig) (strin
 	}
 	raw, err := io.ReadAll(io.LimitReader(body, (2<<20)+1))
 	body.Close()
-	var m ossManifest
-	if err != nil || len(raw) > 2<<20 || json.Unmarshal(raw, &m) != nil || m.SchemaVersion != 1 || m.ProtocolVersion != 1 || m.Version != cfg.Version {
+	if err != nil || len(raw) > 2<<20 {
 		return "", errors.New("OSS 版本清单无效或版本/协议不匹配")
+	}
+	want, err = verifyOSSManifest(raw, cfg, d, want)
+	if err != nil {
+		return "", err
+	}
+	return saveDownload(ctx, cfg, want, func(ctx context.Context) (io.ReadCloser, error) { return fetch(ctx, name) })
+}
+
+func verifyOSSManifest(raw []byte, cfg config.CoreConfig, d downloader, want receipt) (receipt, error) {
+	var m ossManifest
+	if json.Unmarshal(raw, &m) != nil || m.SchemaVersion != 1 || m.ProtocolVersion != 1 || m.Version != cfg.Version {
+		return want, errors.New("OSS 版本清单无效或版本/协议不匹配")
 	}
 	found := false
 	seen := map[string]bool{}
 	for _, a := range m.Assets {
 		if seen[a.Name] {
-			return "", errors.New("OSS 清单包含重复附件")
+			return want, errors.New("OSS 清单包含重复附件")
 		}
 		seen[a.Name] = true
-		if a.Name != name {
+		if a.Name != want.Asset {
 			continue
 		}
 		if a.OS != d.goos || a.Arch != d.goarch || a.Size <= 0 || a.Size > maxBinarySize || !validHash(a.SHA256) {
-			return "", errors.New("OSS 当前平台附件信息无效")
+			return want, errors.New("OSS 当前平台附件信息无效")
 		}
 		want.Size, want.SHA256, found = a.Size, strings.ToLower(a.SHA256), true
 	}
 	if !found {
-		return "", fmt.Errorf("OSS 版本 %s 缺少当前平台附件 %s", cfg.Version, name)
+		return want, fmt.Errorf("OSS 版本 %s 缺少当前平台附件 %s", cfg.Version, want.Asset)
 	}
-	return saveDownload(ctx, cfg, want, func(ctx context.Context) (io.ReadCloser, error) { return fetch(ctx, name) })
+	return want, nil
 }
