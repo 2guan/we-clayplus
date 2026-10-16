@@ -312,4 +312,8 @@ test("记忆三个页签位于模型中心行为与任务之后，旧链接保�
   await expect(page.locator(".memory-page")).toContainText("长期记忆");
   await page.reload();
   await expect(page.getByRole("button",{name:"记忆设置",exact:true})).toHaveAttribute("aria-pressed","true");
+  await page.goto("/#models?settings=reply");
+  await page.getByRole("button",{name:"记忆设置",exact:true}).click();
+  await page.reload();
+  await expect(page.getByRole("button",{name:"记忆设置",exact:true})).toHaveAttribute("aria-pressed","true");
 });

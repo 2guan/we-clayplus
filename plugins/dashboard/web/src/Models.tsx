@@ -81,6 +81,7 @@ export default function Models(props: PageProps) {
     setTab(id);
     const params = new URLSearchParams(location.hash.split("?")[1]);
     params.set("tab", id);
+    params.delete("settings");
     if (!id.startsWith("memory-")) for (const key of ["target", "scope", "status", "subject", "page", "task"]) params.delete(key);
     history.replaceState(null, "", `#models?${params}`);
   };
