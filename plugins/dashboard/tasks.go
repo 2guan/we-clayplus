@@ -323,6 +323,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	used := ""
 	usedKey := ""
 	silent := false
+	outputChecked := false
 	modelFailed := false
 	autoRetries := 0
 	if len(candidates) == 0 {
@@ -350,6 +351,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	for candidateIndex := 0; candidateIndex < len(candidates); candidateIndex++ {
 		m := candidates[candidateIndex]
 		modelFailed = false
+		outputChecked = false
 		used = m.Name
 		s.updateTask(id, func(t *Task) { t.Model = used })
 		key := ""
@@ -443,6 +445,30 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		} else {
 			result, err = ai.Execute(modelCtx, config, request, s.cfg.Mock)
 		}
+		if err == nil && wechatReplySource(q.Source) && q.Kind == "chat" {
+			// 先执行不可绕过的安全检查；安全失败不能靠切换模型重试。
+			outputChecked = true
+			result, report, err = filterSafetyOutput(s.store.snapshot(), q, result, usedKey)
+			silent = report.Silent
+			if auditErr := s.recordSafety(id, q.Source, "output", report); auditErr != nil {
+				err = auditErr
+			}
+			if err != nil {
+				result = ai.Result{}
+				break
+			}
+			if !silent {
+				err = replyQualityError(result.Text)
+				if err != nil {
+					result = ai.Result{}
+					_ = s.store.change(func(v *State) error {
+						addLog(v, "WARN", "ai", "模型回复异常，未发送；任务 "+id+"，模型 "+used+"："+err.Error())
+						v.Logs[len(v.Logs)-1].Target = q.Target
+						return nil
+					})
+				}
+			}
+		}
 		modelFailed = err != nil && ctx.Err() == nil
 		// 完整流水线都失败后，才从首个模型重跑一次；总共最多两轮。
 		if modelFailed && !ai.Refused(err) && candidateIndex == len(candidates)-1 && autoRetries == 0 && (wechatReplySource(q.Source) && q.Kind == "chat" || q.Source == "reply-media" && (q.Kind == "vision" || q.Kind == "audio")) {
@@ -466,7 +492,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 
 	}
 	// 输出和工具参数先检查，再进入任何持久化或外部副作用。
-	if err == nil || q.Kind == "insight" && result.Text != "" {
+	if !outputChecked && (err == nil || q.Kind == "insight" && result.Text != "") {
 		var report safetyReport
 		var outputErr error
 		result, report, outputErr = filterSafetyOutput(s.store.snapshot(), q, result, usedKey)

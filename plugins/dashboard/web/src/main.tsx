@@ -25,7 +25,7 @@ import {
 import { WechatLogin } from "./WechatLogin";
 import type { Action, Auth, Group, PageProps, State } from "./types";
 import { request } from "./api";
-import { Avatar, Badge, Empty, Modal } from "./ui";
+import { Avatar, AvatarCacheContext, Badge, Empty, Modal } from "./ui";
 import { Contacts, Plugins, Insights, Logs, Settings } from "./Management";
 import "./styles.css";
 import { AppearancePicker, useAppearance } from "./Appearance";
@@ -353,6 +353,7 @@ function App() {
   );
   const robotName = state?.account.name?.trim();
   const robotPhoto = state?.account.photo || state?.account.avatar || "";
+  const avatarVersion=String(state?.settings["cache.avatar_version"] || "");
   useEffect(() => {
     const icon = document.createElement("link");
     icon.rel = "icon";
@@ -361,12 +362,12 @@ function App() {
     document.head.appendChild(icon);
     const image = new Image();
     if (/^https?:\/\//.test(robotPhoto)) {
-      const url = `/api/wechat-image?url=${encodeURIComponent(robotPhoto)}`;
+      const url = `/api/wechat-image?url=${encodeURIComponent(robotPhoto)}&v=${encodeURIComponent(avatarVersion)}`;
       image.onload = () => { icon.href = url; };
       image.src = url;
     }
     return () => { image.onload = null; icon.remove(); };
-  }, [robotPhoto]);
+  }, [robotPhoto,avatarVersion]);
   useEffect(() => {
     const authPage =
       previewAuth ||
@@ -478,6 +479,7 @@ function App() {
     0,
   );
   return (
+    <AvatarCacheContext.Provider value={avatarVersion}>
     <div className={`app-shell ${page === "wechat" ? "chat-shell" : ""}`}>
       <a
         className="skip-link"
@@ -762,6 +764,7 @@ function App() {
         </div>
       )}
     </div>
+    </AvatarCacheContext.Provider>
   );
 }
 createRoot(document.getElementById("root")!).render(

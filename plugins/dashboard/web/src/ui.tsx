@@ -1,7 +1,7 @@
 // 文件名：ui.tsx
 // 主要功能：提供统一的可访问弹窗、状态标签、头像、空状态与设置表单。
 // 作者：2guan
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   X,
@@ -11,6 +11,8 @@ import {
   CircleNotch,
 } from "@phosphor-icons/react";
 import type { Group, PageProps } from "./types";
+
+export const AvatarCacheContext = createContext("");
 
 export function Avatar({
   name,
@@ -28,8 +30,9 @@ export function Avatar({
   priority?: boolean;
 }) {
   const photo = /^https?:\/\//.test(src || "") ? src! : (/^https?:\/\//.test(name) ? name : "");
+  const version=useContext(AvatarCacheContext);
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [photo]);
+  useEffect(() => setFailed(false), [photo,version]);
   const colors = ["sage", "sand", "sky", "rose", "ink", "lavender"];
   const index =
     [...name].reduce((v, c) => v + c.charCodeAt(0), 0) % colors.length;
@@ -39,7 +42,7 @@ export function Avatar({
       aria-hidden="true"
     >
       {blank ? null : photo && !failed ? (
-        <img loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} src={`/api/wechat-image?url=${encodeURIComponent(photo)}`} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+        <img loading={priority ? "eager" : "lazy"} fetchPriority={priority ? "high" : "auto"} src={`/api/wechat-image?url=${encodeURIComponent(photo)}&v=${encodeURIComponent(version)}`} alt="" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
       ) : group ? (
         <span className="mini-avatars">
           {["山", "林", "禾", "序"].map((n) => (

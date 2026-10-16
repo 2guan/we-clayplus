@@ -4778,3 +4778,15 @@ button.workspace { width: 100%; }
  .report-followup textarea, .report-rebuild input { font-size:16px; }
  .report-action-row button, .insight-cache-control label, .report-attempts summary { min-height:44px; }
 }
+.cache-item-info { flex:1;min-width:0; }
+.cache-item-actions { display:flex;align-items:center;gap:24px;flex-shrink:0; }
+.cache-item-actions .button { min-width:80px; }
+.cache-amount { color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;text-align:right; }
+.cache-feedback { padding:18px 24px;color:var(--muted);font-size:12px; }
+.cache-settings > .form-error { margin:12px 24px; }
+@media(max-width:767px) {
+  .cache-item-actions { justify-content:space-between;gap:16px; }
+  .cache-item-actions .button { min-height:44px; }
+  .cache-feedback { padding:17px 18px; }
+  .cache-settings > .form-error { margin:12px 18px; }
+}

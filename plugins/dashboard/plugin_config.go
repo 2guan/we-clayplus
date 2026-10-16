@@ -320,21 +320,13 @@ func (s *Server) saveMockPlugin(doc pluginDocument, revision string) error {
 	if revision != fmt.Sprintf("%x", sha256.Sum256([]byte(current))) {
 		return fmt.Errorf("插件配置已变化，请重新读取后再保存")
 	}
-	raw, _ := json.Marshal(s.store.state)
-	var next State
-	if err = json.Unmarshal(raw, &next); err != nil {
-		return err
-	}
+	next := cloneState(s.store.state)
 	for i := range next.Plugins {
 		if next.Plugins[i].ID == doc.ID {
 			next.Plugins[i].Enabled = enabled
 		}
 	}
 	next.Revision++
-	raw, err = json.Marshal(next)
-	if err != nil {
-		return err
-	}
 	tx, err := s.store.db.Begin()
 	if err != nil {
 		return err
@@ -343,7 +335,7 @@ func (s *Server) saveMockPlugin(doc pluginDocument, revision string) error {
 	if _, err = tx.Exec("INSERT INTO documents(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", "plugin-config:"+doc.ID, doc.Text); err != nil {
 		return err
 	}
-	if _, err = tx.Exec("UPDATE documents SET body=? WHERE id='state'", raw); err != nil {
+	if err = s.store.persistState(tx, next, s.store.state); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {

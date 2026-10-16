@@ -51,6 +51,9 @@ func TestRevokeUsesPersistedReceipt(t *testing.T) {
 			if err := json.Unmarshal(raw, &loaded); err != nil {
 				t.Fatal(err)
 			}
+			if err := s.store.loadCollections(s.store.db, &loaded); err != nil {
+				t.Fatal(err)
+			}
 			// 丢弃内存状态，模拟后台重新读取持久化归档。
 			s.store.mu.Lock()
 			s.store.state = loaded

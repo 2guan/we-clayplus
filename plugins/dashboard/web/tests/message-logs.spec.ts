@@ -33,17 +33,13 @@ test("微信消息并入实时日志并可过滤搜索", async ({ page }) => {
 });
 
 test("最新记录在上，更早记录在列表末尾按需展开", async ({ page }) => {
+  const logs=Array.from({ length: 125 }, (_, index) => ({id:`fixture-log-${index}`,time:new Date(Date.parse("2026-10-14T10:00:00Z")+index*1000).toISOString(),level:"INFO",component:"test",message:`测试日志 ${index}`}));
+  await page.route("**/api/logs?**",route=>route.fulfill({json:logs}));
   await page.route("**/api/state", async (route) => {
     const response = await route.fetch();
     const state = await response.json();
     state.messages = [];
-    state.logs = Array.from({ length: 125 }, (_, index) => ({
-      id: `fixture-log-${index}`,
-      time: new Date(Date.parse("2026-10-14T10:00:00Z") + index * 1000).toISOString(),
-      level: "INFO",
-      component: "test",
-      message: `测试日志 ${index}`,
-    }));
+    state.logs = logs;
     await route.fulfill({ json: state });
   });
   await page.goto("/#logs");
@@ -58,6 +54,8 @@ test("最新记录在上，更早记录在列表末尾按需展开", async ({ pa
 });
 
 test("手机端日志行与筛选栏不会撑出页面", async ({ page }) => {
+  const log={id:"fixture-mobile-log",time:"2026-10-14T10:00:00Z",level:"ERROR",component:"test",message:"很长的日志内容".repeat(80)};
+  await page.route("**/api/logs?**",route=>route.fulfill({json:new URL(route.request().url()).searchParams.has("id")?log:[log]}));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.route("**/api/state", async (route) => {
     const response = await route.fetch();

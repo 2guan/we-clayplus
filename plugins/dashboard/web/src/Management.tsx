@@ -21,13 +21,14 @@ import {
   SlidersHorizontal,
   BookOpen,
 } from "@phosphor-icons/react";
-import type { Contact, PageProps, Plugin } from "./types";
+import type { Contact, Log, PageProps, Plugin } from "./types";
 import { Avatar, Badge, Empty, Modal, SettingsForm, Tabs, Toggle } from "./ui";
 import { TargetForm } from "./Chat";
 import { PersonPopover } from "./Moments";
 import { RoomProfile } from "./RoomProfile";
 import { ReportDetail, reportRoots, reportLatest, reportLabel, TaskBadge, TaskList } from "./ModelTasks";
 import { dateTime, download, request } from "./api";
+import { CacheSettings } from "./CacheSettings";
 
 // 联系人详情复用微信会话策略表单，避免两处编辑逻辑不一致。
 export function Contacts(props: PageProps) {
@@ -1030,10 +1031,6 @@ function logTime(value: string) {
 
 // 暂停只冻结浏览器快照，后端仍持续记录；筛选和导出始终针对同一批记录。
 export function Logs({ state, notify }: PageProps) {
-  const combined = useMemo(
-    () => messageLogs(state),
-    [state.logs, state.messages, state.contacts],
-  );
   const [limit, setLimit] = useState(100);
   const [quick, setQuick] = useState("all");
   const [level, setLevel] = useState("ALL");
@@ -1044,8 +1041,30 @@ export function Logs({ state, notify }: PageProps) {
   const [to, setTo] = useState("");
   const [order, setOrder] = useState("newest");
   const [paused, setPaused] = useState(false);
-  const [snapshot, setSnapshot] = useState(combined);
+  const [snapshot, setSnapshot] = useState<Log[]>(()=>messageLogs(state));
   const [detail, setDetail] = useState("");
+  const [stored, setStored] = useState<Log[] | null>(null);
+  const [raw, setRaw] = useState<Log | null>(null);
+  const [readError, setReadError] = useState("");
+  const [detailError,setDetailError]=useState("");
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({q: query, target});
+      request<Log[]>(`/api/logs?${params}`).then(rows => {if(active){setStored(rows);setReadError("");}}).catch(e=>{if(active)setReadError(e.message);});
+    },200);
+    return () => {active=false;clearTimeout(timer);};
+  },[state.revision,state.account.id,query,target]);
+  const combined = useMemo(() => messageLogs({...state,logs:stored || state.logs}), [stored,state.logs,state.messages,state.contacts]);
+  const storedIDs = useMemo(()=>new Set((stored || []).map(l=>l.id)),[stored]);
+  useEffect(()=>{
+    setRaw(null);
+    setDetailError("");
+    if(!detail || detail.startsWith("wechat-message:"))return;
+    let active=true;
+    request<Log>(`/api/logs?id=${encodeURIComponent(detail)}`).then(value=>{if(active)setRaw(value);}).catch(e=>{if(active)setDetailError(e.message);});
+    return ()=>{active=false;};
+  },[detail,state.account.id]);
   const source = paused ? snapshot : combined;
   const logs = useMemo(
     () => source.filter((log) => {
@@ -1060,18 +1079,19 @@ export function Logs({ state, notify }: PageProps) {
         (level === "ALL" || log.level === level) &&
         (component === "all" || log.component === component) &&
         (!from && !to || Number.isFinite(time) && time >= fromTime && time <= toTime) &&
-        (!target || (log.target || "").toLowerCase().includes(target.toLowerCase()) ||
+        (!target || storedIDs.has(log.id) || (log.target || "").toLowerCase().includes(target.toLowerCase()) ||
           log.message.toLowerCase().includes(target.toLowerCase())) &&
-        `${log.message}${log.summary || ""}${log.component}${log.target || ""}`
-          .toLowerCase().includes(query.toLowerCase());
+        (storedIDs.has(log.id) || `${log.message}${log.summary || ""}${log.component}${log.target || ""}`
+          .toLowerCase().includes(query.toLowerCase()));
     }),
-    [source, quick, level, component, target, from, to, query],
+    [source, quick, level, component, target, from, to, query,storedIDs],
   );
   // 最近的一段记录可切换正反顺序；默认最新在上，“更早记录”因此位于列表末尾。
   const recent = logs.slice(-limit);
   const visible = order === "newest" ? recent.reverse() : recent;
   const olderCount = Math.max(0, logs.length - limit);
   const selected = source.find((log) => log.id === detail);
+  const original = selected?.id.startsWith("wechat-message:") ? selected : raw?.id === selected?.id ? raw : null;
   const selectedIndex = selected ? source.indexOf(selected) : -1;
   const pending = paused ? Math.max(0, combined.length - snapshot.length) : 0;
   useEffect(() => setLimit(100), [quick, level, component, target, from, to, query]);
@@ -1086,22 +1106,23 @@ export function Logs({ state, notify }: PageProps) {
         <h1 className="page-title">实时日志</h1>
         <button
           className="button"
-          onClick={() =>
-            download(
-              "we-clay-logs.log",
-              logs
-                .map(
-                  (l) => `${l.time} ${l.level} [${l.component}] ${l.message}`,
-                )
-                .join("\n"),
-            )
-          }
+          onClick={() => void request<Log[]>("/api/logs?full=1").then(rows=>{
+            const originals=new Map(rows.map(l=>[l.id,l]));
+            const exported=logs.map(l=>{
+              if(l.id.startsWith("wechat-message:"))return l;
+              const value=originals.get(l.id);
+              if(!value)throw new Error("部分日志已清理或超出保留范围，请刷新后重新导出");
+              return value;
+            });
+            download("we-clay-logs.log",exported.map(l=>`${l.time} ${l.level} [${l.component}] ${l.message}`).join("\n"));
+          }).catch(e=>notify(e.message))}
         >
           <DownloadSimple size={16} />
           导出筛选结果
         </button>
       </div>
       <section className="panel log-panel">
+        {readError && <p className="inline-error" role="alert">{readError}</p>}
         <div className="log-quick-filters" role="group" aria-label="日志快捷筛选">
           {[["all", "全部"], ["issues", "异常"], ["wechat", "微信消息"], ["ai", "AI 与发送"]].map(([id, label]) => (
             <button key={id} aria-pressed={quick === id} onClick={() => setQuick(id)}>{label}</button>
@@ -1206,9 +1227,9 @@ export function Logs({ state, notify }: PageProps) {
             <b>{selected.level}</b>
             <span>{selected.component}</span>
           </div>
-          <pre className="log-detail-message">{selected.message}</pre>
+          <pre className="log-detail-message">{original?.message || (detailError ? `原文读取失败：${detailError}。请关闭详情后重试。` : "正在读取原文…")}</pre>
           <div className="log-detail-actions">
-            <button className="button small" onClick={() => navigator.clipboard.writeText(`${selected.time} ${selected.level} [${selected.component}] ${selected.message}`).then(() => notify("已复制记录")).catch(() => notify("复制失败，请检查浏览器剪贴板权限"))}>复制记录</button>
+            <button className="button small" disabled={!original} onClick={() => original && navigator.clipboard.writeText(`${original.time} ${original.level} [${original.component}] ${original.message}`).then(() => notify("已复制记录")).catch(() => notify("复制失败，请检查浏览器剪贴板权限"))}>复制记录</button>
             {selected.target && <a className="button small" href={`#wechat?target=${encodeURIComponent(selected.target)}`} onClick={() => setDetail("")}>打开会话 <ArrowUpRight size={14} /></a>}
           </div>
           <h3 className="log-context-title">相邻记录</h3>
@@ -1229,7 +1250,7 @@ export function Settings(props: PageProps) {
   const { state, schema, act, notify, user } = props;
   const [tab, setTab] = useState(() => {
     const requested = new URLSearchParams(location.hash.split("?")[1]).get("tab");
-    return requested && (schema.some((g) => g.area === "system" && g.id === requested) || ["users", "history"].includes(requested)) ? requested : "brand";
+    return requested && (schema.some((g) => g.area === "system" && g.id === requested) || ["users", "history","cache"].includes(requested)) ? requested : "brand";
   });
   const [newUser, setNewUser] = useState(false);
   const [name, setName] = useState("");
@@ -1246,6 +1267,7 @@ export function Settings(props: PageProps) {
       <Tabs
         items={[
           ...system.map((g): [string, string] => [g.id, g.title]),
+          ["cache", "缓存清理"],
           ["users", "用户与权限"],
           ["history", "配置历史"],
         ]}
@@ -1256,6 +1278,7 @@ export function Settings(props: PageProps) {
         }}
       />
       <div className="settings-content">
+        {tab === "cache" && <CacheSettings {...props}/>}
         {system
           .filter((g) => g.id === tab)
           .map((g) => (

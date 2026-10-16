@@ -33,6 +33,11 @@ func TestPaymentArchiveReadOnly(t *testing.T) {
 	if json.Unmarshal(raw, &st.state) != nil {
 		t.Fatal("状态格式错误")
 	}
+	if storageVersion(raw) == stateStorageVersion {
+		if e = st.loadCollections(db, &st.state); e != nil {
+			t.Fatal("无法读取分表归档")
+		}
+	}
 	s := &Server{store: st}
 	total, complete := 0, 0
 	for _, m := range st.state.Messages {

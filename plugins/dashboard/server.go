@@ -28,6 +28,7 @@ import (
 var assets embed.FS
 
 type Server struct {
+	cacheMu         sync.Mutex
 	reportMu        sync.Mutex
 	reportCacheMu   sync.Mutex // ponytail: 单实例串行补取缓存；并发量增加时改为按联系人加锁。
 	resendMu        sync.Mutex // 重发互斥，避免重复点击产生多次发送。
@@ -173,6 +174,10 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		switch r.URL.Path {
+		case "/api/cache":
+			s.cacheAPI(w, r, u)
+		case "/api/logs":
+			s.logsAPI(w, r, u)
 		case "/api/reports", "/api/reports/action", "/api/reports/cache":
 			s.reportsAPI(w, r, u)
 		case "/api/memory", "/api/memory/source", "/api/memory/history", "/api/memory/preview":
@@ -231,6 +236,10 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 			state := s.store.snapshot()
+			// 全局刷新只携带近期摘要；日志页面独立查询，详情才读取原文。
+			if len(state.Logs) > 100 {
+				state.Logs = state.Logs[len(state.Logs)-100:]
+			}
 			state.Tasks = slices.DeleteFunc(state.Tasks, func(t Task) bool { return t.Status == "deleted" })
 			state.Users = []User{}
 			if u.Role != "admin" {

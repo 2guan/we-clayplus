@@ -23,7 +23,7 @@ import (
 
 type store struct {
 	accountEpoch uint64
-	mu           sync.Mutex
+	mu           sync.RWMutex
 	db           *sql.DB
 	state        State
 	key          []byte
@@ -51,6 +51,9 @@ func openStore(dir string, mock bool) (*store, error) {
 		return fail(err)
 	}
 	s := &store{db: db, state: initialState(mock)}
+	if err = s.initStateRows(); err != nil {
+		return fail(err)
+	}
 	keyPath := filepath.Join(dir, "credential.key")
 	s.key, err = os.ReadFile(keyPath)
 	if os.IsNotExist(err) {
@@ -81,6 +84,14 @@ func openStore(dir string, mock bool) (*store, error) {
 		s.state.Policies = nil
 		if err = json.Unmarshal(raw, &s.state); err != nil {
 			return fail(fmt.Errorf("控制台数据损坏：%w", err))
+		}
+		if storageVersion(raw) > stateStorageVersion {
+			return fail(fmt.Errorf("控制台存储版本高于当前程序，请使用升级后的程序"))
+		}
+		if storageVersion(raw) == stateStorageVersion {
+			if err = s.loadCollections(db, &s.state); err != nil {
+				return fail(err)
+			}
 		}
 	} else if err != sql.ErrNoRows {
 		return fail(err)
@@ -200,52 +211,55 @@ func openStore(dir string, mock bool) (*store, error) {
 	if err = s.saveLocked(); err != nil {
 		return fail(err)
 	}
+	compactLogs(&s.state)
 	return s, nil
 }
 func (s *store) saveLocked() error {
-	raw, err := json.Marshal(s.state)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec("INSERT INTO documents(id,body) VALUES('state',?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", raw)
-	return err
+	defer tx.Rollback()
+	if err = s.persistState(tx, s.state, State{}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // change 先复制工作状态，只有数据库提交成功才发布，避免内存与磁盘分叉。
 func (s *store) change(fn func(*State) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	raw, _ := json.Marshal(s.state)
-	var next State
-	if err := json.Unmarshal(raw, &next); err != nil {
-		return err
-	}
+	next := cloneState(s.state)
 	if err := fn(&next); err != nil {
 		return err
 	}
 	next.Revision++
-	raw, err := json.Marshal(next)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	if _, err = s.db.Exec("UPDATE documents SET body=? WHERE id='state'", raw); err != nil {
+	defer tx.Rollback()
+	if err = s.persistState(tx, next, s.state); err != nil {
 		return err
 	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	compactLogs(&next)
 	s.state = next
 	return nil
 }
 func (s *store) snapshot() State {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	raw, _ := json.Marshal(s.state)
-	var v State
-	_ = json.Unmarshal(raw, &v)
+	s.mu.RLock()
+	v := cloneState(s.state)
+	v.AccountEpoch = s.accountEpoch
+	s.mu.RUnlock()
 	// 仅在读取副本时解析继承状态，避免写回后丢失“跟随默认”的语义。
 	for i := range v.Contacts {
 		classifyEnterpriseContact(&v.Contacts[i])
 	}
 	resolveReplyModes(&v)
-	v.AccountEpoch = s.accountEpoch
 	return v
 }
 func (s *store) putSecret(id, value string) error {
@@ -303,14 +317,7 @@ func archive(v State) accountArchive {
 func (s *store) switchAccount(a Account) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	raw, err := json.Marshal(s.state)
-	if err != nil {
-		return err
-	}
-	var next State
-	if err = json.Unmarshal(raw, &next); err != nil {
-		return err
-	}
+	next := cloneState(s.state)
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -323,14 +330,22 @@ func (s *store) switchAccount(a Account) error {
 				next.Tasks[i].Error = "账号已切换，旧任务已取消"
 			}
 		}
-		raw, err = json.Marshal(archive(next))
+		if err = s.saveCollections(tx, next, s.state); err != nil {
+			return err
+		}
+		data := archive(next)
+		data.Contacts, data.Messages, data.Moments, data.Tasks, data.Logs = nil, nil, nil, nil, nil
+		raw, err := json.Marshal(struct {
+			accountArchive
+			Version int `json:"storage_version"`
+		}{data, stateStorageVersion})
 		if err != nil {
 			return err
 		}
 		if _, err = tx.Exec("INSERT INTO documents(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", "account:"+next.Account.ID, raw); err != nil {
 			return err
 		}
-		data := archive(initialState(false))
+		data = archive(initialState(false))
 		err = tx.QueryRow("SELECT body FROM documents WHERE id=?", "account:"+a.ID).Scan(&raw)
 		if err == nil {
 			if err = json.Unmarshal(raw, &data); err != nil {
@@ -338,6 +353,16 @@ func (s *store) switchAccount(a Account) error {
 			}
 		} else if err != sql.ErrNoRows {
 			return err
+		}
+		if err == nil && storageVersion(raw) > stateStorageVersion {
+			return fmt.Errorf("账号归档存储版本高于当前程序")
+		}
+		if err == nil && storageVersion(raw) == stateStorageVersion {
+			loaded := State{Account: a}
+			if err = s.loadCollections(tx, &loaded); err != nil {
+				return err
+			}
+			data.Contacts, data.Messages, data.Moments, data.Tasks, data.Logs = loaded.Contacts, loaded.Messages, loaded.Moments, loaded.Tasks, loaded.Logs
 		}
 		next.Contacts = data.Contacts
 		next.Messages = data.Messages
@@ -349,11 +374,7 @@ func (s *store) switchAccount(a Account) error {
 	}
 	next.Account = a
 	next.Revision++
-	raw, err = json.Marshal(next)
-	if err != nil {
-		return err
-	}
-	if _, err = tx.Exec("UPDATE documents SET body=? WHERE id='state'", raw); err != nil {
+	if err = s.persistState(tx, next, s.state); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -362,6 +383,7 @@ func (s *store) switchAccount(a Account) error {
 	if s.state.Account.ID != a.ID {
 		s.accountEpoch++
 	}
+	compactLogs(&next)
 	s.state = next
 	return nil
 }
