@@ -41,7 +41,11 @@ type InputImage struct {
 	Data  string `json:"data"`
 }
 type Request struct {
-	Images []InputImage `json:"images,omitempty"`
+	AccountEpoch   uint64            `json:"-"`
+	EvidenceHashes map[string]string `json:"-"`
+	AccountID      string            `json:"-"`
+	Conversation   *Conversation     `json:"-"`
+	Images         []InputImage      `json:"images,omitempty"`
 	// 来源、上下文身份与检查状态仅由服务端构造，HTTP 客户端不能伪造。
 	InputID   string                   `json:"-"` // 当前入站媒体的归档标识，仅服务端赋值。
 	InputKind string                   `json:"-"`
@@ -98,12 +102,20 @@ func Retryable(err error) bool {
 
 // Execute 的 Mock 分支位于任何网络与媒体读取之前，可通过测试证明不会外发。
 func Execute(ctx context.Context, c Config, r Request, mock bool) (Result, error) {
-	return execute(ctx, c, r, mock, nil)
+	result, err := execute(ctx, c, r, mock, nil)
+	if r.Kind == "insight" {
+		return checkResult(result, err)
+	}
+	return result, err
 }
 
 // ExecuteStream 为洞察报告提供模型增量；其他既有调用仍走 Execute。
 func ExecuteStream(ctx context.Context, c Config, r Request, mock bool, onText func(string)) (Result, error) {
-	return execute(ctx, c, r, mock, onText)
+	result, err := execute(ctx, c, r, mock, onText)
+	if r.Kind == "insight" {
+		return checkResult(result, err)
+	}
+	return result, err
 }
 
 func execute(ctx context.Context, c Config, r Request, mock bool, onText func(string)) (Result, error) {
@@ -190,7 +202,29 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 			}
 			content = parts
 		}
-		body = map[string]any{"model": c.Model, "messages": []any{map[string]any{"role": "system", "content": r.System}, map[string]any{"role": "user", "content": content}}, "max_tokens": c.MaxOutput}
+		messages := []any{map[string]any{"role": "system", "content": r.System}}
+		for _, turn := range ConversationMessages(r) {
+			var part any = turn.Text
+			if turn.Current {
+				if r.Conversation != nil {
+					if r.Kind == "vision" {
+						content = []any{map[string]any{"type": "text", "text": turn.Text}, map[string]any{"type": "image_url", "image_url": map[string]string{"url": "data:" + r.MIME + ";base64," + r.Media}}}
+					} else {
+						content = turn.Text
+					}
+					if len(r.Images) > 0 {
+						parts := []any{map[string]any{"type": "text", "text": turn.Text}}
+						for _, im := range r.Images {
+							parts = append(parts, map[string]any{"type": "text", "text": im.Label}, map[string]any{"type": "image_url", "image_url": map[string]string{"url": "data:" + im.MIME + ";base64," + im.Data}})
+						}
+						content = parts
+					}
+				}
+				part = content
+			}
+			messages = append(messages, map[string]any{"role": turn.Role, "content": part})
+		}
+		body = map[string]any{"model": c.Model, "messages": messages, "max_tokens": c.MaxOutput}
 		parameters := body.(map[string]any)
 		if len(r.Tools) > 0 {
 			tools := []any{}
@@ -298,7 +332,9 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 	var v struct {
 		Text    string `json:"text"`
 		Choices []struct {
-			Message struct {
+			FinishReason string `json:"finish_reason"`
+			Message      struct {
+				Refusal string `json:"refusal"`
 				Content string `json:"content"`
 				Calls   []struct {
 					Function struct {
@@ -322,6 +358,11 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 	result := Result{Text: v.Text, InputTokens: v.Usage.Input, OutputTokens: v.Usage.Output}
 	if len(v.Choices) > 0 {
 		result.Text = v.Choices[0].Message.Content
+		if r.Kind == "insight" || v.Choices[0].FinishReason == "content_filter" || v.Choices[0].Message.Refusal != "" {
+			if rejected, refusalErr := checkRefusal(result, v.Choices[0].FinishReason, v.Choices[0].Message.Refusal); refusalErr != nil {
+				return rejected, refusalErr
+			}
+		}
 		for _, call := range v.Choices[0].Message.Calls {
 			result.ToolCalls = append(result.ToolCalls, ToolCall{Name: call.Function.Name, Arguments: call.Function.Arguments})
 		}
@@ -352,7 +393,7 @@ func streamChatCompletions(ctx context.Context, endpoint, key string, body []byt
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: debugTransport{}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return Result{}, fmt.Errorf("模型连接失败或超时：%w", safeConnectionError(err))
@@ -368,6 +409,7 @@ func streamChatCompletions(ctx context.Context, endpoint, key string, body []byt
 	var result Result
 	var total int64
 	var finishReason string
+	var refusalText string
 	done := false
 	for {
 		line, readErr := reader.ReadString('\n')
@@ -385,6 +427,7 @@ func streamChatCompletions(ctx context.Context, endpoint, key string, body []byt
 			var chunk struct {
 				Choices []struct {
 					Delta struct {
+						Refusal string `json:"refusal"`
 						Content string `json:"content"`
 					} `json:"delta"`
 					FinishReason string `json:"finish_reason"`
@@ -399,6 +442,7 @@ func streamChatCompletions(ctx context.Context, endpoint, key string, body []byt
 				result.OutputTokens = chunk.Usage.Output
 				if len(chunk.Choices) > 0 {
 					choice := chunk.Choices[0]
+					refusalText += choice.Delta.Refusal
 					if choice.FinishReason != "" {
 						finishReason = choice.FinishReason
 					}
@@ -413,8 +457,14 @@ func streamChatCompletions(ctx context.Context, endpoint, key string, body []byt
 			if errors.Is(readErr, io.EOF) {
 				break
 			}
-			return Result{}, fmt.Errorf("读取模型流失败：%w", safeConnectionError(readErr))
+			if errors.Is(readErr, context.DeadlineExceeded) {
+				return result, fmt.Errorf("读取模型流超时，报告可能不完整；可在模型中心提高超时时间后重试：%w", safeConnectionError(readErr))
+			}
+			return result, fmt.Errorf("读取模型流失败，报告可能不完整：%w", safeConnectionError(readErr))
 		}
+	}
+	if rejected, refusalErr := checkRefusal(result, finishReason, refusalText); refusalErr != nil {
+		return rejected, refusalErr
 	}
 	if finishReason == "length" {
 		return result, fmt.Errorf("模型输出达到 Token 上限，报告可能不完整；请提高该模型的最大输出 Token 后重试")
@@ -439,7 +489,7 @@ func postSSE(ctx context.Context, endpoint string, body []byte, headers map[stri
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: debugTransport{}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("模型连接失败或超时：%w", safeConnectionError(err))
@@ -486,7 +536,7 @@ func request(ctx context.Context, endpoint, key, contentType string, body []byte
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: debugTransport{}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("模型连接失败或超时：%w", safeConnectionError(err))
@@ -496,8 +546,14 @@ func request(ctx context.Context, endpoint, key, contentType string, body []byte
 		return nil, "", &HTTPError{resp.StatusCode}
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (32<<20)+1))
-	if err != nil || len(raw) > 32<<20 {
-		return nil, "", fmt.Errorf("模型响应读取失败或超过 32 MB")
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, "", fmt.Errorf("模型响应读取超时：%w", context.DeadlineExceeded)
+		}
+		return nil, "", fmt.Errorf("模型响应读取失败：%w", safeConnectionError(err))
+	}
+	if len(raw) > 32<<20 {
+		return nil, "", fmt.Errorf("模型响应超过 32 MB")
 	}
 	return raw, resp.Header.Get("Content-Type"), nil
 }
@@ -512,7 +568,28 @@ func gemini(ctx context.Context, c Config, r Request, onText func(string)) (Resu
 	for _, im := range r.Images {
 		parts = append(parts, map[string]string{"text": im.Label}, map[string]any{"inline_data": map[string]string{"mime_type": im.MIME, "data": im.Data}})
 	}
-	body := map[string]any{"contents": []any{map[string]any{"role": "user", "parts": parts}}, "system_instruction": map[string]any{"parts": []any{map[string]string{"text": r.System}}}, "generationConfig": map[string]any{"maxOutputTokens": c.MaxOutput}}
+	contents := []any{}
+	for _, turn := range ConversationMessages(r) {
+		role := "user"
+		if turn.Role == "assistant" {
+			role = "model"
+		}
+		p := []any{map[string]string{"text": turn.Text}}
+		if turn.Current {
+			if r.Conversation == nil {
+				p = parts
+			} else {
+				if r.Media != "" {
+					p = append(p, map[string]any{"inline_data": map[string]string{"mime_type": r.MIME, "data": r.Media}})
+				}
+				for _, im := range r.Images {
+					p = append(p, map[string]string{"text": im.Label}, map[string]any{"inline_data": map[string]string{"mime_type": im.MIME, "data": im.Data}})
+				}
+			}
+		}
+		contents = append(contents, map[string]any{"role": role, "parts": p})
+	}
+	body := map[string]any{"contents": contents, "system_instruction": map[string]any{"parts": []any{map[string]string{"text": r.System}}}, "generationConfig": map[string]any{"maxOutputTokens": c.MaxOutput}}
 	generation := body["generationConfig"].(map[string]any)
 	if c.Temperature != nil {
 		generation["temperature"] = *c.Temperature
@@ -600,7 +677,24 @@ func anthropic(ctx context.Context, c Config, r Request, onText func(string)) (R
 		content = append(content, map[string]string{"type": "text", "text": im.Label}, map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": im.MIME, "data": im.Data}})
 	}
 	content = append(content, map[string]string{"type": "text", "text": r.Prompt})
-	body := map[string]any{"model": c.Model, "max_tokens": c.MaxOutput, "system": r.System, "messages": []any{map[string]any{"role": "user", "content": content}}}
+	messages := []any{}
+	for _, turn := range ConversationMessages(r) {
+		p := []any{map[string]string{"type": "text", "text": turn.Text}}
+		if turn.Current {
+			if r.Conversation == nil {
+				p = content
+			} else {
+				if r.Media != "" {
+					p = append(p, map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": r.MIME, "data": r.Media}})
+				}
+				for _, im := range r.Images {
+					p = append(p, map[string]string{"type": "text", "text": im.Label}, map[string]any{"type": "image", "source": map[string]string{"type": "base64", "media_type": im.MIME, "data": im.Data}})
+				}
+			}
+		}
+		messages = append(messages, map[string]any{"role": turn.Role, "content": p})
+	}
+	body := map[string]any{"model": c.Model, "max_tokens": c.MaxOutput, "system": r.System, "messages": messages}
 	if c.Thinking == "on" {
 		if c.MaxOutput <= 1024 {
 			return Result{}, fmt.Errorf("Anthropic 思考模式需要最大输出大于 1024")

@@ -15,6 +15,9 @@ import (
 )
 
 func validateModel(m Model) error {
+	if m.ContextTokens < 0 || m.ContextTokens > 2000000 {
+		return fmt.Errorf("上下文预算应为 0–2000000 Token；0 继承全局")
+	}
 	if m.Timeout < 0 || m.Timeout > 600 || m.Context < 0 || m.Context > 500 || m.MaxOutput < 0 || m.MaxOutput > 32768 {
 		return fmt.Errorf("超时应为 0–600 秒，上下文 0–500 条，最大输出 0–32768；0 继承全局")
 	}

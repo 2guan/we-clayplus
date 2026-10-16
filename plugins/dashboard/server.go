@@ -28,6 +28,8 @@ import (
 var assets embed.FS
 
 type Server struct {
+	reportMu        sync.Mutex
+	reportCacheMu   sync.Mutex // ponytail: 单实例串行补取缓存；并发量增加时改为按联系人加锁。
 	resendMu        sync.Mutex // 重发互斥，避免重复点击产生多次发送。
 	momentPublishMu sync.Mutex // 合并人工重复点击，避免并行发布。
 	businessMu      sync.Mutex
@@ -74,6 +76,19 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 	}
 	ctx, cancel := context.WithCancel(parent)
 	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), startedAt: time.Now(), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
+	if host != nil {
+		s.host = debugHost{Host: host, s: s}
+	}
+	if err = s.restoreReportRefusals(); err != nil {
+		cancel()
+		st.db.Close()
+		return nil, err
+	}
+	if err = s.restoreReplyRetries(); err != nil {
+		cancel()
+		st.db.Close()
+		return nil, err
+	}
 	if err = s.restoreFileArchive(); err == nil {
 		err = s.initBehaviors()
 	}
@@ -158,6 +173,14 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		switch r.URL.Path {
+		case "/api/reports", "/api/reports/action", "/api/reports/cache":
+			s.reportsAPI(w, r, u)
+		case "/api/memory", "/api/memory/source", "/api/memory/history", "/api/memory/preview":
+			s.memoryAPI(w, r, u)
+		case "/api/memory/scans":
+			s.memoryScanAPI(w, r, u)
+		case "/api/memory/trace":
+			s.replyTraceAPI(w, r, u)
 		case "/api/room":
 			s.roomAPI(w, r)
 		case "/api/person":
@@ -211,6 +234,8 @@ func (s *Server) Handler() http.Handler {
 			state.Tasks = slices.DeleteFunc(state.Tasks, func(t Task) bool { return t.Status == "deleted" })
 			state.Users = []User{}
 			if u.Role != "admin" {
+				// 调试原文可能包含完整人设与跨条资料，只向管理员提供。
+				state.Logs = slices.DeleteFunc(state.Logs, func(v Record) bool { return v.Component == "debug" })
 				// 防护自定义规则与会话覆盖仅通过管理员配置接口提供。
 				for key := range state.Settings {
 					if strings.HasPrefix(key, "prompt_guard.") || strings.HasPrefix(key, "context_cleaner.") || isBusinessPlugin(strings.SplitN(key, ".", 2)[0]) {
@@ -505,6 +530,14 @@ func addLog(v *State, level, component, text string) {
 	}
 }
 func (s *Server) SetAccount(a Account) error {
+	if previous := s.store.snapshot().Account.ID; previous != "" && a.ID != "" && previous != a.ID {
+		// 切回同一账号也不能复活旧任务；取消令牌比账号ID比较更强。
+		s.taskMu.Lock()
+		for _, cancel := range s.taskCancel {
+			cancel()
+		}
+		s.taskMu.Unlock()
+	}
 	err := s.store.switchAccount(a)
 	if err == nil {
 		err = s.restoreFileArchive()
@@ -562,20 +595,39 @@ func (s *Server) SetContacts(contacts []Contact) error {
 
 // Record 在 ACK 之前持久化去重记录；生成任务异步执行，不阻塞微信事件流。
 func (s *Server) Record(m Message) error {
+	account := s.store.snapshot().Account.ID
+	if !m.Self && m.SenderID == "" {
+		for _, c := range s.store.snapshot().Contacts {
+			if c.ID == m.Target && c.Kind == "friend" {
+				m.SenderID = m.Target
+				break
+			}
+		}
+	}
 	if m.Kind == "system" {
 		if id, content, ok := parseRevokeNotice(m.Content); ok && id != "" {
-			updated := false
 			err := s.store.change(func(v *State) error {
-				updated = applyRevokeNotice(v, id, content)
+				if v.Account.ID != account {
+					return fmt.Errorf("账号已切换，停止旧消息归档")
+				}
+				if account != "" {
+					if e := s.store.recordMemoryRevokeLocked(account, m.Target, id, m.ID); e != nil {
+						return e
+					}
+				}
+				applyRevokeNotice(v, m.Target, id, content)
 				return nil
 			})
 			if err != nil {
 				return err
 			}
-			if updated {
-				s.notify()
-				return nil
+			if account != "" {
+				if err = s.recordMemoryArchive(account, m); err != nil {
+					return err
+				}
 			}
+			s.notify()
+			return nil
 		}
 	}
 	var keep bool
@@ -588,7 +640,39 @@ func (s *Server) Record(m Message) error {
 		return err
 	}
 	added := false
+	deleted := false
 	err := s.store.change(func(v *State) error {
+		if v.Account.ID != account {
+			return fmt.Errorf("账号已切换，停止旧消息归档")
+		}
+		if account != "" {
+			if m.Rich != nil && m.Rich.QuoteID != "" {
+				removed, e := s.store.memoryDeletedLocked(account, m.Target, m.Rich.QuoteID)
+				if e != nil {
+					return e
+				}
+				revoked, e := s.store.memoryRevokedLocked(account, m.Target, m.Rich.QuoteID)
+				if e != nil {
+					return e
+				}
+				if removed || revoked {
+					m.Rich.QuoteUnavailable, m.Rich.Quote = true, ""
+				}
+			}
+			var e error
+			deleted, e = s.store.memoryDeletedLocked(account, m.Target, m.ID)
+			if e != nil || deleted {
+				return e
+			}
+			revoked, e := s.store.memoryRevokedLocked(account, m.Target, m.ID)
+			if e != nil {
+				return e
+			}
+			if revoked {
+				m.Status = "revoked_by_other"
+				m.Content = "[消息已撤回]"
+			}
+		}
 		for _, old := range v.Messages {
 			if old.ID == m.ID && old.Target == m.Target {
 				return nil
@@ -615,7 +699,22 @@ func (s *Server) Record(m Message) error {
 	if err != nil {
 		return err
 	}
+	if deleted {
+		return nil
+	}
+	// 归档索引可在事件重放时补写；只有首次接收才执行记忆提取和回复。
+	if account != "" {
+		if err = s.recordMemoryArchive(account, m); err != nil {
+			return err
+		}
+	}
 	if added {
+		if err = s.rememberExplicit(m); err != nil {
+			_ = s.store.change(func(v *State) error {
+				addLog(v, "WARN", "memory", "明确记忆请求未生效，请在AI记忆页核对")
+				return nil
+			})
+		}
 		s.notify()
 		if !s.dispatchBusiness(m) {
 			s.autoReply(m)

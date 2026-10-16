@@ -19,7 +19,16 @@ import (
 	"github.com/we-clay/we-clay/sdk/message"
 )
 
-func TestNewGroupProfileSync(t *testing.T) {
+func TestNewConversationProfileSync(t *testing.T) {
+	for _, tc := range []struct{ name, id, second, kind string }{
+		{"group", "fixture-room@chatroom", "fixture-second@chatroom", "group"},
+		{"friend", "fixture-peer", "fixture-second", "friend"},
+	} {
+		t.Run(tc.name, func(t *testing.T) { testNewProfileSync(t, tc.id, tc.second, tc.kind) })
+	}
+}
+
+func testNewProfileSync(t *testing.T, id, second, kind string) {
 	var calls atomic.Int32
 	started, release := make(chan struct{}), make(chan struct{})
 	core := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +66,7 @@ func TestNewGroupProfileSync(t *testing.T) {
 	contactability.SetSelf(&contact.SelfInfo{Username: "fixture-self"})
 	defer contactability.SetSelf(nil)
 	// 预先缓存查询失败；后续后台刷新必须能越过此失败缓存。
-	if contact.Instance.Get("fixture-room@chatroom") != nil {
+	if contact.Instance.Get(id) != nil {
 		t.Fatal("expected initial cache miss")
 	}
 	s, err := dashboard.Start(context.Background(), control.Config{Disabled: true, DataDir: t.TempDir()}, nil)
@@ -74,7 +83,7 @@ func TestNewGroupProfileSync(t *testing.T) {
 		}
 		b.WaitContactSync()
 	}()
-	msg := &message.Message{Id: 1, Type: message.TypeText, Sender: &contact.Contact{Username: "fixture-room@chatroom"}, Receiver: &contact.Contact{Username: "fixture-self"}, Content: "测试消息"}
+	msg := &message.Message{Id: 1, Type: message.TypeText, Sender: &contact.Contact{Username: id}, Receiver: &contact.Contact{Username: "fixture-self"}, Content: "测试消息"}
 	if err := b.Record(msg); err != nil {
 		t.Fatal(err)
 	}
@@ -83,17 +92,17 @@ func TestNewGroupProfileSync(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("资料查询未触发")
 	}
-	// 连续消息不重复查询；查询期间到达的另一个新群不能丢失。
+	// 连续消息不重复查询；查询期间到达的另一个新会话不能丢失。
 	for i := 0; i < 5; i++ {
-		b.startGroupSync("fixture-room@chatroom")
+		b.startProfileSync(id)
 	}
-	b.startGroupSync("fixture-second@chatroom")
+	b.startProfileSync(second)
 	close(release)
 	released = true
 	deadline := time.Now().Add(3 * time.Second)
-	for s.NeedsContactProfile("fixture-room@chatroom") || s.NeedsContactProfile("fixture-second@chatroom") {
+	for s.NeedsContactProfile(id) || s.NeedsContactProfile(second) {
 		if time.Now().After(deadline) {
-			t.Fatal("群资料未投影到页面")
+			t.Fatal("联系人资料未投影到页面")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -113,9 +122,16 @@ func TestNewGroupProfileSync(t *testing.T) {
 	if json.Unmarshal(w.Body.Bytes(), &st) != nil {
 		t.Fatal("invalid state")
 	}
+	found := false
 	for _, c := range st.Contacts {
-		if c.ID == "fixture-room@chatroom" && (c.Name != "测试群" || c.Avatar == "" || c.Preview != "测试消息" || c.Unread != 1) {
-			t.Fatal("同步丢失群资料或会话状态")
+		if c.ID == id {
+			found = true
 		}
+		if c.ID == id && (c.Kind != kind || c.Name != "测试群" || c.Avatar == "" || c.Preview != "测试消息" || c.Unread != 1) {
+			t.Fatal("同步丢失联系人分类、资料或会话状态")
+		}
+	}
+	if !found {
+		t.Fatal("新联系人未进入页面数据")
 	}
 }

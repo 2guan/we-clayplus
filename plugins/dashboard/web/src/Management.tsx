@@ -2,7 +2,6 @@
 // 主要功能：实现通讯录、插件管理、洞察、日志和系统设置等控制台管理页面。
 // 作者：2guan
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadMomentAnalysis } from "./momentAnalysis";
 import { messageLogs } from "./messageLogs";
 import { PluginConfiguration } from "./PluginConfiguration";
 import { BusinessWorkbench, businessIDs } from "./BusinessWorkbench";
@@ -27,7 +26,7 @@ import { Avatar, Badge, Empty, Modal, SettingsForm, Tabs, Toggle } from "./ui";
 import { TargetForm } from "./Chat";
 import { PersonPopover } from "./Moments";
 import { RoomProfile } from "./RoomProfile";
-import { DeleteReportButton, ReportMetadata, reportLabel, TaskBadge, TaskList, TaskResult } from "./ModelTasks";
+import { ReportDetail, reportRoots, reportLatest, reportLabel, TaskBadge, TaskList } from "./ModelTasks";
 import { dateTime, download, request } from "./api";
 
 // 联系人详情复用微信会话策略表单，避免两处编辑逻辑不一致。
@@ -578,7 +577,7 @@ function localMinute(date: Date) {
 }
 
 export function Insights(props: PageProps) {
-  const { state, notify, refresh, act } = props;
+  const { state, notify, refresh } = props;
   const sortedContacts = useMemo(() => [...state.contacts].sort(compareContacts), [state.contacts]);
   const availableFor = (value: string) => sortedContacts.filter(c =>
     value === "moments" ? c.kind === "friend" : value === "group" ? c.kind === "group" : ["friend", "group"].includes(c.kind));
@@ -611,14 +610,12 @@ export function Insights(props: PageProps) {
     Record<string, string>
   >({});
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState("");
-  const [fetchedCount, setFetchedCount] = useState<number | null>(null);
-  useEffect(() => {
-    setFetchedCount(null);
-    setProgress("");
-  }, [target, range, tab, rangeMode, rangeStart, rangeEnd]);
+
+
   const [reportID, setReportID] = useState("");
-  const [streamedReport, setStreamedReport] = useState("");
+  const [refreshData,setRefreshData]=useState(false);
+ useEffect(()=>setRefreshData(false),[target,tab]);
+ const [cachedData,setCachedData]=useState<{count:number;captured?:string;complete?:boolean}|null>(null);
   const reportBodyRef = useRef<HTMLDivElement>(null);
   const followReportRef = useRef(true);
   const prompt = prompts[tab] ?? defaultInsightPrompt(tab);
@@ -658,36 +655,15 @@ export function Insights(props: PageProps) {
     Number(range) > 0
       ? Number(range)
       : 0;
-  const reports = state.tasks.filter((t) => t.kind === "insight");
+  const reports = reportRoots(state.tasks);
   const currentReports = reports.filter((t) => t.insight?.type === tab);
   const report =
     currentReports.find((t) => t.id === reportID) || currentReports.at(-1);
-  useEffect(() => {
-    setStreamedReport("");
-    if (!report || report.kind !== "insight" || !["queued", "running"].includes(report.status)) return;
-    const stream = new EventSource(`/api/task-stream?id=${encodeURIComponent(report.id)}`);
-    stream.addEventListener("delta", (event) => {
-      try {
-        const chunk = JSON.parse((event as MessageEvent<string>).data) as { text?: string };
-        if (chunk.text) setStreamedReport((current) => current + chunk.text);
-      } catch { /* 忽略格式不完整的单个增量，后续事件仍可继续渲染。 */ }
-    });
-    stream.addEventListener("snapshot", (event) => {
-      try {
-        const snapshot = JSON.parse((event as MessageEvent<string>).data) as { text?: string };
-        setStreamedReport(snapshot.text || "");
-      } catch { /* 忽略无效快照，等待下一个有效事件。 */ }
-    });
-    stream.addEventListener("done", () => {
-      stream.close();
-      void refresh();
-    });
-    return () => stream.close();
-  }, [report?.id, report?.status, refresh]);
-  useEffect(() => {
-    const body = reportBodyRef.current;
-    if (body && followReportRef.current) body.scrollTop = body.scrollHeight;
-  }, [streamedReport]);
+ useEffect(()=>{
+  let active=true;setCachedData(null);
+  if(tab==="moments" && selected)request<{count:number;captured?:string;complete?:boolean}>(`/api/reports/cache?target=${encodeURIComponent(selected.id)}`).then(value=>{if(active)setCachedData(value)}).catch(()=>{});
+  return ()=>{active=false};
+ },[tab,selected?.id,state.account.id,report?.status]);
   const byTime = tab !== "moments" && rangeMode === "time";
   const startTime = Date.parse(rangeStart);
   // 日期控件精度为分钟，包含结束分钟内的全部消息。
@@ -738,46 +714,10 @@ export function Insights(props: PageProps) {
     }
     setBusy(true);
     try {
-      const loaded =
-        tab === "moments"
-          ? await loadMomentAnalysis(selected.id, amount, setProgress)
-          : null;
-      if (loaded) setFetchedCount(loaded.items.length);
-      setProgress(
-        loaded?.skippedImages
-          ? `已跳过 ${loaded.skippedImages} 张暂不可读取的缩略图，正在提交分析…`
-          : "正在提交分析…",
-      );
-      const result = await request<{ id: string }>("/api/tasks", {
-        images: loaded?.images,
-        kind: "insight",
-        insight: { type: tab, prompt: prompt.trim() },
-        target: selected.id,
-        model: modelID || undefined,
-        prompt: `${prompt.trim()}${loaded?.skippedImages ? `\n\n图片读取说明：有 ${loaded.skippedImages} 张朋友圈缩略图无法读取，已跳过；请仅依据成功附带的图片和动态文字分析，不要推测缺失图片内容。` : ""}\n\n分析对象：${selected.name}`,
-        documents:
-          tab === "moments"
-            ? loaded!.items.map((m) => ({
-                id: m.id,
-                session: selected.id,
-                role: "user",
-                source: "document",
-                kind: "text",
-                text:
-                  [m.content, m.title, m.link].filter(Boolean).join("\n") ||
-                  "[图片动态，内容见附带缩略图]",
-                time: m.time,
-              }))
-            : messages.map((m) => ({
-                id: m.id,
-                session: selected.id,
-                role: m.self ? "assistant" : "user",
-                sender: m.sender,
-                source: "document",
-                kind: "text",
-                text: m.content,
-                time: m.time,
-              })),
+      const result=await request<{id:string}>("/api/reports",{
+        type:tab,target:selected.id,prompt:prompt.trim(),model:modelID,
+        range:byTime?{mode:"time",count:0,start:new Date(startTime).toISOString(),end:new Date(endTime).toISOString()}:{mode:"count",count:amount},
+        refresh:refreshData,
       });
       setReportID(result.id);
       await refresh();
@@ -804,7 +744,7 @@ export function Insights(props: PageProps) {
         ]}
       />
       {tab === "history" ? (
-        <TaskList {...props} state={{ ...state, tasks: reports }} reportsOnly onReportDeleted={() => setReportID("")} />
+        <TaskList {...props} state={state} reportsOnly onReportDeleted={() => setReportID("")} />
       ) : (
         <div className="insight-workspace">
           <form
@@ -1001,14 +941,14 @@ export function Insights(props: PageProps) {
                 placeholder="输入希望模型执行的完整分析提示词…"
               />
             </div>
+            {tab==="moments" && <div className="insight-cache-control">
+              <p className="muted">{cachedData?.count?`已缓存 ${cachedData.count} 条 · 采集于北京时间 ${new Date(cachedData.captured!).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai"})}`:"首次分析将读取并缓存资料，后续可直接复用。"}</p>
+              <label><input type="checkbox" checked={refreshData} onChange={e=>setRefreshData(e.target.checked)}/> 更新资料后分析（重新读取微信）</label>
+            </div>}
             <div className="insight-submit">
               <p aria-live="polite">
                 {tab === "moments" && selected
-                  ? busy
-                    ? progress
-                    : fetchedCount !== null
-                      ? `最近一次读取 ${fetchedCount} 条朋友圈`
-                      : `将读取最近 ${amount} 条朋友圈及图片缩略图`
+                  ? busy ? "正在创建任务…" : `将读取最近 ${amount} 条朋友圈及图片缩略图（优先缓存）`
                   : !selected
                     ? "请从搜索结果中选择对象"
                     : rangeError
@@ -1037,7 +977,7 @@ export function Insights(props: PageProps) {
                 <FileText size={19} />
                 分析报告
               </h2>
-              {report && <TaskBadge task={report} />}
+              {report && <TaskBadge task={reportLatest(state.tasks,report)} />}
             </div>
             {currentReports.length > 0 && (
               <div className="insight-report-tools">
@@ -1052,29 +992,7 @@ export function Insights(props: PageProps) {
                     </option>
                   ))}
                 </select>
-                {report?.status === "completed" && (
-                  <button
-                    className="icon-button"
-                    title="导出报告"
-                    aria-label="导出报告"
-                    onClick={() => download("分析报告.md", report.result, "text/markdown;charset=utf-8")}
-                  >
-                    <DownloadSimple size={18} />
-                  </button>
-                )}
-                {report && <DeleteReportButton task={report} act={act} notify={notify} onDeleted={() => setReportID("")} />}
-                {report && ["running", "queued"].includes(report.status) && (
-                  <button
-                    className="button"
-                    onClick={() =>
-                      act({ kind: "cancel-task", id: report.id }).catch((e) =>
-                        notify(e.message),
-                      )
-                    }
-                  >
-                    取消任务
-                  </button>
-                )}
+
               </div>
             )}
             <div
@@ -1086,13 +1004,7 @@ export function Insights(props: PageProps) {
               }}
             >
               {report ? (
-                <>
-                  <ReportMetadata task={report} contacts={state.contacts} notify={notify} />
-                  <TaskResult task={streamedReport ? { ...report, result: streamedReport } : report} />
-                  {report.status === "running" && streamedReport && (
-                    <p className="insight-stream-status" aria-live="polite">正在接收模型输出…</p>
-                  )}
-                </>
+                <ReportDetail task={report} {...props} onOpen={setReportID}/>
               ) : (
                 <Empty
                   title={busy ? "正在加载报告" : "等待生成报告"}

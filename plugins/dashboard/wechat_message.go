@@ -28,11 +28,12 @@ func parseRevokeNotice(raw string) (id, content string, ok bool) {
 	return id, strings.TrimSpace(notice.Body.Replaced), true
 }
 
-func applyRevokeNotice(v *State, id, content string) bool {
+func applyRevokeNotice(v *State, target, id, content string) bool {
+	scrubQuotedMessage(v, target, id)
 	content = resolveNotice(*v, Message{Kind: "system", Content: content}).Content
 	for i := range v.Messages {
 		m := &v.Messages[i]
-		if m.ID != id {
+		if m.ID != id || m.Target != target {
 			continue
 		}
 		if strings.Contains(content, "你撤回") || strings.Contains(content, "我撤回") {
@@ -44,6 +45,16 @@ func applyRevokeNotice(v *State, id, content string) bool {
 		return true
 	}
 	return false
+}
+
+func scrubQuotedMessage(v *State, target, id string) {
+	for i := range v.Messages {
+		m := &v.Messages[i]
+		if m.Target == target && m.Rich != nil && m.Rich.QuoteID == id {
+			m.Rich.Quote = ""
+			m.Rich.QuoteUnavailable = true
+		}
+	}
 }
 
 // MessageArticle 保存展示必要字段，不把原始 XML 或客户端配置传给浏览器。
@@ -191,7 +202,7 @@ func normalizeWechatArchive(v *State) {
 	for _, m := range v.Messages {
 		if m.Kind == "system" {
 			if id, content, ok := parseRevokeNotice(m.Content); ok && id != "" {
-				applyRevokeNotice(v, id, content)
+				applyRevokeNotice(v, m.Target, id, content)
 			}
 		}
 	}

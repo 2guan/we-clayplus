@@ -126,7 +126,7 @@ func videoGet(ctx context.Context, endpoint, key string, limit int64) ([]byte, s
 		return nil, "", fmt.Errorf("视频服务地址无效")
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := http.Client{Transport: debugTransport{}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", safeConnectionError(err)

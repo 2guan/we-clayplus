@@ -27,6 +27,7 @@ test("厂商模型发现、独立参数、流水线与测活", async ({ page, re
   await dialog.getByLabel("温度（留空由厂商决定）").fill("0.4");
   await dialog.getByLabel("思维链", { exact: true }).selectOption("on");
   await dialog.getByLabel("上下文条数（0 继承）").fill("20");
+  await dialog.getByLabel("上下文 Token 预算（0 继承）").fill("4096");
   await dialog.getByRole("button", { name: "保存参数", exact: true }).click();
   const state = await (await request.get("/api/state")).json();
   const model = state.models.find(
@@ -35,6 +36,8 @@ test("厂商模型发现、独立参数、流水线与测活", async ({ page, re
   expect(model.timeout).toBe(12);
   expect(model.temperature).toBe(0.4);
   expect(model.thinking).toBe("on");
+  expect(model.context).toBe(20);
+  expect(model.context_tokens).toBe(4096);
   await expect(page.locator(".vendor-model").filter({ hasText: "mock-chat" }).getByText("思维链开启", { exact: true })).toBeVisible();
   await page.getByLabel("添加流水线模型").selectOption(model.id);
   await page

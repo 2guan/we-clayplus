@@ -60,6 +60,10 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 
 	case "send-voice":
 		err = s.sendTaskVoice(r.Context(), q)
+	case "retry-reply":
+		err = s.retryReply(q.ID, q.Target)
+	case "proactive-reply":
+		err = s.proactiveReply(q.Target)
 	case "resend":
 		err = s.resend(r.Context(), q)
 	case "send":
@@ -74,7 +78,14 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 			if v.Messages[index].Status == "sending" {
 				return fmt.Errorf("发送中的消息暂不能删除")
 			}
+			if _, e := s.store.db.Exec("INSERT OR IGNORE INTO memory_deleted_sources(account,target,message_id) VALUES(?,?,?)", v.Account.ID, q.Target, q.ID); e != nil {
+				return e
+			}
 			v.Messages = slices.Delete(v.Messages, index, index+1)
+			scrubQuotedMessage(v, q.Target, q.ID)
+			if _, e := s.store.db.Exec("DELETE FROM memory_archive_events WHERE account=? AND target=? AND message_id=?", v.Account.ID, q.Target, q.ID); e != nil {
+				return e
+			}
 			for i := range v.Contacts {
 				if v.Contacts[i].ID == q.Target {
 					v.Contacts[i].Preview = ""
@@ -256,6 +267,13 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 						err = fmt.Errorf("会话设置格式无效")
 					}
 				}
+			case "memory_enabled":
+				if err = requireAdmin(u); err != nil {
+					break
+				}
+				if _, ok := val.(bool); !ok {
+					err = fmt.Errorf("会话记忆开关必须为布尔值")
+				}
 			case "pinned", "read":
 				if _, ok := val.(bool); !ok {
 					err = fmt.Errorf("会话设置格式无效")
@@ -317,7 +335,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 				v.Overrides[q.Target] = map[string]any{}
 			}
 			v.Overrides[q.Target]["memory_since"] = time.Now().Format(time.RFC3339)
-			addLog(v, "INFO", "ai", "清空会话记忆，保留聊天归档")
+			addLog(v, "INFO", "ai", "重置近期上下文，保留聊天归档和长期记忆")
 			return nil
 		})
 	case "plugin":
@@ -626,6 +644,10 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 		err = s.store.change(func(v *State) error {
 			revision, configRevision := v.Revision, v.ConfigRevision
 			if q.Kind == "mock-reset" {
+				// 重置演示时同时清除独立资料缓存和快照，避免下一轮演示复用旧数据。
+				if _, e := s.store.db.Exec("DELETE FROM secrets WHERE id LIKE 'report-source:%' OR id LIKE 'insight-cache:%' OR id LIKE 'insight-image:%'"); e != nil {
+					return e
+				}
 				// 重置演示时同时清除独立保存的插件草稿配置。
 				if _, e := s.store.db.Exec("DELETE FROM documents WHERE id LIKE 'plugin-config:%'"); e != nil {
 					return e

@@ -8,6 +8,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Field 中的范围和枚举同时用于前端展示与后端校验，不能只依赖浏览器限制。
@@ -66,12 +67,16 @@ func Schema() []Group {
 			flag("image_enabled", "允许自动生成并发送图片", "根据 image 标签调用图片流水线，每轮最多一张；需配置生图模型。", true),
 			entry("quiet", "静默时段", "例如 23:00-08:00；留空表示不启用。", ""),
 		}},
-		{"memory", "上下文与记忆", "聊天归档与 AI 记忆相互独立。", "models", false, "下次请求", []Field{
+		{"memory", "上下文与记忆", "聊天归档与 AI 记忆相互独立。模型单独配置时优先使用模型上下文参数。", "models", true, "下次请求", []Field{
+			flag("enabled", "注入已确认记忆", "仅使用来源有效且允许在当前会话使用的记忆；会话还需单独开启。", false),
+			flag("direct_enabled", "允许本人私聊明确记忆", "仅已开启记忆的私聊本人低敏偏好可以直接生效，其余内容后台审核。", false),
+			flag("scan_enabled", "允许从聊天记录抽取", "管理员手动选择会话和范围后，将资料发送给配置的模型生成候选。", false),
+			entry("timezone", "回复时区", "IANA 时区；时间由服务端生成，消息时间与请求时间分别提供。", "Asia/Shanghai"),
 			number("messages", "上下文消息数", "按会话隔离；同时受保守字符预算限制。", 40, 2, 500),
 			number("tokens", "上下文 Token 预算", "按每个 Unicode 字符最多 4 Token 保守估计，超限裁剪较早消息。", 8000, 256, 128000),
-			flag("summary", "启用历史摘要", "摘要应保留来源，不混入其他会话。", false),
-			number("summary_after", "摘要阈值 (条)", "达到阈值后产生摘要任务。", 80, 20, 1000),
-			number("retention", "记忆有效天数", "过期记忆不进入模型上下文。", 30, 1, 365),
+			flag("summary", "旧版历史摘要开关（停用）", "兼容旧配置；不会自动生成摘要或长期记忆。请使用AI记忆页面手动扫描审核。", false),
+			number("summary_after", "旧版摘要阈值（停用）", "仅兼容旧配置，不触发任务。", 80, 20, 1000),
+			number("retention", "近期对话最长回看天数", "限制普通对话选取范围；长期记忆使用各条目自身的有效期。", 30, 1, 365),
 		}},
 		{"routing", "模型与预算", "各能力独立选择路由，未配置价格时不显示虚构费用。", "models", true, "下次请求", []Field{
 			entry("chat", "对话默认模型 ID", "留空按模型列表中启用且支持对话的顺序选择。", ""),
@@ -167,6 +172,9 @@ func Schema() []Group {
 			number("reports", "报告保留 (天)", "到期删除分析报告正文。", 180, 1, 3650),
 			number("quota", "媒体容量上限 (MB)", "达到限额后停止新增缓存，不覆盖旧文件。", 1024, 10, 102400),
 		}},
+		{"logging", "调试日志", "在实时日志中查看实际模型传输和系统操作；原文仅管理员可见。", "system", true, "立即生效", []Field{
+			choice("level", "日志级别", "DEBUG 记录请求、响应原文和操作结果；INFO 关闭原文记录。密钥、票据和媒体二进制不记录。", "INFO", "INFO", "DEBUG"),
+		}},
 		{"security", "登录与安全", "会话权限由服务器执行，修改角色立即生效。", "system", true, "下次登录", []Field{
 			number("session_hours", "登录有效期 (小时)", "到期后需要重新登录。", 12, 1, 168),
 			number("login_attempts", "登录失败上限", "每个来源在 15 分钟窗口内的最大失败次数。", 10, 3, 30),
@@ -182,7 +190,7 @@ func Schema() []Group {
 	groups = append(groups, safetyGroups()...)
 	groups = append(groups, businessGroups()...)
 	// 尚未接通执行器的字段也提供完整表单，但明确标注仅预览；真实模式拒绝修改它们。
-	live := strings.Fields("reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer security.session_hours security.login_attempts")
+	live := strings.Fields("reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.enabled memory.direct_enabled memory.scan_enabled memory.timezone memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer logging.level security.session_hours security.login_attempts")
 	for i := range groups {
 		for j := range groups[i].Fields {
 			groups[i].Fields[j].Preview = groups[i].Area != "plugins" && !slices.Contains(live, groups[i].ID+"."+groups[i].Fields[j].Key)
@@ -208,6 +216,15 @@ func validateSettings(group string, values map[string]any) error {
 			continue
 		}
 		for key, value := range values {
+			if group == "memory" && key == "timezone" {
+				zone, ok := value.(string)
+				if !ok || zone == "" {
+					return fmt.Errorf("请输入有效IANA时区")
+				}
+				if _, err := time.LoadLocation(zone); err != nil {
+					return fmt.Errorf("IANA时区无效")
+				}
+			}
 			found := false
 			for _, f := range g.Fields {
 				if key != f.Key {

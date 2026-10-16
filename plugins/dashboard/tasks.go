@@ -6,6 +6,7 @@ package dashboard
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/we-clay/we-clay/plugins/ai"
-	"github.com/we-clay/we-clay/plugins/contextcleaner"
 )
 
 func (s *Server) createTask(w http.ResponseWriter, r *http.Request, u User) {
@@ -38,6 +38,10 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request, u User) {
 	if q.Kind == "insight" {
 		q.Source = "analysis"
 	}
+	// 旧入口只接受展示类型和原提示词；快照、父报告及重试关系必须由专用服务端入口建立。
+	if q.Insight != nil {
+		q.Insight = &InsightInfo{Type: q.Insight.Type, Prompt: q.Insight.Prompt}
+	}
 	// 后台测试与分析不因传入 target 而获得自动发送或工具执行权。
 	id, err := s.queueTask(q.Request, q.Insight)
 	if err != nil {
@@ -51,6 +55,10 @@ func (s *Server) queue(q ai.Request) (string, error) {
 }
 
 func (s *Server) queueTask(q ai.Request, insight *InsightInfo) (string, error) {
+	return s.queueTaskRetry(q, insight, "")
+}
+
+func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf string) (string, error) {
 	if s.cfg.DisableAI {
 		return "", fmt.Errorf("AI 已在启动配置中停用")
 	}
@@ -61,12 +69,20 @@ func (s *Server) queueTask(q ai.Request, insight *InsightInfo) (string, error) {
 		return "", fmt.Errorf("语音模式无效")
 	}
 	state := s.store.snapshot()
+	if q.AccountID != "" && q.AccountID != state.Account.ID {
+		return "", fmt.Errorf("账号已切换，停止旧任务")
+	}
+	if (q.Conversation != nil || q.Source == "memory-scan") && q.AccountEpoch != state.AccountEpoch {
+		return "", fmt.Errorf("账号会话已更新，停止旧任务")
+	}
+	q.AccountID = state.Account.ID
+	q.AccountEpoch = state.AccountEpoch
 	if insight != nil {
 		if q.Kind != "insight" || !slices.Contains([]string{"conversation", "group", "moments"}, insight.Type) || strings.TrimSpace(insight.Prompt) == "" || len(insight.Prompt) > 64<<10 {
 			return "", fmt.Errorf("分析报告类型或提示词无效")
 		}
 		// 名称从当前账号的通讯录获取，不信任客户端提供的展示名称。
-		info := InsightInfo{Type: insight.Type, Prompt: insight.Prompt}
+		info := *insight
 		for _, c := range state.Contacts {
 			if c.ID == q.Target {
 				info.TargetName = c.Name
@@ -111,7 +127,7 @@ func (s *Server) queueTask(q ai.Request, insight *InsightInfo) (string, error) {
 	today := time.Now().Format("2006-01-02")
 	count := 0
 	for _, t := range s.store.snapshot().Tasks {
-		if q.Source == "wechat" && q.Target != "" && t.Target == q.Target && (t.Status == "queued" || t.Status == "running") {
+		if wechatReplySource(q.Source) && q.Target != "" && t.Target == q.Target && (t.Status == "queued" || t.Status == "running") {
 			s.taskMu.Unlock()
 			return "", fmt.Errorf("当前会话正在处理回复，请等待完成")
 		}
@@ -131,11 +147,48 @@ func (s *Server) queueTask(q ai.Request, insight *InsightInfo) (string, error) {
 	id := randomID()
 	s.taskCancel[id] = cancel
 	t := Task{Source: q.Source, ID: id, Kind: q.Kind, Name: map[string]string{"chat": "对话测试", "vision": "图片理解", "audio": "音频识别", "video": "视频理解", "tts": "语音合成", "image": "图片生成", "video_generation": "视频生成", "insight": "会话洞察"}[q.Kind], Status: "queued", Created: time.Now().Format(time.RFC3339), Input: q.Prompt, Target: q.Target}
+	t.RetryOf = retryOf
+	if q.Source == "wechat-proactive" {
+		t.Name = "主动说一句"
+	}
+	if q.Conversation != nil {
+		t.ReplyTo = q.Conversation.Current.ID
+	}
+	if q.Source == "memory-scan" {
+		t.Name = "记忆候选抽取"
+		t.Input = "扫描资料仅用于当前任务，不在任务列表公开"
+	}
+	if insight != nil && insight.Managed && insight.RootID == "" {
+		insight.RootID = id
+	}
+	if insight != nil && insight.Question != "" && insight.TurnID == "" {
+		insight.TurnID = id
+	}
 	t.Insight = insight
 	if insight != nil {
 		t.Name = map[string]string{"conversation": "会话总结", "group": "群聊分析", "moments": "朋友圈内容"}[insight.Type]
 	}
-	if err := s.store.change(func(v *State) error { v.Tasks = append(v.Tasks, t); return nil }); err != nil {
+	if err := s.store.change(func(v *State) error {
+		if v.Account.ID != q.AccountID || s.store.accountEpoch != q.AccountEpoch {
+			return fmt.Errorf("账号已切换，请刷新后重试")
+		}
+		if retryOf != "" {
+			index := slices.IndexFunc(v.Tasks, func(old Task) bool {
+				return old.ID == retryOf && old.Target == q.Target && old.Status == "failed" && old.ReplyRetryable
+			})
+			if index < 0 {
+				return fmt.Errorf("该回复已重试或不允许重新生成，请刷新")
+			}
+			for j := index + 1; j < len(v.Tasks); j++ {
+				if v.Tasks[j].Target == q.Target && wechatReplySource(v.Tasks[j].Source) && v.Tasks[j].Kind == "chat" {
+					return fmt.Errorf("该会话已有更新的回复，请刷新")
+				}
+			}
+			v.Tasks[index].ReplyRetryable = false
+		}
+		v.Tasks = append(v.Tasks, t)
+		return nil
+	}); err != nil {
 		cancel()
 		delete(s.taskCancel, id)
 		s.taskMu.Unlock()
@@ -154,11 +207,28 @@ func (s *Server) queueTask(q ai.Request, insight *InsightInfo) (string, error) {
 		if q.Kind == "insight" {
 			defer s.finishTaskStream(id)
 		}
+		if insight != nil && insight.Managed {
+			workInfo := *insight
+			s.updateTask(id, func(t *Task) { t.Status = "running" })
+			if err := s.prepareReport(ctx, id, &q, &workInfo); err != nil {
+				s.updateTask(id, func(t *Task) { t.Status = "failed"; t.Error = err.Error() })
+				_ = s.store.change(func(v *State) error {
+					addLog(v, "ERROR", "ai", "报告资料准备失败；任务 "+id+"："+err.Error())
+					return nil
+				})
+				s.notify()
+				return
+			}
+		}
 		s.runTask(ctx, id, q)
 	}()
 	return id, nil
 }
 func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
+	if active := s.store.snapshot(); q.AccountID != "" && (active.Account.ID != q.AccountID || active.AccountEpoch != q.AccountEpoch) {
+		s.updateTask(id, func(t *Task) { t.Status = "failed"; t.Error = "账号已切换，停止旧任务" })
+		return
+	}
 	s.updateTask(id, func(t *Task) {
 		if t.Status == "queued" {
 			t.Status = "running"
@@ -168,7 +238,12 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		var incomingErr error
 		q, incomingErr = s.prepareIncoming(ctx, q)
 		if incomingErr != nil {
-			s.updateTask(id, func(t *Task) { t.Status = "failed"; t.Error = incomingErr.Error() })
+			var modelErr replyModelFailure
+			s.updateTask(id, func(t *Task) {
+				t.Status = "failed"
+				t.Error = incomingErr.Error()
+				t.ReplyRetryable = q.Conversation != nil && errors.As(incomingErr, &modelErr)
+			})
 			_ = s.store.change(func(st *State) error { addLog(st, "ERROR", "ai", incomingErr.Error()); return nil })
 			s.notify()
 			return
@@ -192,7 +267,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			candidates = append(candidates, m)
 		}
 	}
-	// 指定模型只执行一次；默认请求按各能力独立保存的流水线执行。
+	// 指定模型不切换供应商；微信回复的失败补试仍使用同一模型。
 	if pipelineCapability(capability) && q.Model == "" {
 		ordered := []Model{}
 		for _, id := range modelPipeline(state, capability) {
@@ -223,6 +298,9 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		candidates = slices.DeleteFunc(candidates, func(m Model) bool { return speechMode(m.Model) != mode })
 	}
 	fallback := pipelineCapability(capability) && q.Model == "" && state.Settings["routing.fallback"] == true
+	if !fallback && len(candidates) > 1 {
+		candidates = candidates[:1]
+	}
 	if q.Kind == "video_generation" {
 		if q.Size == "" {
 			q.Size, _ = state.Settings["video_generation.size"].(string)
@@ -240,26 +318,38 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		}
 	}
 	var result ai.Result
+	var actualRequest ai.Request
 	var err error
 	used := ""
 	usedKey := ""
 	silent := false
+	modelFailed := false
+	autoRetries := 0
 	if len(candidates) == 0 {
 		err = fmt.Errorf("请先配置支持此能力的模型")
 	}
 	if q.System == "" && len(state.Prompts) > 0 {
 		q.System = state.Prompts[0].Content
 	}
-	if q.Source == "wechat" && q.Kind == "chat" {
-		q.System += replyInstructions(state) + s.stickerInstructions(q.Target, q.Prompt) + behaviorSystemRules
+	if wechatReplySource(q.Source) && q.Kind == "chat" {
+		inputKind := q.InputKind
+		if q.Source == "wechat-proactive" {
+			inputKind = "proactive"
+		}
+		q.System += replyInstructions(state, q.Prompt, inputKind)
+		if strings.Contains(q.Prompt, "表情") {
+			q.System += s.stickerInstructions(q.Target, q.Prompt)
+		}
 		// 普通回复不用发送工具，但发送策略的提示词仍进入实际系统消息。
 		for _, policy := range state.Policies {
-			if policy.Operation == "message.Send" && behaviorAllowed(state, policy.Operation, q.Target) == nil {
+			if policy.Operation == "message.Send" && policy.Prompt != defaultBehavior("message.Send").Prompt && behaviorAllowed(state, policy.Operation, q.Target) == nil {
 				q.System += "\n当前消息发送要求：" + policy.Prompt
 			}
 		}
 	}
-	for _, m := range candidates {
+	for candidateIndex := 0; candidateIndex < len(candidates); candidateIndex++ {
+		m := candidates[candidateIndex]
+		modelFailed = false
 		used = m.Name
 		s.updateTask(id, func(t *Task) { t.Model = used })
 		key := ""
@@ -284,11 +374,29 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			break
 		}
 		request := q
+		if (wechatReplySource(q.Source) && q.Conversation != nil || q.Source == "reply-media") && !s.requestReplyAllowed(q) {
+			err = fmt.Errorf("会话已暂停自动回复")
+			break
+		}
+		if active := s.store.snapshot(); q.AccountID != "" && (active.Account.ID != q.AccountID || active.AccountEpoch != q.AccountEpoch) {
+			err = fmt.Errorf("账号已切换，停止旧任务")
+			break
+		}
+		if err = s.validateReportTask(id, request); err != nil {
+			break
+		}
+		request, err = s.refreshReplyContext(request)
+		if err != nil {
+			break
+		}
 		if q.Kind == "tts" {
 			request.SpeechMode = speechMode(m.Model)
 		}
 		if q.Source == "wechat" && q.Kind == "chat" && q.Target != "" && (m.Provider == "openai" || m.Provider == "mimo") {
-			request.Tools = s.behaviorTools(q.Target)
+			request.Tools = s.replyBehaviorTools(q.Target, q.Prompt)
+			if len(request.Tools) > 0 {
+				request.System += behaviorSystemRules
+			}
 		}
 		timeout := int(s.number("routing.timeout", 300))
 		if m.Timeout > 0 {
@@ -319,29 +427,77 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if err != nil {
 			break
 		}
+		if q.Source == "wechat-proactive" && len(request.Context) == 0 {
+			err = fmt.Errorf("当前会话没有可用的近期上下文")
+			break
+		}
+		if err = s.saveReplyTrace(id, request, m.ID, report.Changes); err != nil {
+			break
+		}
 		usedKey = key
+		actualRequest = request
+		modelCtx := s.debugContext(ctx, q.AccountID, q.AccountEpoch, q.Target, id, m.Name)
 		if q.Kind == "insight" {
 			s.resetTaskStream(id)
-			result, err = ai.ExecuteStream(ctx, config, request, s.cfg.Mock, func(delta string) { s.appendTaskStream(id, delta) })
+			result, err = ai.ExecuteStream(modelCtx, config, request, s.cfg.Mock, func(delta string) { s.appendTaskStream(id, delta) })
 		} else {
-			result, err = ai.Execute(ctx, config, request, s.cfg.Mock)
+			result, err = ai.Execute(modelCtx, config, request, s.cfg.Mock)
+		}
+		modelFailed = err != nil && ctx.Err() == nil
+		// 完整流水线都失败后，才从首个模型重跑一次；总共最多两轮。
+		if modelFailed && !ai.Refused(err) && candidateIndex == len(candidates)-1 && autoRetries == 0 && (wechatReplySource(q.Source) && q.Kind == "chat" || q.Source == "reply-media" && (q.Kind == "vision" || q.Kind == "audio")) {
+			autoRetries++
+			s.updateTask(id, func(t *Task) { t.AutoRetries = autoRetries })
+			_ = s.store.change(func(v *State) error {
+				addLog(v, "WARN", "ai", "整条模型流水线失败，开始第 2 轮（自动重试 1/1）；任务 "+id+"："+err.Error())
+				return nil
+			})
+			candidates = append(candidates, candidates...)
+			select {
+			case <-ctx.Done():
+			case <-time.After(time.Second):
+			}
+			continue
 		}
 		// 成功即停止；指定模型、取消和已受理但状态未知的视频任务不触发新生成。
-		if err == nil || ctx.Err() != nil || !fallback || ai.VideoJobPending(err) {
+		if err == nil || ctx.Err() != nil || !fallback || ai.VideoJobPending(err) || ai.Refused(err) {
 			break
 		}
 
 	}
 	// 输出和工具参数先检查，再进入任何持久化或外部副作用。
-	if err == nil {
+	if err == nil || q.Kind == "insight" && result.Text != "" {
 		var report safetyReport
-		result, report, err = filterSafetyOutput(s.store.snapshot(), q, result, usedKey)
+		var outputErr error
+		result, report, outputErr = filterSafetyOutput(s.store.snapshot(), q, result, usedKey)
 		silent = report.Silent
 		if auditErr := s.recordSafety(id, q.Source, "output", report); auditErr != nil {
-			err = auditErr
+			outputErr = auditErr
+		}
+		if outputErr != nil {
+			err = outputErr
+			result = ai.Result{}
 		}
 	}
+	if sourceErr := s.validateReportTask(id, q); sourceErr != nil {
+		err = sourceErr
+		result = ai.Result{}
+	}
 	generated := err == nil
+	if active := s.store.snapshot(); err == nil && q.AccountID != "" && (active.Account.ID != q.AccountID || active.AccountEpoch != q.AccountEpoch) {
+		err = fmt.Errorf("账号已切换，结果已丢弃")
+	}
+	if err == nil && q.Conversation != nil {
+		err = s.validateReplyEvidence(actualRequest)
+	}
+	if err == nil && q.Source == "memory-scan" {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		} else {
+			err = s.store.putSecret("memory-scan-result:"+q.AccountID+":"+id, result.Text)
+		}
+		result.Text = "已生成候选资料"
+	}
 	// 模型选定后再执行动作；动作结果未知或失败时不重新生成、不切换供应商。
 	actionTaken := false
 	if err == nil && len(result.ToolCalls) > 0 {
@@ -350,6 +506,8 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			err = fmt.Errorf("当前入口不允许模型执行微信操作")
 		} else if len(result.ToolCalls) != 1 {
 			err = fmt.Errorf("单次只允许一个 AI 行为")
+		} else if !slices.ContainsFunc(actualRequest.Tools, func(v ai.Tool) bool { return v.Name == result.ToolCalls[0].Name }) {
+			err = fmt.Errorf("模型请求了本轮未提供的操作，已停止执行")
 		} else {
 			err = s.executeTool(ctx, q.Target, result.ToolCalls[0])
 		}
@@ -367,7 +525,10 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	}
 	// 父任务在全部消息发送结束后才完成，防止同会话后续请求穿插发送。
 	if err == nil && !silent && !actionTaken && q.Source == "wechat" && q.Kind == "chat" {
-		err = s.deliverReplyFor(ctx, q.Target, result.Text, q.InputKind)
+		err = s.deliverReplyEvidence(ctx, q.Target, result.Text, q.InputKind, func() error { return s.validateReplyEvidence(actualRequest) })
+	}
+	if err == nil && !silent && !actionTaken && q.Source == "wechat-proactive" && q.Kind == "chat" {
+		err = s.deliverProactive(ctx, actualRequest, result.Text)
 	}
 
 	s.updateTask(id, func(t *Task) {
@@ -375,6 +536,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if err != nil {
 			t.Status = "failed"
 			t.Error = err.Error()
+			t.ReplyRetryable = modelFailed && (wechatReplySource(q.Source) && q.Conversation != nil || q.Source == "reply-media")
 			if q.Kind == "insight" {
 				t.Result = result.Text
 			}
@@ -416,6 +578,9 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	}
 }
 func (s *Server) deleteReport(id string) error {
+	if handled, err := s.deleteManagedReport(id); handled {
+		return err
+	}
 	err := s.store.change(func(v *State) error {
 		for i, t := range v.Tasks {
 			if t.ID != id || t.Kind != "insight" || t.Status == "deleted" {
@@ -460,7 +625,7 @@ func (s *Server) updateTask(id string, fn func(*Task)) {
 	s.notify()
 }
 func (s *Server) autoReply(m Message) {
-	if m.Self || !slices.Contains([]string{"text", "image", "audio"}, m.Kind) {
+	if m.Self || !slices.Contains([]string{"text", "image", "audio", "quote"}, m.Kind) {
 		return
 	}
 	state := s.store.snapshot()
@@ -522,39 +687,7 @@ func (s *Server) autoReply(m Message) {
 			}
 		}
 	}
-	var history []contextcleaner.Message
-	limit := 500 // 最终按每个候选模型的上下文条数裁剪。
-	messages := []Message{}
-	since, _ := state.Overrides[m.Target]["memory_since"].(string)
-	for _, message := range state.Messages {
-		if message.Target == m.Target && (!message.Self || message.Status == "sent") && message.Source != "guard" && message.Time >= since && message.Time >= time.Now().Add(-time.Duration(s.number("memory.retention", 30))*24*time.Hour).Format(time.RFC3339) {
-			messages = append(messages, message)
-		}
-	}
-	if len(messages) > limit {
-		messages = messages[len(messages)-limit:]
-	}
-	for _, message := range messages {
-		role := "user"
-		if message.Self && message.Source == "ai" {
-			role = "assistant"
-		}
-		kind := message.Kind
-		if role == "assistant" && (kind == "image" || kind == "audio") {
-			kind = "text"
-		}
-		history = append(history, contextcleaner.Message{ID: message.ID, Session: message.Target, Role: role, Sender: message.Sender, Source: "history", Kind: kind, Text: message.Content, Time: message.Time})
-	}
-	system := ""
-	if override, ok := state.Overrides[m.Target]["prompt"].(string); ok {
-		system = override
-	}
-	model, _ := state.Overrides[m.Target]["model"].(string)
-	q := ai.Request{Kind: "chat", Source: "wechat", Model: model, Prompt: m.Content, System: system, Target: m.Target, Context: history}
-	if m.Kind != "text" {
-		q.InputKind = m.Kind
-		q.InputID = m.ID
-	}
+	q := replyRequest(state, m)
 	_, err := s.queue(q)
 	if err != nil {
 		s.safetyNotice(m.Target, err)

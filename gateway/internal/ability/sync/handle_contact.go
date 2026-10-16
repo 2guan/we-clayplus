@@ -7,7 +7,13 @@ import (
 )
 
 func (p *processor) handleContact(contacts []*messageapi.ModifyContact) error {
-	return p.publishChangeEvents(contactability.HandleModifyContacts(contacts))
+	events := contactability.HandleModifyContacts(contacts)
+	if len(contacts) > 0 && p.hooks.Contacts != nil {
+		if err := p.hooks.Contacts(); err != nil {
+			return &callbackError{err}
+		}
+	}
+	return p.publishChangeEvents(events)
 }
 
 func (p *processor) publishChangeEvents(events []*pluginsdk.ChangeEvent) error {

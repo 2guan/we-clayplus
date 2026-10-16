@@ -37,6 +37,8 @@ import {
   DownloadSimple,
   ArrowsOutSimple,
   ArrowsInSimple,
+  ArrowClockwise,
+  CircleNotch,
 } from "@phosphor-icons/react";
 import type { Contact, Message, PageProps } from "./types";
 import { Avatar, Empty, Modal, Toggle } from "./ui";
@@ -149,6 +151,11 @@ export default function Chat(props: PageProps) {
   const [quote, setQuote] = useState<Message | null>(null);
   const [quotePreview, setQuotePreview] = useState<Message | null>(null);
   const [downloads, setDownloads] = useState<Set<string>>(new Set());
+  const retryFlight = useRef(false);
+  const [retryingReply, setRetryingReply] = useState("");
+  const [replyRetryError, setReplyRetryError] = useState<{ id: string; message: string } | null>(null);
+  const proactiveFlight = useRef(false);
+  const [proactiveSubmitting, setProactiveSubmitting] = useState(false);
   const downloadFile = async (message: Message) => {
     const key = `${message.target}:${message.id}`;
     if (downloads.has(key)) return;
@@ -215,16 +222,46 @@ export default function Chat(props: PageProps) {
     .filter((c) => c.kind === "official")
     .reduce((total, c) => total + c.unread, 0);
   // 仅显示当前会话的真实自动回复任务，模型测试和其他会话不触发提示。
-  const replying =
-    current?.mode === "auto" &&
-    state.settings["reply.enabled"] === true &&
-    state.tasks.some(
+  const latestReply = state.tasks.filter(
+    (t) => t.target === selected && ["wechat", "wechat-proactive"].includes(t.source || "") && t.kind === "chat",
+  ).at(-1);
+  const activeReply = state.tasks.find(
       (t) =>
         t.target === selected &&
-        t.source === "wechat" &&
+        ["wechat", "wechat-proactive"].includes(t.source || "") &&
         t.kind === "chat" &&
         ["queued", "running"].includes(t.status),
     );
+  const replying = !!activeReply && (activeReply.source === "wechat-proactive" || current?.mode === "auto" && state.settings["reply.enabled"] === true);
+  const proactiveBusy = proactiveSubmitting || activeReply?.source === "wechat-proactive";
+  const speakProactively = async () => {
+    if (proactiveFlight.current || activeReply) return;
+    proactiveFlight.current = true;
+    setProactiveSubmitting(true);
+    try {
+      await act({ kind: "proactive-reply", target: selected });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "主动发言未能提交，请稍后再试");
+    } finally {
+      proactiveFlight.current = false;
+      setProactiveSubmitting(false);
+    }
+  };
+  const failedReply = latestReply?.status === "failed" && latestReply.reply_retryable ? latestReply : null;
+  const retryReply = async () => {
+    if (!failedReply || retryFlight.current) return;
+    retryFlight.current = true;
+    setRetryingReply(failedReply.id);
+    setReplyRetryError(null);
+    try {
+      await act({ kind: "retry-reply", id: failedReply.id, target: selected });
+    } catch (error) {
+      setReplyRetryError({ id: failedReply.id, message: error instanceof Error ? error.message : "重试未提交，请稍后再试" });
+    } finally {
+      retryFlight.current = false;
+      setRetryingReply("");
+    }
+  };
   const messages = chatMessages
     .filter((m) => m.target === selected)
     .slice(-100);
@@ -695,6 +732,7 @@ export default function Chat(props: PageProps) {
                 </h2>
               </div>
               <div className="chat-title-actions">
+                {props.user.role === "admin" && <a className="button small" href={`#models?tab=memory-items&target=${encodeURIComponent(current.id)}`}>记忆</a>}
                 {/* 服务端统一解析默认模式；点击标签后为该会话设置专属模式。 */}
                 <div
                   className="chat-mode-tabs"
@@ -751,7 +789,10 @@ export default function Chat(props: PageProps) {
                       {m.status === "revoked_by_other" ? m.content : "你撤回了一条消息"}
                     </div>
                   ) : m.kind === "system" ? (
-                    <div className="system-message">{m.content}</div>
+                    <div className="system-message">{m.content}{m.interaction && <small className="interaction-detail">
+                      {m.interaction.actor_name || "未知成员"}（{m.interaction.actor_id || "身份未知"}） → {m.interaction.all ? "全体成员" : `${m.interaction.target_name || "未知成员"}（${m.interaction.target_id || "身份未知"}）`}
+                      {!m.interaction.verified && " · 关系未核实"}
+                    </small>}</div>
                   ) : (
                     <div className={`message ${m.self ? "self" : ""}`}>
                       <button
@@ -802,6 +843,7 @@ export default function Chat(props: PageProps) {
                         />
                       </button>
                       <div className="message-body">
+                        {(m.mention_all || !!m.mentions?.length) && <details className="message-interactions"><summary>{m.mention_all ? "@ 全体成员" : `@ ${m.mentions!.length} 位成员`}</summary><span>{m.mention_all ? "全体成员" : m.mentions!.map(id => `${mentionMembers.find(member => member.id === id)?.name || "成员"}（${id}）`).join("、")}</span></details>}
                         {!m.self && current.kind === "group" && (
                           <span className="sender">{m.sender}</span>
                         )}
@@ -974,7 +1016,25 @@ export default function Chat(props: PageProps) {
                 aria-live="polite"
               >
                 <span aria-hidden="true" />
-                正在回复…
+                {latestReply?.auto_retries ? "正在重试（1/1）…" : activeReply?.source === "wechat-proactive" ? "正在主动接话…" : "正在回复…"}
+              </div>
+            )}
+            {failedReply && !replying && (
+              <div className="chat-reply-error" role="status" aria-live="polite">
+                <div>
+                  <strong>{failedReply.auto_retries ? "自动重试后仍未完成回复" : "回复失败"}</strong>
+                  <p>{replyRetryError?.id === failedReply.id ? replyRetryError.message : failedReply.error || "模型未能完成回复，请重试。"}</p>
+                  {failedReply.source !== "wechat-proactive" && (current?.mode !== "auto" || state.settings["reply.enabled"] !== true) && <p>恢复自动回复后可重试。</p>}
+                </div>
+                <button
+                  className="button small"
+                  onClick={() => void retryReply()}
+                  disabled={!!retryingReply || failedReply.source !== "wechat-proactive" && (current?.mode !== "auto" || state.settings["reply.enabled"] !== true) || state.account.status !== "online"}
+                  aria-busy={retryingReply === failedReply.id}
+                >
+                  {retryingReply === failedReply.id ? <CircleNotch className="reply-retry-spinner" aria-hidden="true" /> : <ArrowClockwise aria-hidden="true" />}
+                  重试
+                </button>
               </div>
             )}
             <div className="composer">
@@ -1085,6 +1145,19 @@ export default function Chat(props: PageProps) {
                   <Microphone size={21} />
                 </button>
                 <span />
+                {section === "chats" && ["friend", "group"].includes(current.kind) && (
+                  <button
+                    type="button"
+                    className="button small chat-proactive-button"
+                    title="根据当前会话上下文生成并发送一句文字"
+                    onClick={() => void speakProactively()}
+                    disabled={proactiveSubmitting || !!activeReply || state.account.status !== "online" || !state.plugins.some((p) => p.id === "ai" && p.enabled)}
+                    aria-busy={!!proactiveBusy}
+                  >
+                    {proactiveBusy && <CircleNotch className="reply-retry-spinner" aria-hidden="true" />}
+                    主动说一句
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   aria-label="专属策略"
@@ -1364,12 +1437,13 @@ export default function Chat(props: PageProps) {
     </div>
   );
 }
-// 专属策略只覆写当前目标；清空记忆改变上下文起点，不删除归档。
+// 专属策略只覆写当前目标；重置近期上下文不删除归档或长期记忆。
 export function TargetForm({
   contact,
   state,
   act,
   notify,
+  user,
 }: PageProps & { contact: Contact }) {
   const old = state.overrides[contact.id] || {};
   const [prompt, setPrompt] = useState(String(old.prompt || ""));
@@ -1470,6 +1544,11 @@ export function TargetForm({
             />
           )}
         </div>
+        {user.role === "admin" && contact.kind === "friend" && <div className="field-row">
+          <span>允许本人记住低敏偏好</span>
+          <Toggle label="允许本人记住低敏偏好" checked={old.memory_enabled === true} onChange={(memory_enabled) =>
+            act({ kind: "target", target: contact.id, values: { memory_enabled } }).catch((e) => notify(e.message))} />
+        </div>}
         {contact.kind === "group" && (
           <div className="target-probability">
             <label>
@@ -1564,15 +1643,15 @@ export function TargetForm({
           <button
             type="button"
             className="button ghost"
-            title="仅清空 AI 上下文，保留聊天记录"
+            title="重置近期上下文，保留聊天归档和长期记忆"
             onClick={() => {
-              if (confirm("清空此会话的 AI 记忆？聊天记录将保留。"))
+              if (confirm("重置此会话的近期上下文？聊天归档和长期记忆将保留。"))
                 void act({ kind: "clear-memory", target: contact.id })
-                  .then(() => notify("AI 记忆已清空"))
+                  .then(() => notify("近期上下文已重置"))
                   .catch((e) => notify(e.message));
             }}
           >
-            清空记忆
+            重置近期上下文
           </button>
           <button className="button primary" disabled={busy}>
             {busy ? "保存中…" : "保存专属策略"}

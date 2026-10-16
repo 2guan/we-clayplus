@@ -224,7 +224,9 @@ func TestAutoReplyEndToEndFailureAndMemory(t *testing.T) {
 		st.Messages = []Message{{ID: "unknown-photo", Target: "synthetic-peer", Kind: "image", Self: true, Source: "ai", Status: "unknown", Content: "失败的旧自拍", Time: time.Now().Format(time.RFC3339)}}
 		return nil
 	})
-	s.autoReply(Message{ID: "new", Target: "synthetic-peer", Kind: "text", Content: "你好"})
+	if err := s.Record(Message{ID: "new", Target: "synthetic-peer", SenderID: "synthetic-peer", Kind: "text", Content: "你好", Time: time.Now().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
 	st := s.store.snapshot()
 	if len(st.Tasks) == 0 {
 		t.Fatal("未创建自动回复任务")
@@ -234,10 +236,111 @@ func TestAutoReplyEndToEndFailureAndMemory(t *testing.T) {
 		t.Fatalf("未停止或未记录失败 %+v %d", task, len(host.commands))
 	}
 	st = s.store.snapshot()
-	if len(st.Messages) != 3 || st.Messages[1].Status != "sent" || st.Messages[2].Status != "unknown" {
+	if len(st.Messages) != 4 || st.Messages[2].Status != "sent" || st.Messages[3].Status != "unknown" {
 		t.Fatal("回执状态错误")
+	}
+	// 任务终态先落盘，用量汇总随后更新；等待该异步观测而非依赖调度顺序。
+	deadline := time.Now().Add(time.Second)
+	for (len(st.Trend) == 0 || st.Trend[len(st.Trend)-1].Input != 10) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+		st = s.store.snapshot()
 	}
 	if len(st.Trend) == 0 || st.Trend[len(st.Trend)-1].Input != 10 {
 		t.Fatal("发送失败丢失真实模型用量")
+	}
+}
+
+func TestAutoReplyRecordEnvelopeBoundary(t *testing.T) {
+	s := newServer(t, false)
+	host := &replyCaptureHost{}
+	s.host = host
+	wrapped := `{"status":"sent","sender_id":"fixture-self","actor_type":"assistant_ai","id":"fixture-model-invented-id","session":"fixture-envelope-peer","role":"assistant","source":"ai","kind":"text","text":"正常回复正文"}`
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct{ Role, Content string }
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			http.Error(w, "bad fixture", 400)
+			return
+		}
+		if len(body.Messages) != 3 || !strings.Contains(body.Messages[1].Content, "〔本人〕：正常回复正文") || strings.Contains(body.Messages[1].Content, "fixture-model-invented-id") {
+			t.Error("历史未合并为纯文本，或包装元数据仍在模型请求中")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": wrapped}}}, "usage": map[string]int{"prompt_tokens": 8, "completion_tokens": 6}})
+	}))
+	defer remote.Close()
+	if err := s.store.putSecret("fixture-envelope-vendor", "fixture-only-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.change(func(st *State) error {
+		st.Account = Account{ID: "fixture-self", Status: "online"}
+		st.Settings["reply.enabled"] = true
+		st.Settings["reply.targets"] = "fixture-envelope-peer"
+		st.Settings["reply.interval_ms"] = float64(0)
+		st.Contacts = []Contact{{ID: "fixture-envelope-peer", Kind: "friend", Mode: "auto"}}
+		st.Models = []Model{{ID: "fixture-envelope-model", Name: "fixture-model", Model: "fixture-model", VendorID: "fixture-envelope-vendor", Provider: "mimo", Endpoint: remote.URL, Enabled: true, Capabilities: []string{"chat"}}}
+		st.Pipeline = []string{"fixture-envelope-model"}
+		st.Messages = []Message{{ID: "fixture-old", Target: "fixture-envelope-peer", Self: true, Source: "ai", Status: "sent", Kind: "text", Content: wrapped, Time: time.Now().Format(time.RFC3339)}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(Message{ID: "fixture-envelope-current", Target: "fixture-envelope-peer", SenderID: "fixture-envelope-peer", Source: "wechat", Status: "sent", Kind: "text", Content: "请正常回复", Time: time.Now().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	st := s.store.snapshot()
+	task := waitModelTask(t, s, st.Tasks[len(st.Tasks)-1].ID)
+	if task.Status != "completed" || task.Result != "正常回复正文" || len(host.commands) != 1 || host.commands[0].Content != "正常回复正文" {
+		t.Fatalf("包装元数据进入实际发送或任务正文：%+v %+v", task, host.commands)
+	}
+	st = s.store.snapshot()
+	if st.Messages[0].Content != wrapped || st.Messages[len(st.Messages)-1].ID == "fixture-model-invented-id" || st.Messages[len(st.Messages)-1].Content != "正常回复正文" {
+		t.Fatal("篡改旧归档或采用了模型编造的回执")
+	}
+	_, _, err := filterSafetyOutput(st, ai.Request{Source: "wechat", Kind: "chat"}, ai.Result{Text: strings.Replace(wrapped, "正常回复正文", `fixture-credential-should-not-leak`, 1)}, "fixture-credential-should-not-leak")
+	if err == nil {
+		t.Fatal("拆包装绕过凭据保护")
+	}
+}
+
+func TestAutoReplyRejectsUnprovidedTool(t *testing.T) {
+	s := newServer(t, false)
+	host := &replyCaptureHost{}
+	s.host = host
+	s.cfg.Capabilities = map[string]control.Capability{"contact": {Enabled: []string{"SetRemark"}}}
+	if err := s.initBehaviors(); err != nil {
+		t.Fatal(err)
+	}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, ok := body["tools"]; ok {
+			t.Error("普通闲聊仍有工具定义")
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"contact__SetRemark","arguments":"{\"content\":\"synthetic\"}"}}]}}]}`)
+	}))
+	defer remote.Close()
+	if err := s.store.putSecret("fixture-intent-vendor", "fixture-key"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.change(func(st *State) error {
+		st.Account = Account{ID: "fixture-intent-self", Status: "online"}
+		st.Contacts = []Contact{{ID: "fixture-intent-peer", Kind: "friend", Mode: "auto"}}
+		st.Settings["reply.enabled"] = true
+		st.Settings["reply.targets"] = "fixture-intent-peer"
+		st.Models = []Model{{ID: "fixture-intent-model", VendorID: "fixture-intent-vendor", Name: "fixture-intent", Model: "fixture-intent", Provider: "openai", Endpoint: remote.URL, Enabled: true, Capabilities: []string{"chat"}}}
+		st.Pipeline = []string{"fixture-intent-model"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Record(Message{ID: "fixture-intent-current", Target: "fixture-intent-peer", SenderID: "fixture-intent-peer", Kind: "text", Content: "你好", Time: time.Now().Format(time.RFC3339)}); err != nil {
+		t.Fatal(err)
+	}
+	st := s.store.snapshot()
+	task := waitModelTask(t, s, st.Tasks[len(st.Tasks)-1].ID)
+	if task.Status != "failed" || !strings.Contains(task.Error, "本轮未提供") || len(host.commands) != 0 {
+		t.Fatalf("未提供工具被执行：%+v %+v", task, host.commands)
 	}
 }

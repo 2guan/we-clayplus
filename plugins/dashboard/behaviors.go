@@ -155,3 +155,42 @@ func (s *Server) executeTool(ctx context.Context, target string, call ai.ToolCal
 	_, err := s.ExecuteAI(ctx, operation, control.Command{Target: target, Content: args.Content})
 	return err
 }
+
+// 仅根据当前正文的明确操作请求提供工具，历史、引用和普通提问不能扩大本轮权限。
+func (s *Server) replyBehaviorTools(target, input string) []ai.Tool {
+	text := strings.Join(strings.Fields(strings.TrimSpace(input)), " ")
+	for strings.HasPrefix(text, "@") {
+		i := strings.IndexByte(text, ' ')
+		if i < 0 {
+			return nil
+		}
+		text = strings.TrimSpace(text[i+1:])
+	}
+	for _, word := range []string{"不要", "别改", "别修改", "不许", "怎么", "如何", "什么", "如果", "假如", "他说", "她说", "引用"} {
+		if strings.Contains(text, word) {
+			return nil
+		}
+	}
+	directive := false
+	for _, prefix := range []string{"请", "帮我", "麻烦", "把", "将", "修改", "更改", "设置", "发布", "更新", "发公告", "群名改", "备注改", "公告改"} {
+		directive = directive || strings.HasPrefix(text, prefix)
+	}
+	if !directive {
+		return nil
+	}
+	change := false
+	for _, word := range []string{"改成", "改为", "设为", "修改", "更改", "设置", "发布", "更新", "发公告"} {
+		change = change || strings.Contains(text, word)
+	}
+	if !change {
+		return nil
+	}
+	var tools []ai.Tool
+	for _, tool := range s.behaviorTools(target) {
+		object := map[string]string{"contact__SetRemark": "备注", "chatroom__SetName": "群名", "chatroom__SetAnnouncement": "公告"}[tool.Name]
+		if object != "" && strings.Contains(text, object) {
+			tools = append(tools, tool)
+		}
+	}
+	return tools
+}

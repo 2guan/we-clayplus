@@ -64,16 +64,15 @@ test("拼音选择好友，朋友圈只提交该好友资料，三类示例可�
     "将读取最近 2000 条朋友圈及图片缩略图",
   );
   const submitted = page.waitForRequest(
-    (r) => r.url().endsWith("/api/tasks") && r.method() === "POST",
+    (r) => r.url().endsWith("/api/reports") && r.method() === "POST",
   );
   await page.getByRole("button", { name: "生成分析报告", exact: true }).click();
   const body = (await submitted).postDataJSON();
   expect(body.target).toBe("mock-contact-1");
-  expect(body.insight.type).toBe("moments");
-  expect(body.insight.prompt).toBe(await page.getByLabel("原始提示词").inputValue());
-  expect(JSON.stringify(body.documents)).toContain("周末留给山野");
-  expect(JSON.stringify(body.documents)).not.toContain("非好友内容不可提交");
-  expect(JSON.stringify(body.documents)).not.toContain("读到一句话");
+  expect(body.type).toBe("moments");
+  expect(body.prompt).toBe(await page.getByLabel("原始提示词").inputValue());
+  expect(body.range).toEqual({mode:"count",count:2000});
+  expect(body.documents).toBeUndefined(); // 由后端读取已验证对象的资料。
   await expect(page.locator(".insight-report")).toContainText("已完成");
   await expect(page.locator(".insight-report .task-result")).toBeVisible();
   // 输入不存在的对象不能沿用上一次的选择发送分析。
@@ -117,18 +116,14 @@ test("自定义条数提交完整最近 2000 条，拒绝零和小数", async ({
   );
   await range.fill("2000");
   const submitted = page.waitForRequest(
-    (r) => r.url().endsWith("/api/tasks") && r.method() === "POST",
+    (r) => r.url().endsWith("/api/reports") && r.method() === "POST",
   );
   await page.getByRole("button", { name: "生成分析报告", exact: true }).click();
-  const { documents } = (await submitted).postDataJSON();
-  const prompt = documents.map((m: { text: string }) => m.text).join("\n");
-  expect(prompt.match(/范围验证记录-/g)).toHaveLength(2000);
-  expect(prompt).toContain("范围验证记录-5\n");
-  expect(prompt).toContain("范围验证记录-2004");
-  expect(prompt).not.toContain("范围验证记录-4\n");
-  // 这批完整资料超过 Mock 模型容量，应展示本次失败，不能误认旧报告的“已完成”。
-  await expect(page.locator(".insight-report")).toContainText("分析资料超过可用容量");
-  await expect(page.locator(".insight-report")).toContainText("未静默删除资料");
+  const body=(await submitted).postDataJSON();
+  expect(body.range).toEqual({mode:"count",count:2000});
+  expect(body.documents).toBeUndefined();
+  // 浏览器仅提交范围；服务端按自身归档读取，不信任页面伪造的资料。
+
 });
 
 test("洞察占满桌面可用区域，暗色和手机布局无横向溢出", async ({ page }) => {
@@ -338,13 +333,12 @@ test.describe("消息时间段", () => {
     await end.fill("2026-10-15T00:01");
     await expect(page.locator(".insight-submit")).toContainText("实际读取 62 条消息");
     await page.screenshot({ path: "/tmp/weclay-insight-time-range.png", animations: "disabled" });
-    const submitted = page.waitForRequest(r => r.url().endsWith("/api/tasks") && r.method() === "POST");
+    const submitted = page.waitForRequest(r => r.url().endsWith("/api/reports") && r.method() === "POST");
     await page.getByRole("button", { name: "生成分析报告", exact: true }).click();
     const body = (await submitted).postDataJSON();
-    expect(body.documents).toHaveLength(62);
-    expect(body.documents[0].id).toBe("within-0");
-    expect(body.documents.at(-1).id).toBe("end-minute");
-    await expect(page.locator(".insight-report-heading")).toContainText("已完成");
+    expect(body.range.mode).toBe("time");
+    expect(new Date(body.range.end).getTime()-new Date(body.range.start).getTime()).toBe(120000);
+    expect(body.documents).toBeUndefined();
     await page.getByLabel("开始时间", { exact: true }).fill("2026-10-16T00:00");
     await end.fill("2026-10-16T00:01");
     await page.getByRole("button", { name: "生成分析报告", exact: true }).click();

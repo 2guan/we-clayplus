@@ -5,6 +5,7 @@ package dashboard
 
 import (
 	"encoding/xml"
+	"github.com/we-clay/we-clay/plugins/contextcleaner"
 	"math"
 	"net/url"
 	"regexp"
@@ -14,30 +15,33 @@ import (
 
 // RichMessage 只保存展示字段，不保存支付链接、交易票据或 CDN 解密凭据。
 type RichMessage struct {
-	FileNoticeID string   `json:"file_notice_id,omitempty"`
-	Title        string   `json:"title,omitempty"`
-	Description  string   `json:"description,omitempty"`
-	Amount       string   `json:"amount,omitempty"`
-	Status       string   `json:"status,omitempty"`
-	Author       string   `json:"author,omitempty"`
-	QuoteID      string   `json:"quote_id,omitempty"`
-	QuoteType    int      `json:"quote_type,omitempty"`
-	QuoteURL     string   `json:"quote_url,omitempty"`
-	Quote        string   `json:"quote,omitempty"`
-	Latitude     *float64 `json:"latitude,omitempty"`
-	Longitude    *float64 `json:"longitude,omitempty"`
-	StickerID    string   `json:"sticker_id,omitempty"`
-	Sticker      string   `json:"sticker,omitempty"`
-	Image        string   `json:"image,omitempty"`
+	QuoteUnavailable bool     `json:"quote_unavailable,omitempty"`
+	FileNoticeID     string   `json:"file_notice_id,omitempty"`
+	Title            string   `json:"title,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	Amount           string   `json:"amount,omitempty"`
+	Status           string   `json:"status,omitempty"`
+	Author           string   `json:"author,omitempty"`
+	QuoteID          string   `json:"quote_id,omitempty"`
+	QuoteType        int      `json:"quote_type,omitempty"`
+	QuoteURL         string   `json:"quote_url,omitempty"`
+	Quote            string   `json:"quote,omitempty"`
+	Latitude         *float64 `json:"latitude,omitempty"`
+	Longitude        *float64 `json:"longitude,omitempty"`
+	StickerID        string   `json:"sticker_id,omitempty"`
+	Sticker          string   `json:"sticker,omitempty"`
+	Image            string   `json:"image,omitempty"`
 }
 
 // 只处理由 SDK 标记的协议类型，用户粘贴的 XML 仍作为普通文字。
 func parseRichMessage(m Message, raw string) (Message, bool) {
 	var v struct {
-		XMLName xml.Name
-		Type    string `xml:"type,attr"`
-		Pat     string `xml:"pat>template"`
-		Voice   struct {
+		XMLName   xml.Name
+		Type      string `xml:"type,attr"`
+		Pat       string `xml:"pat>template"`
+		PatActor  string `xml:"pat>fromusername"`
+		PatTarget string `xml:"pat>pattedusername"`
+		Voice     struct {
 			Duration int `xml:"voicelength,attr"`
 		} `xml:"voicemsg"`
 		Location struct {
@@ -80,6 +84,7 @@ func parseRichMessage(m Message, raw string) (Message, bool) {
 	}
 	switch {
 	case m.Kind == "system" && v.Type == "pat":
+		m.Interaction = &contextcleaner.Interaction{Kind: "pat", ActorID: strings.TrimSpace(v.PatActor), TargetID: strings.TrimSpace(v.PatTarget), Verified: v.PatActor != "" && v.PatTarget != ""}
 		m.Content = v.Pat
 		if m.Content == "" {
 			m.Content = "[拍一拍]"

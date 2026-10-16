@@ -59,6 +59,7 @@ test("六类能力都有可查看结果，聊天可发送和撤回", async ({ pa
     await expect(page.locator(".task-result").first()).toBeVisible();
   }
   await page.goto("/#wechat");
+  await page.getByRole("button", { name: /林间/ }).click();
   await page
     .getByRole("textbox", { name: "消息内容", exact: true })
     .fill("浏览器脱机消息");
@@ -259,7 +260,7 @@ test("总览按发送来源统计今日成功消息", async ({ page }) => {
       id: string,
       source: string,
       status = "sent",
-      time = now.toISOString(),
+      time = now.toLocaleString("sv-SE",{timeZone:"Asia/Shanghai"}).replace(" ","T")+"+08:00",
       self = true,
     ) => ({
       ...base,

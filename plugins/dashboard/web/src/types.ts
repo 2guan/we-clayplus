@@ -47,6 +47,9 @@ export type Message = {
     image?: string;
   }[];
   publisher?: string;
+  mentions?: string[];
+  mention_all?: boolean;
+  interaction?: { kind: string; actor_id?: string; actor_name?: string; target_id?: string; target_name?: string; all?: boolean; related_id?: string; verified: boolean };
   sender_id?: string;
   sender_avatar?: string;
   id: string;
@@ -101,6 +104,7 @@ export type Model = {
   temperature?: number;
   thinking?: string;
   context?: number;
+  context_tokens?: number;
   max_output?: number;
   id: string;
   name: string;
@@ -126,7 +130,16 @@ export type User = {
   enabled: boolean;
 };
 export type Task = {
-  insight?: { type: "conversation" | "group" | "moments"; prompt: string; target_name?: string };
+	  reply_to?: string;
+	  reply_retryable?: boolean;
+	  retry_of?: string;
+	  auto_retries?: number;
+  insight?: { type: "conversation" | "group" | "moments"; prompt: string; target_name?: string;
+ managed?: boolean; root_id?: string; parent_id?: string; turn_id?: string; question?: string;
+ snapshot_id?: string; range?: {mode: string; count: number; start?: string; end?: string};
+ captured?: string; cache_hit?: boolean; count?: number; image_count?: number; skipped_images?: number;
+ progress?: string; requested_model?: string; retry_of?: string;
+ };
   source?: string;
   delivery?: "sending" | "sent" | "unknown";
   id: string;
@@ -277,3 +290,13 @@ export function modelPipeline(state: State, capability: string): string[] {
     ? [preferred, ...ids.filter((id) => id !== preferred)]
     : ids;
 }
+
+export type MemorySource = { target: string; message_id: string; sender_id: string; hash: string };
+export type MemoryItem = {
+  id: string; scope: "person" | "group" | "bot"; subject: string; target: string; category: string; key: string; content: string;
+  status: "pending" | "confirmed" | "conflicted" | "rejected" | "expired" | "superseded" | "deleted";
+  sensitivity: "low" | "sensitive"; consent: boolean; allow_model?: boolean; origin: "manual" | "scan" | "explicit";
+  created_at: string; confirmed_at: string; confirmed_by: string; expires_at?: string; version: number; sources: MemorySource[];
+};
+export type MemoryScan = { id: string; target: string; status: string; processed: number; total: number; cursor: number; upper: number; error?: string; warning?: string; created_at: string; updated_at: string };
+export type MemoryTrace = { current_id: string; history_ids: string[]; memory_ids: string[]; memory_versions: number[]; [key: string]: unknown };

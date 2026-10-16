@@ -161,10 +161,7 @@ func refreshContacts(progress func() error, missingOnly bool, additionalIDs ...s
 	// 先补齐缺失资料，群聊和普通好友优先于公众号，避免页面长期只出现公众号。
 	known := map[string]bool{}
 	for _, c := range instance.List() {
-		known[c.Username] = c.Nickname != "" && c.Nickname != c.Username
-		if strings.HasSuffix(c.Username, "@chatroom") || strings.HasSuffix(c.Username, "@im.chatroom") {
-			known[c.Username] = known[c.Username] && c.Avatar != ""
-		}
+		known[c.Username] = c.Nickname != "" && c.Nickname != c.Username && c.Avatar != ""
 	}
 	if missingOnly {
 		list = slices.DeleteFunc(list, func(id string) bool { return known[id] })

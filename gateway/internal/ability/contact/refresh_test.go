@@ -108,6 +108,10 @@ func TestReconnectSkipsKnownContacts(t *testing.T) {
 	if err := RefreshMissingWithProgress(nil); err != nil || f.calls != 1 || instance.cache["fixture-group@chatroom"].Avatar == "" {
 		t.Fatal("有群名但缺头像的群未补齐", err)
 	}
+	instance.cache["fixture-good"].Avatar = ""
+	if err := RefreshMissingWithProgress(nil); err != nil || f.calls != 2 || instance.cache["fixture-good"].Avatar == "" {
+		t.Fatal("有昵称但缺头像的好友未补齐", err)
+	}
 	f.calls = 0
 	if err := RefreshWithProgress(nil); err != nil {
 		t.Fatal(err)

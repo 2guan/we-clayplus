@@ -2,7 +2,9 @@
 // 主要功能：呈现模型、提示词、全局对话与行为页签，管理厂商和调用流水线。
 // 作者：2guan
 import { vendorPresets } from "./vendorPresets";
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { memoryTabs } from "./memoryRoute";
+const Memory = lazy(() => import("./Memory"));
 import {
   Plus,
   Cpu,
@@ -45,6 +47,7 @@ const tabs: [string, string][] = [
   ["prompts", "提示词管理"],
   ["global", "全局对话设置"],
   ["actions", "行为与任务"],
+  ...memoryTabs,
 ];
 const blankVendor: Vendor = {
   id: "",
@@ -65,10 +68,21 @@ export default function Models(props: PageProps) {
   const [selectedModel, setSelectedModel] = useState<Model | undefined>();
   const [probe, setProbe] = useState<Record<string, string>>({});
   const admin = user.role === "admin";
+  useEffect(() => {
+    const change = () => {
+      const id = new URLSearchParams(location.hash.split("?")[1]).get("tab") || "chat";
+      setTab(tabs.some(([key]) => key === id) ? id : "chat");
+    };
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
   const changeTab = (id: string) => {
     setSelectedModel(undefined);
     setTab(id);
-    history.replaceState(null, "", `#models?tab=${id}`);
+    const params = new URLSearchParams(location.hash.split("?")[1]);
+    params.set("tab", id);
+    if (!id.startsWith("memory-")) for (const key of ["target", "scope", "status", "subject", "page", "task"]) params.delete(key);
+    history.replaceState(null, "", `#models?${params}`);
   };
   const capability = tab === "video" ? "video_generation" : tab;
   const visible = state.models.filter((m) =>
@@ -111,7 +125,8 @@ export default function Models(props: PageProps) {
           </div>
         )}
       </div>
-      <Tabs items={tabs} value={tab} onChange={changeTab} />
+      <Tabs items={tabs.filter(([id]) => admin || !id.startsWith("memory-"))} value={tab} onChange={changeTab} />
+      {tab.startsWith("memory-") && (admin ? <Suspense fallback={<Empty title="正在加载记忆…" />}><Memory key={state.account.id} {...props} section={tab.slice(7)} /></Suspense> : <Empty title="仅管理员可管理 AI 记忆" />)}
       {["chat", "tts", "image", "video"].includes(tab) && (
         <>
           <Pipeline
@@ -765,6 +780,16 @@ function ModelSettings({
             max={500}
             value={m.context || 0}
             onChange={(e) => set({ ...m, context: Number(e.target.value) })}
+          />
+        </label>
+        <label>
+          上下文 Token 预算（0 继承）
+          <input
+            type="number"
+            min={0}
+            max={2000000}
+            value={m.context_tokens || 0}
+            onChange={(e) => set({ ...m, context_tokens: Number(e.target.value) })}
           />
         </label>
         <label>

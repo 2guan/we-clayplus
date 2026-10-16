@@ -22,10 +22,11 @@ import (
 )
 
 type store struct {
-	mu    sync.Mutex
-	db    *sql.DB
-	state State
-	key   []byte
+	accountEpoch uint64
+	mu           sync.Mutex
+	db           *sql.DB
+	state        State
+	key          []byte
 }
 
 func openStore(dir string, mock bool) (*store, error) {
@@ -64,6 +65,12 @@ func openStore(dir string, mock bool) (*store, error) {
 	}
 	if len(s.key) != 32 {
 		return fail(fmt.Errorf("凭据加密密钥长度无效"))
+	}
+	if err = s.initMemory(); err != nil {
+		return fail(err)
+	}
+	if err = s.initMemoryArchive(); err != nil {
+		return fail(err)
 	}
 	var raw []byte
 	err = db.QueryRow("SELECT body FROM documents WHERE id='state'").Scan(&raw)
@@ -238,6 +245,7 @@ func (s *store) snapshot() State {
 		classifyEnterpriseContact(&v.Contacts[i])
 	}
 	resolveReplyModes(&v)
+	v.AccountEpoch = s.accountEpoch
 	return v
 }
 func (s *store) putSecret(id, value string) error {
@@ -309,6 +317,12 @@ func (s *store) switchAccount(a Account) error {
 	}
 	defer tx.Rollback()
 	if next.Account.ID != "" && a.ID != "" && next.Account.ID != a.ID {
+		for i := range next.Tasks {
+			if next.Tasks[i].Status == "running" || next.Tasks[i].Status == "queued" {
+				next.Tasks[i].Status = "cancelled"
+				next.Tasks[i].Error = "账号已切换，旧任务已取消"
+			}
+		}
 		raw, err = json.Marshal(archive(next))
 		if err != nil {
 			return err
@@ -344,6 +358,9 @@ func (s *store) switchAccount(a Account) error {
 	}
 	if err = tx.Commit(); err != nil {
 		return err
+	}
+	if s.state.Account.ID != a.ID {
+		s.accountEpoch++
 	}
 	s.state = next
 	return nil

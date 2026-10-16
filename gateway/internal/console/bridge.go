@@ -32,17 +32,17 @@ import (
 )
 
 type Bridge struct {
-	contactSync      atomic.Bool
-	contactSyncMu    sync.Mutex
-	contactSyncWG    sync.WaitGroup
-	closing          bool
-	groupSyncPending map[string]bool
-	groupSyncAttempt map[string]time.Time
-	groupSyncRunning bool
-	restartMu        sync.RWMutex
-	restartLogin     func(context.Context) error
-	Ready            atomic.Bool
-	Dashboard        *dashboard.Server
+	contactSync        atomic.Bool
+	contactSyncMu      sync.Mutex
+	contactSyncWG      sync.WaitGroup
+	closing            bool
+	profileSyncPending map[string]bool
+	profileSyncAttempt map[string]time.Time
+	profileSyncRunning bool
+	restartMu          sync.RWMutex
+	restartLogin       func(context.Context) error
+	Ready              atomic.Bool
+	Dashboard          *dashboard.Server
 }
 
 // SetLoginRestarter 在 Run 完成初始化后安装回调，避免 HTTP 请求与生命周期赋值竞争。
@@ -364,7 +364,7 @@ func (b *Bridge) Record(m *message.Message) error {
 		target = m.GetReceiver().GetUsername()
 	}
 	// 先完成消息归档，再异步补齐新群资料，避免阻塞接收或覆盖会话预览。
-	defer func() { b.startGroupSync(target) }()
+	defer func() { b.startProfileSync(target) }()
 	senderID := m.GetSender().GetUsername()
 	sender := m.GetSender().GetNickname()
 	if m.GetMember() != nil {
@@ -393,6 +393,32 @@ func (b *Bridge) Record(m *message.Message) error {
 		kind = "system"
 	}
 	record := dashboard.Message{SenderID: senderID, ID: strconv.FormatUint(uint64(m.GetId()), 10), Target: target, Sender: sender, Content: m.GetContent(), Kind: kind, Self: own, Source: "wechat", Status: "sent", Time: time.Unix(int64(m.GetTimestamp()), 0).Format(time.RFC3339)}
+	// 入站提醒使用SDK已解析的协议ID，不把正文中的昵称当成@关系。
+	reminds := append([]string(nil), m.GetText().GetReminds()...)
+	// 应用消息（含引用）的@关系保存在协议信封source，SDK Text数据不覆盖这些消息。
+	var envelope struct {
+		Source string `json:"source"`
+	}
+	var source struct {
+		XMLName xml.Name `xml:"msgsource"`
+		Reminds string   `xml:"atuserlist"`
+	}
+	if json.Unmarshal([]byte(m.GetRaw()), &envelope) == nil && xml.Unmarshal([]byte(envelope.Source), &source) == nil {
+		reminds = append(reminds, strings.Split(source.Reminds, ",")...)
+	}
+	seenMention := map[string]bool{}
+	for _, id := range reminds {
+		id = strings.TrimSpace(id)
+		if id == "" || seenMention[id] {
+			continue
+		}
+		seenMention[id] = true
+		if id == "notify@all" {
+			record.MentionAll = true
+		} else {
+			record.Mentions = append(record.Mentions, id)
+		}
+	}
 	record.SenderAvatar = m.GetSender().GetAvatar()
 	if m.GetMember() != nil {
 		record.SenderAvatar = m.GetMember().GetAvatar()
@@ -421,6 +447,17 @@ func (b *Bridge) Record(m *message.Message) error {
 		raw = app.GetXml()
 		if app.GetUrl() != "" {
 			record.Articles = []dashboard.MessageArticle{{Title: app.GetTitle(), Description: app.GetDesc(), URL: app.GetUrl()}}
+		}
+	}
+	// 撤回必须先到达Dashboard状态转换入口，不能在展示过滤时提前丢弃。
+	if kind == "system" {
+		var event struct {
+			XMLName xml.Name
+			Type    string `xml:"type,attr"`
+		}
+		if xml.Unmarshal([]byte(raw), &event) == nil && event.XMLName.Local == "sysmsg" && event.Type == "revokemsg" {
+			record.Content = raw
+			return b.Dashboard.Record(record)
 		}
 	}
 	record, keep := dashboard.ParseWechatMessage(record, raw)

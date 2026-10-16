@@ -55,7 +55,7 @@ func TestWechatRevokeArchive(t *testing.T) {
 		if self {
 			content, status = "你撤回了一条消息", "revoked"
 		}
-		notice := Message{Kind: "system", Content: `<sysmsg type="revokemsg"><revokemsg><newmsgid>123</newmsgid><replacemsg>` + content + `</replacemsg></revokemsg></sysmsg>`}
+		notice := Message{Target: "fixture-peer", Kind: "system", Content: `<sysmsg type="revokemsg"><revokemsg><newmsgid>123</newmsgid><replacemsg>` + content + `</replacemsg></revokemsg></sysmsg>`}
 		original := Message{ID: "123", Target: "fixture-peer", Kind: "text", Content: "原消息", Self: self}
 		for _, messages := range [][]Message{{original, notice}, {notice, original}} {
 			v := State{Messages: messages}

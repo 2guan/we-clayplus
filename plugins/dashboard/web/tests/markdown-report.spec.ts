@@ -13,5 +13,5 @@ test('报告支持 Markdown 与公式且不会执行 HTML',async({page})=>{
  await expect(report.locator('a')).not.toHaveAttribute('href',/javascript:/);
  await page.setViewportSize({width:390,height:844});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出报告'}).click();expect((await download).suggestedFilename()).toBe('分析报告.md');
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出报告'}).click();expect((await download).suggestedFilename()).toBe('分析报告与追问.md');
 });

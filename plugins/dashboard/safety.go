@@ -41,8 +41,11 @@ func settingText(st State, key string) string { v, _ := st.Settings[key].(string
 func settingNumber(st State, key string) int  { v, _ := st.Settings[key].(float64); return int(v) }
 func settingFlag(st State, key string) bool   { return st.Settings[key] == true }
 func safetyConfig(st State, source, target string) (promptguard.Config, contextcleaner.Config, error) {
-	if source == "reply-media" {
+	if source == "reply-media" || source == "wechat-proactive" {
 		source = "wechat"
+	}
+	if source == "memory-scan" {
+		source = "analysis"
 	}
 	g := promptguard.Config{Enabled: pluginEnabled(st, "prompt_guard"), Mode: settingText(st, "prompt_guard.mode")}
 	if err := json.Unmarshal([]byte(settingText(st, "prompt_guard.rules")), &g.Rules); err != nil {
@@ -86,7 +89,9 @@ func filterSafety(st State, q ai.Request) (ai.Request, safetyReport, error) {
 	filter := func(messages []contextcleaner.Message, source string) ([]contextcleaner.Message, error) {
 		clean := []contextcleaner.Message{}
 		for _, m := range messages {
-			m.Source = source
+			if q.Conversation == nil {
+				m.Source = source
+			}
 			if source == "document" {
 				m.Role = "user"
 			}
@@ -110,6 +115,27 @@ func filterSafety(st State, q ai.Request) (ai.Request, safetyReport, error) {
 	q.Documents, err = filter(q.Documents, "document")
 	if err != nil {
 		return q, report, err
+	}
+	if q.Conversation != nil {
+		conv := *q.Conversation
+		conv.References, err = filter(conv.References, "document")
+		if err != nil {
+			return q, report, err
+		}
+		conv.Memories = nil
+		for _, memory := range q.Conversation.Memories {
+			hits, e := promptguard.Check(g, memory.Content, "document", false)
+			if e != nil {
+				return q, report, e
+			}
+			report.Hits = append(report.Hits, hits...)
+			if promptguard.Blocked(hits) {
+				report.Changes = append(report.Changes, contextcleaner.Change{ID: memory.ID, Reason: "疑似注入，隔离记忆"})
+				continue
+			}
+			conv.Memories = append(conv.Memories, memory)
+		}
+		q.Conversation = &conv
 	}
 	report.Messages = append(append([]contextcleaner.Message{}, q.Context...), q.Documents...)
 	return q, report, nil
@@ -145,6 +171,9 @@ func materializeSafety(st State, q ai.Request, m Model, maxOutput int) (ai.Reque
 		r.Changes = append(r.Changes, contextcleaner.Change{ID: "current", Reason: "移除当前输入的异常控制字符"})
 	}
 	q.System += dataBoundary
+	if q.Conversation != nil {
+		return materializeConversation(st, q, m, maxOutput, c, r)
+	}
 	reserve := contextcleaner.Estimate(q.System) + contextcleaner.Estimate(q.Prompt) + maxOutput + 512
 	for _, t := range q.Tools {
 		reserve += contextcleaner.Estimate(t.Name+t.Description) + 256
@@ -189,6 +218,16 @@ func materializeSafety(st State, q ai.Request, m Model, maxOutput int) (ai.Reque
 
 func filterSafetyOutput(st State, q ai.Request, result ai.Result, secret string) (ai.Result, safetyReport, error) {
 	r := safetyReport{Hits: []promptguard.Hit{}, Changes: []contextcleaner.Change{}, Messages: []contextcleaner.Message{}}
+	if wechatReplySource(q.Source) && q.Kind == "chat" {
+		body, err := ai.ReplyText(result.Text)
+		if err != nil {
+			return ai.Result{}, r, err
+		}
+		if body != result.Text {
+			r.Changes = append(r.Changes, contextcleaner.Change{ID: "output", Reason: "提取聊天记录包装中的回复正文"})
+			result.Text = body
+		}
+	}
 	g, c, err := safetyConfig(st, q.Source, q.Target)
 	if err != nil {
 		return result, r, err

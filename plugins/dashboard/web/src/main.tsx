@@ -32,6 +32,7 @@ import { AppearancePicker, useAppearance } from "./Appearance";
 const Overview = lazy(() => import("./Overview"));
 import Chat from "./Chat";
 import Models from "./Models";
+import { currentPage } from "./memoryRoute";
 const pages = [
   ["overview", "总览", House],
   ["wechat", "微信", ChatCircleDots],
@@ -253,7 +254,7 @@ function App() {
   const [schema, setSchema] = useState<Group[]>([]);
   const [error, setError] = useState("");
   const [page, setPage] = useState(
-    location.hash.slice(1).split("?")[0] || "overview",
+    currentPage,
   );
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -335,7 +336,7 @@ function App() {
   }, [auth?.authenticated, refresh]);
   useEffect(() => {
     const onHash = () => {
-      setPage(location.hash.slice(1).split("?")[0] || "overview");
+      setPage(currentPage());
       setMobileNav(false);
     };
     window.addEventListener("hashchange", onHash);
@@ -520,9 +521,9 @@ function App() {
         </WechatLogin>
         <span className="nav-caption">工作空间</span>
         <nav>
-          {pages.map(([id, label, Icon], i) => (
+          {pages.map(([id, label, Icon]) => (
             <React.Fragment key={id}>
-              {i === 6 && <span className="nav-caption second">管理</span>}
+              {id === "logs" && <span className="nav-caption second">管理</span>}
               <a
                 href={`#${id}`}
                 aria-label={label}

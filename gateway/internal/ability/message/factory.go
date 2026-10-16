@@ -46,6 +46,9 @@ func Build(msg *messageapi.NewMessage) (*sdk.Message, error) {
 		memberName := parts[0]
 		content = parts[1]
 		member = chatroom.Instance.GetMember(msg.Sender.Value, memberName)
+		if member == nil && memberName != "" {
+			member = &chatroom.Member{Username: memberName}
+		}
 	}
 
 	result := &sdk.Message{

@@ -14,14 +14,40 @@ import (
 
 // Message 保留真实身份和来源；它是资料，不会被转换成 system 指令。
 type Message struct {
-	ID      string `json:"id,omitempty"`
-	Session string `json:"session,omitempty"`
-	Role    string `json:"role"`
-	Sender  string `json:"sender,omitempty"`
-	Source  string `json:"source"`
-	Kind    string `json:"kind,omitempty"`
-	Text    string `json:"text"`
-	Time    string `json:"time,omitempty"`
+	Status      string       `json:"status,omitempty"`
+	SenderID    string       `json:"sender_id,omitempty"`
+	ActorType   string       `json:"actor_type,omitempty"`
+	Mentions    []string     `json:"mentions,omitempty"`
+	MentionAll  bool         `json:"mention_all,omitempty"`
+	Interaction *Interaction `json:"interaction,omitempty"`
+	Quote       *Reference   `json:"quote,omitempty"`
+	ID          string       `json:"id,omitempty"`
+	Session     string       `json:"session,omitempty"`
+	Role        string       `json:"role"`
+	Sender      string       `json:"sender,omitempty"`
+	Source      string       `json:"source"`
+	Kind        string       `json:"kind,omitempty"`
+	Text        string       `json:"text"`
+	Time        string       `json:"time,omitempty"`
+}
+
+// Interaction 只承载协议明确提供的参与者，未知身份不从展示文字推断。
+type Interaction struct {
+	Kind       string `json:"kind"`
+	ActorID    string `json:"actor_id,omitempty"`
+	ActorName  string `json:"actor_name,omitempty"`
+	TargetID   string `json:"target_id,omitempty"`
+	TargetName string `json:"target_name,omitempty"`
+	RelatedID  string `json:"related_id,omitempty"`
+	Verified   bool   `json:"verified"`
+}
+
+type Reference struct {
+	ID       string `json:"id"`
+	SenderID string `json:"sender_id,omitempty"`
+	Sender   string `json:"sender,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Verified bool   `json:"verified"`
 }
 type Change struct {
 	ID     string `json:"id"`
