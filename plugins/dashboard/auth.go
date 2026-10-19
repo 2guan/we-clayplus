@@ -1,179 +1,211 @@
-// 文件名: plugins/dashboard/auth.go
-// 主要功能: 用户密码安全哈希（bcrypt）、JWT 令牌签发校验与 RBAC 权限控制中间件
-// 作者: 2guan
-
-package main
+// 文件名：auth.go
+// 主要功能：实现首次管理员初始化、密码哈希、服务端会话与角色校验。
+// 作者：2guan
+package dashboard
 
 import (
-	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
-	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-// 定义系统支持的双角色枚举常量
-const (
-	RoleAdmin    = "admin"    // 管理员：拥有全局管理、用户CRUD、系统设置所有权限
-	RoleOperator = "operator" // 操作员：拥有聊天控制台、通讯录、朋友圈、AI配置等业务权限，不可管理用户
-)
-
-// 上下文传递用户信息的 Context Key 类型
-type contextKey string
-
-const userContextKey contextKey = "dashboard_user"
-
-// UserClaims 存储在 JWT 荷载（Payload）中的用户信息
-type UserClaims struct {
-	UserID      int64  `json:"uid"`
-	Username    string `json:"usr"`
-	Role        string `json:"rol"`
-	DisplayName string `json:"name"`
-	ExpiresAt   int64  `json:"exp"`
+type session struct {
+	UserID  string
+	Expires time.Time
+}
+type attempt struct {
+	Count int
+	Until time.Time
 }
 
-// HashPassword 使用 bcrypt 算法将明文密码计算为安全不可逆的哈希字符串
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+func randomID() string {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		panic("安全随机源不可用")
+	}
+	return hex.EncodeToString(b)
+}
+func (s *Server) users() ([]User, error) {
+	rows, err := s.store.db.Query("SELECT id,name,nickname,role,enabled FROM users ORDER BY name")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(bytes), nil
-}
-
-// CheckPasswordHash 验证输入的明文密码与数据库中存储的 bcrypt 哈希是否匹配
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
-}
-
-// GenerateJWT 为指定用户签发带有过期时间的 HMAC-SHA256 签名 JWT 令牌（默认有效期 7 天）
-func GenerateJWT(claims UserClaims, secret string) (string, error) {
-	// 默认 7 天有效期
-	if claims.ExpiresAt == 0 {
-		claims.ExpiresAt = time.Now().Add(7 * 24 * time.Hour).Unix()
-	}
-
-	// 1. 组装标准 JWT 头部
-	header := map[string]string{"alg": "HS256", "typ": "JWT"}
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return "", err
-	}
-	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
-
-	// 2. 组装 JWT Payload 载荷
-	payloadJSON, err := json.Marshal(claims)
-	if err != nil {
-		return "", err
-	}
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-
-	// 3. 计算 HMAC-SHA256 签名
-	unsignedToken := headerB64 + "." + payloadB64
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(unsignedToken))
-	signatureB64 := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-
-	return unsignedToken + "." + signatureB64, nil
-}
-
-// ParseJWT 校验并解析传入的 JWT 令牌，若验签失败或令牌过期则返回明确错误
-func ParseJWT(tokenString string, secret string) (*UserClaims, error) {
-	parts := strings.Split(tokenString, ".")
-	if len(parts) != 3 {
-		return nil, errors.New("令牌格式不正确")
-	}
-
-	headerB64, payloadB64, signatureB64 := parts[0], parts[1], parts[2]
-
-	// 1. 验证签名完整性
-	unsignedToken := headerB64 + "." + payloadB64
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(unsignedToken))
-	expectedSignature := mac.Sum(nil)
-	actualSignature, err := base64.RawURLEncoding.DecodeString(signatureB64)
-	if err != nil || !hmac.Equal(actualSignature, expectedSignature) {
-		return nil, errors.New("令牌签名无效或已被篡改")
-	}
-
-	// 2. 解析载荷数据
-	payloadJSON, err := base64.RawURLEncoding.DecodeString(payloadB64)
-	if err != nil {
-		return nil, errors.New("解析载荷数据失败")
-	}
-
-	var claims UserClaims
-	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
-		return nil, errors.New("解码用户信息失败")
-	}
-
-	// 3. 检查有效期
-	if time.Now().Unix() > claims.ExpiresAt {
-		return nil, errors.New("登录令牌已过期，请重新登录")
-	}
-
-	return &claims, nil
-}
-
-// AuthMiddleware 保护需要登录态的 API 路由，解析请求头中的 Authorization Bearer 令牌
-func (s *Server) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		token := ""
-
-		// 优先从 Authorization 头获取: Bearer <token>
-		if authHeader != "" {
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
-				token = strings.TrimSpace(parts[1])
-			}
+	defer rows.Close()
+	result := []User{}
+	for rows.Next() {
+		var u User
+		if err = rows.Scan(&u.ID, &u.Name, &u.Nickname, &u.Role, &u.Enabled); err != nil {
+			return nil, err
 		}
-
-		// 若 Header 未携带，尝试从 URL Query 中获取（主要用于 SSE 流和媒体直链）
-		if token == "" {
-			token = r.URL.Query().Get("token")
+		result = append(result, u)
+	}
+	return result, rows.Err()
+}
+func (s *Server) currentUser(r *http.Request) (User, bool) {
+	if s.cfg.Mock {
+		return User{ID: "mock-admin", Name: "admin", Nickname: "演示管理员", Role: "admin", Enabled: true}, true
+	}
+	c, err := r.Cookie("weclay_session")
+	if err != nil {
+		return User{}, false
+	}
+	s.authMu.Lock()
+	v, ok := s.sessions[c.Value]
+	if ok && time.Now().After(v.Expires) {
+		delete(s.sessions, c.Value)
+		ok = false
+	}
+	s.authMu.Unlock()
+	if !ok {
+		return User{}, false
+	}
+	var u User
+	err = s.store.db.QueryRow("SELECT id,name,nickname,role,enabled FROM users WHERE id=?", v.UserID).Scan(&u.ID, &u.Name, &u.Nickname, &u.Role, &u.Enabled)
+	return u, err == nil && u.Enabled
+}
+func (s *Server) auth(w http.ResponseWriter, r *http.Request) {
+	users, err := s.users()
+	if err != nil {
+		writeError(w, 500, "读取用户失败")
+		return
+	}
+	if r.Method == http.MethodGet {
+		user, ok := s.currentUser(r)
+		// 登录前仅公开品牌名称，不能将整份设置或账号数据交给认证页。
+		brandName, _ := s.store.snapshot().Settings["brand.name"].(string)
+		if strings.TrimSpace(brandName) == "" {
+			brandName = "we-clay"
 		}
-
-		if token == "" {
-			s.writeJSON(w, http.StatusUnauthorized, APIResponse{Code: 401, Message: "未提供登录凭证，请先登录"})
-			return
-		}
-
-		claims, err := ParseJWT(token, s.plugin.Config.JWTSecret)
+		writeJSON(w, 200, map[string]any{"initialized": len(users) > 0 || s.cfg.Mock, "authenticated": ok, "user": user, "mock": s.cfg.Mock, "brandName": brandName})
+		return
+	}
+	if r.Method != http.MethodPost || (r.URL.Path != "/api/auth/login" && r.URL.Path != "/api/auth/setup") {
+		writeError(w, 405, "请求方法不支持")
+		return
+	}
+	if !sameOrigin(r) {
+		writeError(w, 403, "请求来源不允许")
+		return
+	}
+	var req struct {
+		Name     string `json:"name"`
+		Password string `json:"password"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.Password) > 72 || len(req.Name) > 64 {
+		writeError(w, 400, "登录名或密码过长")
+		return
+	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	s.authMu.Lock()
+	a := s.attempts[host]
+	if time.Now().After(a.Until) {
+		a = attempt{Until: time.Now().Add(15 * time.Minute)}
+	}
+	limit := int(s.number("security.login_attempts", 10))
+	if a.Count >= limit {
+		s.authMu.Unlock()
+		writeError(w, 429, "尝试次数过多，请稍后重试")
+		return
+	}
+	a.Count++
+	s.attempts[host] = a
+	s.authMu.Unlock()
+	if r.URL.Path == "/api/auth/setup" {
+		s.setupMu.Lock()
+		defer s.setupMu.Unlock()
+		// 初始化串行执行，只允许在尚无管理员时创建第一个账号。
+		users, err = s.users()
 		if err != nil {
-			s.writeJSON(w, http.StatusUnauthorized, APIResponse{Code: 401, Message: err.Error()})
+			writeError(w, 500, "读取用户失败")
 			return
 		}
-
-		// 将用户信息注入请求上下文
-		ctx := context.WithValue(r.Context(), userContextKey, claims)
-		next(w, r.WithContext(ctx))
+		if len(users) > 0 {
+			writeError(w, 403, "已经完成初始化")
+			return
+		}
+		if len(req.Password) < 6 || strings.TrimSpace(req.Name) == "" {
+			writeError(w, 400, "请设置登录名和至少 6 字符的密码")
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			writeError(w, 500, "密码处理失败")
+			return
+		}
+		_, err = s.store.db.Exec("INSERT INTO users VALUES(?,?,?,?,?,?)", randomID(), req.Name, req.Name, "admin", true, string(hash))
+		if err != nil {
+			writeError(w, 500, "创建管理员失败")
+			return
+		}
 	}
+	var u User
+	err = s.store.db.QueryRow("SELECT id,name,nickname,role,enabled,password FROM users WHERE name=?", req.Name).Scan(&u.ID, &u.Name, &u.Nickname, &u.Role, &u.Enabled, &u.Password)
+	if err != nil || !u.Enabled || bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)) != nil {
+		writeError(w, 401, "登录名或密码不正确")
+		return
+	}
+	token := randomID()
+	duration := time.Duration(s.number("security.session_hours", 12)) * time.Hour
+	s.authMu.Lock()
+	s.sessions[token] = session{u.ID, time.Now().Add(duration)}
+	delete(s.attempts, host)
+	s.authMu.Unlock()
+	http.SetCookie(w, &http.Cookie{Name: "weclay_session", Value: token, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, MaxAge: int(duration.Seconds())})
+	writeJSON(w, 200, map[string]any{"user": u})
 }
 
-// RequireAdmin 中间件：在通过登录认证的前提下，确保当前操作者必须具备管理员角色
-func (s *Server) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return s.AuthMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := r.Context().Value(userContextKey).(*UserClaims)
-		if !ok || claims.Role != RoleAdmin {
-			s.writeJSON(w, http.StatusForbidden, APIResponse{Code: 403, Message: "权限不足：该操作仅限系统管理员执行"})
-			return
-		}
-		next(w, r)
-	})
+// sameOrigin 配合 JSON 请求和 SameSite Cookie 阻断跨站写入；不信任任意代理头。
+func sameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return r.Header.Get("Sec-Fetch-Site") != "cross-site"
+	}
+	u, err := url.Parse(origin)
+	return err == nil && u.Host == r.Host && (u.Scheme == "http" || u.Scheme == "https")
 }
-
-// GetCurrentUser 从当前请求上下文中提取已登录的用户信息
-func GetCurrentUser(r *http.Request) *UserClaims {
-	if val, ok := r.Context().Value(userContextKey).(*UserClaims); ok {
-		return val
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	contentType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if contentType != "application/json" {
+		writeError(w, 415, "请使用 JSON 请求")
+		return false
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 24<<20)
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if err := d.Decode(v); err != nil {
+		writeError(w, 400, "请求格式不正确或内容过大")
+		return false
+	}
+	if d.Decode(new(any)) != io.EOF {
+		writeError(w, 400, "请求包含多余内容")
+		return false
+	}
+	return true
+}
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+func requireAdmin(u User) error {
+	if u.Role != "admin" {
+		return fmt.Errorf("仅管理员可执行此操作")
 	}
 	return nil
 }

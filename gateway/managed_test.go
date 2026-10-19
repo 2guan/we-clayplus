@@ -1,3 +1,6 @@
+// 文件名：managed_test.go
+// 主要功能：使用独立临时目录和临时控制台端口验证 gateway 生命周期，避免与开发预览冲突。
+// 作者：2guan
 package gateway_test
 
 import (
@@ -7,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/we-clay/we-clay/sdk/control"
 	"io"
 	"net"
 	"os"
@@ -29,6 +33,10 @@ import (
 
 // 用本测试程序充当 core 子进程，真实启动/退出但不连接微信。
 func TestMain(m *testing.M) {
+	if len(os.Args) == 3 && os.Args[1] == "--fixture-gateway-parent" {
+		independentParentMain(os.Args[2])
+		os.Exit(0)
+	}
 	if os.Getenv("WE_CLAY_TEST_MANAGED_CORE") != "" {
 		mockCoreMain()
 		os.Exit(0)
@@ -79,6 +87,8 @@ func mockCoreMain() {
 	addr := f.String("grpc-listen", "", "")
 	stage := f.String("stage", "", "")
 	device := f.String("device-type", "", "")
+	deviceName := f.String("device-name", "", "")
+	updateVersion := f.Bool("update-version", true, "")
 	f.String("listen", "", "")
 	f.String("api-token-env", "", "")
 	f.Bool("storage-encrypt", false, "")
@@ -87,10 +97,11 @@ func mockCoreMain() {
 	if mode == "exit" {
 		os.Exit(7)
 	}
-	if *device != "mac" || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
+	if *device != "mac" || *updateVersion || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
 		os.Exit(8)
 	}
 	os.WriteFile(filepath.Join(*data, "fixture-stage"), []byte(*stage), 0600)
+	os.WriteFile(filepath.Join(*data, "fixture-device-name"), []byte(*deviceName), 0600)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	listener, err := net.Listen("tcp", *addr)
@@ -115,7 +126,7 @@ func managedFixture(t *testing.T, mode string) gateway.Config {
 	}
 	address := listener.Addr().String()
 	listener.Close()
-	config := gateway.Config{
+	config := gateway.Config{Console: &control.Config{Address: "127.0.0.1:0"},
 		CoreAddress: address, CoreToken: "synthetic-managed-token", DataDir: filepath.Join(root, "gateway"), PluginsDir: filepath.Join(root, "plugins"),
 		Core: &gateway.CoreConfig{Version: "v0.0.0-test", CacheDir: filepath.Join(root, "bin"), DataDir: filepath.Join(root, "core"), LoginAddress: "-", GitHubTokenEnv: "WE_CLAY_TEST_RELEASE_TOKEN", StartupTimeout: 5 * time.Second, LoginTimeout: 5 * time.Second},
 	}

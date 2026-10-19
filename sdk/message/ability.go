@@ -11,6 +11,8 @@ type Ability interface {
 	// Revoke 撤回当前 gateway 运行内发送且已保存完整回执的消息。
 	// v0.5.1 起自动补齐原始 client_id/create_time；缺失时返回 ErrRevokeReceiptUnavailable。
 	Revoke(receiver string, newMsgId uint64) (*Revoke_Response, error)
+	// Pat 在 receiver 私聊或群聊中拍 pattedUsername；私聊两者填写同一微信 ID。
+	Pat(receiver, pattedUsername string) (*Pat_Response, error)
 	// Download 下载消息中的媒体资源（server-stream：流式返回）
 	Download(msg *Message) (io.ReadCloser, error)
 }

@@ -24,6 +24,7 @@ const (
 	MessageService_Forward_FullMethodName             = "/message.MessageService/Forward"
 	MessageService_Revoke_FullMethodName              = "/message.MessageService/Revoke"
 	MessageService_Download_FullMethodName            = "/message.MessageService/Download"
+	MessageService_Pat_FullMethodName                 = "/message.MessageService/Pat"
 )
 
 // MessageServiceClient is the client API for MessageService service.
@@ -42,6 +43,8 @@ type MessageServiceClient interface {
 	Revoke(ctx context.Context, in *Revoke_Request, opts ...grpc.CallOption) (*Revoke_Response, error)
 	// Download 下载媒体资源（server-stream：流式返回二进制数据）
 	Download(ctx context.Context, in *Download_Request, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Download_Response], error)
+	// Pat 在指定会话里拍一拍联系人。私聊时两个用户名相同。
+	Pat(ctx context.Context, in *Pat_Request, opts ...grpc.CallOption) (*Pat_Response, error)
 }
 
 type messageServiceClient struct {
@@ -114,6 +117,16 @@ func (c *messageServiceClient) Download(ctx context.Context, in *Download_Reques
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type MessageService_DownloadClient = grpc.ServerStreamingClient[Download_Response]
 
+func (c *messageServiceClient) Pat(ctx context.Context, in *Pat_Request, opts ...grpc.CallOption) (*Pat_Response, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Pat_Response)
+	err := c.cc.Invoke(ctx, MessageService_Pat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MessageServiceServer is the server API for MessageService service.
 // All implementations must embed UnimplementedMessageServiceServer
 // for forward compatibility.
@@ -130,6 +143,8 @@ type MessageServiceServer interface {
 	Revoke(context.Context, *Revoke_Request) (*Revoke_Response, error)
 	// Download 下载媒体资源（server-stream：流式返回二进制数据）
 	Download(*Download_Request, grpc.ServerStreamingServer[Download_Response]) error
+	// Pat 在指定会话里拍一拍联系人。私聊时两个用户名相同。
+	Pat(context.Context, *Pat_Request) (*Pat_Response, error)
 	mustEmbedUnimplementedMessageServiceServer()
 }
 
@@ -154,6 +169,9 @@ func (UnimplementedMessageServiceServer) Revoke(context.Context, *Revoke_Request
 }
 func (UnimplementedMessageServiceServer) Download(*Download_Request, grpc.ServerStreamingServer[Download_Response]) error {
 	return status.Error(codes.Unimplemented, "method Download not implemented")
+}
+func (UnimplementedMessageServiceServer) Pat(context.Context, *Pat_Request) (*Pat_Response, error) {
+	return nil, status.Error(codes.Unimplemented, "method Pat not implemented")
 }
 func (UnimplementedMessageServiceServer) mustEmbedUnimplementedMessageServiceServer() {}
 func (UnimplementedMessageServiceServer) testEmbeddedByValue()                        {}
@@ -248,6 +266,24 @@ func _MessageService_Download_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type MessageService_DownloadServer = grpc.ServerStreamingServer[Download_Response]
 
+func _MessageService_Pat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Pat_Request)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MessageServiceServer).Pat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MessageService_Pat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MessageServiceServer).Pat(ctx, req.(*Pat_Request))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MessageService_ServiceDesc is the grpc.ServiceDesc for MessageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -266,6 +302,10 @@ var MessageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Revoke",
 			Handler:    _MessageService_Revoke_Handler,
+		},
+		{
+			MethodName: "Pat",
+			Handler:    _MessageService_Pat_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

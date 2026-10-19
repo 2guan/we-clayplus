@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/we-clay/we-clay/sdk"
 	"github.com/we-clay/we-clay/sdk/corewire"
 	"google.golang.org/grpc"
 	"mime/multipart"
@@ -134,15 +135,19 @@ func decodeResponse(code int, contentType string, raw []byte) ([]byte, error) {
 	if code < 200 || code >= 300 {
 		// 只提取约定错误信封中的说明，不把 HTML、媒体或完整响应体写入错误。
 		var problem struct {
-			Code    *int64 `json:"code"`
-			Message string `json:"message"`
+			Code       *int64 `json:"code"`
+			Message    string `json:"message"`
+			WeChatCode *int32 `json:"wechat_code"`
+			Category   string `json:"category"`
+			Operation  string `json:"operation"`
+			Restricted bool   `json:"restricted"`
 		}
 		if len(raw) <= 64<<10 && json.Unmarshal(raw, &problem) == nil && problem.Code != nil && *problem.Code != 0 && problem.Message != "" {
 			message := []rune(problem.Message)
 			if len(message) > 1024 {
 				message = append(message[:1024], '…')
 			}
-			return nil, fmt.Errorf("core returned status %d (code %d): %s", code, *problem.Code, string(message))
+			return nil, &sdk.CoreError{Status: code, Code: *problem.Code, Message: string(message), WeChatCode: problem.WeChatCode, Category: problem.Category, Operation: problem.Operation, Restricted: problem.Restricted}
 		}
 		return nil, fmt.Errorf("core returned status %d", code)
 	}
@@ -150,15 +155,23 @@ func decodeResponse(code int, contentType string, raw []byte) ([]byte, error) {
 		return raw, nil
 	}
 	var envelope struct {
-		Code    *int64          `json:"code"`
-		Data    json.RawMessage `json:"data"`
-		Message string          `json:"message"`
+		Code       *int64          `json:"code"`
+		Data       json.RawMessage `json:"data"`
+		Message    string          `json:"message"`
+		WeChatCode *int32          `json:"wechat_code"`
+		Category   string          `json:"category"`
+		Operation  string          `json:"operation"`
+		Restricted bool            `json:"restricted"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil || envelope.Code == nil {
 		return nil, errors.New("invalid core response envelope")
 	}
 	if *envelope.Code != 0 {
-		return nil, fmt.Errorf("core rejected request (code %d): %s", *envelope.Code, envelope.Message)
+		message := []rune(envelope.Message)
+		if len(message) > 1024 {
+			message = append(message[:1024], '…')
+		}
+		return nil, &sdk.CoreError{Status: code, Code: *envelope.Code, Message: string(message), WeChatCode: envelope.WeChatCode, Category: envelope.Category, Operation: envelope.Operation, Restricted: envelope.Restricted}
 	}
 	return envelope.Data, nil
 }

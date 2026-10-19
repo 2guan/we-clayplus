@@ -12,6 +12,7 @@ type Hooks struct {
 	Ready          func() error
 	Message        func(*message.Message) error
 	Event          func(*sdkplugin.Event) error
+	Contacts       func() error // 联系人缓存更新后投影，包括首次出现的联系人。
 	WithoutPlugins bool
 }
 

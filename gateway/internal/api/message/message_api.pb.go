@@ -575,13 +575,16 @@ func (x *UploadVoiceResponse) GetNewId() uint64 {
 
 // UploadEmojiResponse 上传表情响应（镜像 we-clay.message.UploadEmojiResponse）
 type UploadEmojiResponse struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	BaseResponse  *base.BaseResponse            `protobuf:"bytes,1,opt,name=base_response,json=baseResponse,proto3,oneof" json:"base_response,omitempty"` // 基础响应
-	Count         *int32                        `protobuf:"varint,2,opt,name=count,proto3,oneof" json:"count,omitempty"`                                  // emoji 项目数量
-	Result        []*UploadEmojiResponse_Result `protobuf:"bytes,3,rep,name=result,proto3" json:"result,omitempty"`                                       // emoji 上传响应列表
-	ActionFlag    *uint32                       `protobuf:"varint,4,opt,name=action_flag,json=actionFlag,proto3,oneof" json:"action_flag,omitempty"`      // 操作标志
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state        protoimpl.MessageState        `protogen:"open.v1"`
+	BaseResponse *base.BaseResponse            `protobuf:"bytes,1,opt,name=base_response,json=baseResponse,proto3,oneof" json:"base_response,omitempty"` // 基础响应
+	Count        *int32                        `protobuf:"varint,2,opt,name=count,proto3,oneof" json:"count,omitempty"`                                  // emoji 项目数量
+	Result       []*UploadEmojiResponse_Result `protobuf:"bytes,3,rep,name=result,proto3" json:"result,omitempty"`                                       // emoji 上传响应列表
+	ActionFlag   *uint32                       `protobuf:"varint,4,opt,name=action_flag,json=actionFlag,proto3,oneof" json:"action_flag,omitempty"`      // 操作标志
+	// core 从本次发送请求返回的撤回元数据；不是微信 UploadEmojiResponse 的字段。
+	RevokeClientId   *string `protobuf:"bytes,5,opt,name=revoke_client_id,json=revokeClientId,proto3,oneof" json:"revoke_client_id,omitempty"`
+	RevokeCreateTime *uint64 `protobuf:"varint,6,opt,name=revoke_create_time,json=revokeCreateTime,proto3,oneof" json:"revoke_create_time,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *UploadEmojiResponse) Reset() {
@@ -638,6 +641,20 @@ func (x *UploadEmojiResponse) GetResult() []*UploadEmojiResponse_Result {
 func (x *UploadEmojiResponse) GetActionFlag() uint32 {
 	if x != nil && x.ActionFlag != nil {
 		return *x.ActionFlag
+	}
+	return 0
+}
+
+func (x *UploadEmojiResponse) GetRevokeClientId() string {
+	if x != nil && x.RevokeClientId != nil {
+		return *x.RevokeClientId
+	}
+	return ""
+}
+
+func (x *UploadEmojiResponse) GetRevokeCreateTime() uint64 {
+	if x != nil && x.RevokeCreateTime != nil {
+		return *x.RevokeCreateTime
 	}
 	return 0
 }
@@ -1248,6 +1265,83 @@ func (x *DownloadFileResponse) GetChunk() *base.Buffer {
 	return nil
 }
 
+// SendPatResponse 镜像 core 的微信拍一拍回执。
+type SendPatResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	BaseResponse  *base.BaseResponse     `protobuf:"bytes,1,opt,name=base_response,json=baseResponse,proto3,oneof" json:"base_response,omitempty"`
+	SelfMessage   *string                `protobuf:"bytes,3,opt,name=self_message,json=selfMessage,proto3,oneof" json:"self_message,omitempty"`
+	Suffix        *string                `protobuf:"bytes,4,opt,name=suffix,proto3,oneof" json:"suffix,omitempty"`
+	Id            *uint64                `protobuf:"varint,5,opt,name=id,proto3,oneof" json:"id,omitempty"`
+	SuffixVersion *int64                 `protobuf:"varint,6,opt,name=suffix_version,json=suffixVersion,proto3,oneof" json:"suffix_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendPatResponse) Reset() {
+	*x = SendPatResponse{}
+	mi := &file_api_message_message_api_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendPatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendPatResponse) ProtoMessage() {}
+
+func (x *SendPatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_message_message_api_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendPatResponse.ProtoReflect.Descriptor instead.
+func (*SendPatResponse) Descriptor() ([]byte, []int) {
+	return file_api_message_message_api_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *SendPatResponse) GetBaseResponse() *base.BaseResponse {
+	if x != nil {
+		return x.BaseResponse
+	}
+	return nil
+}
+
+func (x *SendPatResponse) GetSelfMessage() string {
+	if x != nil && x.SelfMessage != nil {
+		return *x.SelfMessage
+	}
+	return ""
+}
+
+func (x *SendPatResponse) GetSuffix() string {
+	if x != nil && x.Suffix != nil {
+		return *x.Suffix
+	}
+	return ""
+}
+
+func (x *SendPatResponse) GetId() uint64 {
+	if x != nil && x.Id != nil {
+		return *x.Id
+	}
+	return 0
+}
+
+func (x *SendPatResponse) GetSuffixVersion() int64 {
+	if x != nil && x.SuffixVersion != nil {
+		return *x.SuffixVersion
+	}
+	return 0
+}
+
 type SendMessageResponse_Result struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Code          *int64                  `protobuf:"varint,1,opt,name=code,proto3,oneof" json:"code,omitempty"`                               // 返回码
@@ -1264,7 +1358,7 @@ type SendMessageResponse_Result struct {
 
 func (x *SendMessageResponse_Result) Reset() {
 	*x = SendMessageResponse_Result{}
-	mi := &file_api_message_message_api_proto_msgTypes[13]
+	mi := &file_api_message_message_api_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1276,7 +1370,7 @@ func (x *SendMessageResponse_Result) String() string {
 func (*SendMessageResponse_Result) ProtoMessage() {}
 
 func (x *SendMessageResponse_Result) ProtoReflect() protoreflect.Message {
-	mi := &file_api_message_message_api_proto_msgTypes[13]
+	mi := &file_api_message_message_api_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1362,7 +1456,7 @@ type UploadEmojiResponse_Result struct {
 
 func (x *UploadEmojiResponse_Result) Reset() {
 	*x = UploadEmojiResponse_Result{}
-	mi := &file_api_message_message_api_proto_msgTypes[14]
+	mi := &file_api_message_message_api_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1374,7 +1468,7 @@ func (x *UploadEmojiResponse_Result) String() string {
 func (*UploadEmojiResponse_Result) ProtoMessage() {}
 
 func (x *UploadEmojiResponse_Result) ProtoReflect() protoreflect.Message {
-	mi := &file_api_message_message_api_proto_msgTypes[14]
+	mi := &file_api_message_message_api_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1558,13 +1652,15 @@ const file_api_message_message_api_proto_rawDesc = "" +
 	"\t_end_flagB\x10\n" +
 	"\x0e_base_responseB\x0e\n" +
 	"\f_cancel_flagB\t\n" +
-	"\a_new_id\"\xde\x03\n" +
+	"\a_new_id\"\xec\x04\n" +
 	"\x13UploadEmojiResponse\x12@\n" +
 	"\rbase_response\x18\x01 \x01(\v2\x16.api.base.BaseResponseH\x00R\fbaseResponse\x88\x01\x01\x12\x19\n" +
 	"\x05count\x18\x02 \x01(\x05H\x01R\x05count\x88\x01\x01\x12?\n" +
 	"\x06result\x18\x03 \x03(\v2'.api.message.UploadEmojiResponse.ResultR\x06result\x12$\n" +
 	"\vaction_flag\x18\x04 \x01(\rH\x02R\n" +
-	"actionFlag\x88\x01\x01\x1a\xd6\x01\n" +
+	"actionFlag\x88\x01\x01\x12-\n" +
+	"\x10revoke_client_id\x18\x05 \x01(\tH\x03R\x0erevokeClientId\x88\x01\x01\x121\n" +
+	"\x12revoke_create_time\x18\x06 \x01(\x04H\x04R\x10revokeCreateTime\x88\x01\x01\x1a\xd6\x01\n" +
 	"\x06Result\x12\x17\n" +
 	"\x04code\x18\x01 \x01(\x05H\x00R\x04code\x88\x01\x01\x12\x1b\n" +
 	"\x06offset\x18\x02 \x01(\x05H\x01R\x06offset\x88\x01\x01\x12\x17\n" +
@@ -1580,7 +1676,9 @@ const file_api_message_message_api_proto_rawDesc = "" +
 	"\a_new_idB\x10\n" +
 	"\x0e_base_responseB\b\n" +
 	"\x06_countB\x0e\n" +
-	"\f_action_flag\"\xc7\x04\n" +
+	"\f_action_flagB\x13\n" +
+	"\x11_revoke_client_idB\x15\n" +
+	"\x13_revoke_create_time\"\xc7\x04\n" +
 	"\x16SendAppMessageResponse\x12@\n" +
 	"\rbase_response\x18\x01 \x01(\v2\x16.api.base.BaseResponseH\x00R\fbaseResponse\x88\x01\x01\x12\x1a\n" +
 	"\x06app_id\x18\x02 \x01(\tH\x01R\x05appId\x88\x01\x01\x12\x1b\n" +
@@ -1695,7 +1793,18 @@ const file_api_message_message_api_proto_rawDesc = "" +
 	"\x05_sizeB\t\n" +
 	"\a_offsetB\r\n" +
 	"\v_chunk_sizeB\b\n" +
-	"\x06_chunkBDZBgithub.com/we-clay/we-clay/gateway/internal/api/message;messageapib\x06proto3"
+	"\x06_chunk\"\xa1\x02\n" +
+	"\x0fSendPatResponse\x12@\n" +
+	"\rbase_response\x18\x01 \x01(\v2\x16.api.base.BaseResponseH\x00R\fbaseResponse\x88\x01\x01\x12&\n" +
+	"\fself_message\x18\x03 \x01(\tH\x01R\vselfMessage\x88\x01\x01\x12\x1b\n" +
+	"\x06suffix\x18\x04 \x01(\tH\x02R\x06suffix\x88\x01\x01\x12\x13\n" +
+	"\x02id\x18\x05 \x01(\x04H\x03R\x02id\x88\x01\x01\x12*\n" +
+	"\x0esuffix_version\x18\x06 \x01(\x03H\x04R\rsuffixVersion\x88\x01\x01B\x10\n" +
+	"\x0e_base_responseB\x0f\n" +
+	"\r_self_messageB\t\n" +
+	"\a_suffixB\x05\n" +
+	"\x03_idB\x11\n" +
+	"\x0f_suffix_versionBDZBgithub.com/we-clay/we-clay/gateway/internal/api/message;messageapib\x06proto3"
 
 var (
 	file_api_message_message_api_proto_rawDescOnce sync.Once
@@ -1709,7 +1818,7 @@ func file_api_message_message_api_proto_rawDescGZIP() []byte {
 	return file_api_message_message_api_proto_rawDescData
 }
 
-var file_api_message_message_api_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_api_message_message_api_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_api_message_message_api_proto_goTypes = []any{
 	(*SyncMessageRequest)(nil),         // 0: api.message.SyncMessageRequest
 	(*OperateResponse)(nil),            // 1: api.message.OperateResponse
@@ -1724,41 +1833,43 @@ var file_api_message_message_api_proto_goTypes = []any{
 	(*DownloadVideoResponse)(nil),      // 10: api.message.DownloadVideoResponse
 	(*DownloadVoiceResponse)(nil),      // 11: api.message.DownloadVoiceResponse
 	(*DownloadFileResponse)(nil),       // 12: api.message.DownloadFileResponse
-	(*SendMessageResponse_Result)(nil), // 13: api.message.SendMessageResponse.Result
-	(*UploadEmojiResponse_Result)(nil), // 14: api.message.UploadEmojiResponse.Result
-	(*base.BaseResponse)(nil),          // 15: api.base.BaseResponse
-	(*wrapperspb.StringValue)(nil),     // 16: google.protobuf.StringValue
-	(*base.Buffer)(nil),                // 17: api.base.Buffer
+	(*SendPatResponse)(nil),            // 13: api.message.SendPatResponse
+	(*SendMessageResponse_Result)(nil), // 14: api.message.SendMessageResponse.Result
+	(*UploadEmojiResponse_Result)(nil), // 15: api.message.UploadEmojiResponse.Result
+	(*base.BaseResponse)(nil),          // 16: api.base.BaseResponse
+	(*wrapperspb.StringValue)(nil),     // 17: google.protobuf.StringValue
+	(*base.Buffer)(nil),                // 18: api.base.Buffer
 }
 var file_api_message_message_api_proto_depIdxs = []int32{
-	15, // 0: api.message.SendMessageResponse.base_response:type_name -> api.base.BaseResponse
-	13, // 1: api.message.SendMessageResponse.list:type_name -> api.message.SendMessageResponse.Result
-	15, // 2: api.message.UploadImageResponse.base_response:type_name -> api.base.BaseResponse
-	16, // 3: api.message.UploadImageResponse.client_id:type_name -> google.protobuf.StringValue
-	16, // 4: api.message.UploadImageResponse.sender:type_name -> google.protobuf.StringValue
-	16, // 5: api.message.UploadImageResponse.receiver:type_name -> google.protobuf.StringValue
-	15, // 6: api.message.UploadVideoResponse.base_response:type_name -> api.base.BaseResponse
-	15, // 7: api.message.UploadVoiceResponse.base_response:type_name -> api.base.BaseResponse
-	15, // 8: api.message.UploadEmojiResponse.base_response:type_name -> api.base.BaseResponse
-	14, // 9: api.message.UploadEmojiResponse.result:type_name -> api.message.UploadEmojiResponse.Result
-	15, // 10: api.message.SendAppMessageResponse.base_response:type_name -> api.base.BaseResponse
-	15, // 11: api.message.RevokeMessageResponse.base_response:type_name -> api.base.BaseResponse
-	15, // 12: api.message.DownloadImageResponse.base_response:type_name -> api.base.BaseResponse
-	16, // 13: api.message.DownloadImageResponse.sender:type_name -> google.protobuf.StringValue
-	16, // 14: api.message.DownloadImageResponse.receiver:type_name -> google.protobuf.StringValue
-	17, // 15: api.message.DownloadImageResponse.chunk:type_name -> api.base.Buffer
-	15, // 16: api.message.DownloadVideoResponse.base_response:type_name -> api.base.BaseResponse
-	17, // 17: api.message.DownloadVideoResponse.chunk:type_name -> api.base.Buffer
-	17, // 18: api.message.DownloadVoiceResponse.data:type_name -> api.base.Buffer
-	15, // 19: api.message.DownloadVoiceResponse.base_response:type_name -> api.base.BaseResponse
-	15, // 20: api.message.DownloadFileResponse.base_response:type_name -> api.base.BaseResponse
-	17, // 21: api.message.DownloadFileResponse.chunk:type_name -> api.base.Buffer
-	16, // 22: api.message.SendMessageResponse.Result.receiver:type_name -> google.protobuf.StringValue
-	23, // [23:23] is the sub-list for method output_type
-	23, // [23:23] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	16, // 0: api.message.SendMessageResponse.base_response:type_name -> api.base.BaseResponse
+	14, // 1: api.message.SendMessageResponse.list:type_name -> api.message.SendMessageResponse.Result
+	16, // 2: api.message.UploadImageResponse.base_response:type_name -> api.base.BaseResponse
+	17, // 3: api.message.UploadImageResponse.client_id:type_name -> google.protobuf.StringValue
+	17, // 4: api.message.UploadImageResponse.sender:type_name -> google.protobuf.StringValue
+	17, // 5: api.message.UploadImageResponse.receiver:type_name -> google.protobuf.StringValue
+	16, // 6: api.message.UploadVideoResponse.base_response:type_name -> api.base.BaseResponse
+	16, // 7: api.message.UploadVoiceResponse.base_response:type_name -> api.base.BaseResponse
+	16, // 8: api.message.UploadEmojiResponse.base_response:type_name -> api.base.BaseResponse
+	15, // 9: api.message.UploadEmojiResponse.result:type_name -> api.message.UploadEmojiResponse.Result
+	16, // 10: api.message.SendAppMessageResponse.base_response:type_name -> api.base.BaseResponse
+	16, // 11: api.message.RevokeMessageResponse.base_response:type_name -> api.base.BaseResponse
+	16, // 12: api.message.DownloadImageResponse.base_response:type_name -> api.base.BaseResponse
+	17, // 13: api.message.DownloadImageResponse.sender:type_name -> google.protobuf.StringValue
+	17, // 14: api.message.DownloadImageResponse.receiver:type_name -> google.protobuf.StringValue
+	18, // 15: api.message.DownloadImageResponse.chunk:type_name -> api.base.Buffer
+	16, // 16: api.message.DownloadVideoResponse.base_response:type_name -> api.base.BaseResponse
+	18, // 17: api.message.DownloadVideoResponse.chunk:type_name -> api.base.Buffer
+	18, // 18: api.message.DownloadVoiceResponse.data:type_name -> api.base.Buffer
+	16, // 19: api.message.DownloadVoiceResponse.base_response:type_name -> api.base.BaseResponse
+	16, // 20: api.message.DownloadFileResponse.base_response:type_name -> api.base.BaseResponse
+	18, // 21: api.message.DownloadFileResponse.chunk:type_name -> api.base.Buffer
+	16, // 22: api.message.SendPatResponse.base_response:type_name -> api.base.BaseResponse
+	17, // 23: api.message.SendMessageResponse.Result.receiver:type_name -> google.protobuf.StringValue
+	24, // [24:24] is the sub-list for method output_type
+	24, // [24:24] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_api_message_message_api_proto_init() }
@@ -1779,13 +1890,14 @@ func file_api_message_message_api_proto_init() {
 	file_api_message_message_api_proto_msgTypes[12].OneofWrappers = []any{}
 	file_api_message_message_api_proto_msgTypes[13].OneofWrappers = []any{}
 	file_api_message_message_api_proto_msgTypes[14].OneofWrappers = []any{}
+	file_api_message_message_api_proto_msgTypes[15].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_message_message_api_proto_rawDesc), len(file_api_message_message_api_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

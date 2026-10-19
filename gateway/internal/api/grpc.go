@@ -9,7 +9,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"log/slog"
 	"mime"
+	"strings"
 
 	"time"
 )
@@ -61,6 +63,18 @@ func (r *Request) doGRPC() ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+	started := time.Now()
+	// 只记录类别与耗时，路径中的联系人 ID、正文、密钥都不进入诊断日志。
+	defer func() {
+		if elapsed := time.Since(started); elapsed >= time.Second {
+			parts := strings.Split(strings.Trim(r.uri, "/"), "/")
+			category := "core"
+			if len(parts) > 1 {
+				category = parts[1]
+			}
+			slog.Info("core 请求耗时", "category", category, "method", r.method, "elapsed_ms", elapsed.Milliseconds())
+		}
+	}()
 	result, err := r.client.rpc.Invoke(r.client.authenticated(ctx), &corewire.CallRequest{
 		Method: r.method, Path: r.uri, Query: r.query.Encode(), ContentType: r.contentType, Body: r.body,
 	})

@@ -1,7 +1,11 @@
+// 文件名：message_core.go
+// 主要功能：适配 core 消息接口，包括表情资源引用与原文件上传。
+// 作者：2guan
 // Package messageapi 提供消息服务的远程实现（通过 gRPC 调用 core）。
 package messageapi
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
@@ -117,8 +121,12 @@ func (w remote) SendVoice(receiver string, reader io.Reader, duration, format in
 // SendEmoji 发送表情消息（multipart/form-data）
 func (w remote) SendEmoji(receiver, md5 string, data []byte) (*UploadEmojiResponse, error) {
 	var resp UploadEmojiResponse
+	files := map[string][]byte{}
+	if len(data) > 0 {
+		files["emoji"] = data
+	}
 	if err := w.core().Post("/api/message/emoji").Multipart(
-		map[string][]byte{"emoji": data},
+		files,
 		map[string]string{"receiver": receiver, "md5": md5},
 	).DoProto(&resp); err != nil {
 		return nil, err
@@ -243,6 +251,36 @@ func (w remote) Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64)
 	return &resp, nil
 }
 
+func (w remote) RevokeWithClientID(receiver string, newMsgId uint64, clientMsgId string, timestamp uint64) (*RevokeMessageResponse, error) {
+	if receiver == "" || newMsgId == 0 || clientMsgId == "" || timestamp == 0 {
+		return nil, errors.New("撤回需要原始 receiver、new_id、string_client_id 和 create_time")
+	}
+	var resp RevokeMessageResponse
+	if err := w.core().Post("/api/message/revoke").Body(map[string]any{
+		"receiver":         receiver,
+		"new_id":           newMsgId,
+		"string_client_id": clientMsgId,
+		"create_time":      timestamp,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// Pat 通过 core 的 Invoke 发送一次拍一拍；网络结果不明时不自动重试。
+func (w remote) Pat(receiver, pattedUsername string) (*SendPatResponse, error) {
+	if receiver == "" || pattedUsername == "" {
+		return nil, errors.New("拍一拍需要会话 ID 和被拍者微信 ID")
+	}
+	var resp SendPatResponse
+	if err := w.core().Post("/api/message/pat").Body(map[string]any{
+		"receiver": receiver, "patted_username": pattedUsername, "experimental": true,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // DownloadImg 下载消息图片
 func (w remote) DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error) {
 	b, err := w.core().Get("/api/cdn/download/image").Query("id", fileId, "key", aesKey).DoBinary()
@@ -276,7 +314,75 @@ func (w remote) DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceL
 	return &resp, nil
 }
 
-// DownloadFile 下载文件附件
+const (
+	maxAttachmentDownloadSize = 1 << 30
+	maxCDNCiphertextSize      = maxAttachmentDownloadSize + 16 // PKCS#7 末块可比明文多 16 字节
+	maxAttachmentChunkSize    = 64 << 10
+	maxCDNAttachmentChunkSize = 256 << 10
+)
+
+// CDNAttachmentChunkLimit 只为已确认的 type7 大文件 ID 放宽至 256 KiB。
+// 其他 CDN ID 继续使用普通附件的 64 KiB 上限。
+func CDNAttachmentChunkLimit(fileID string) uint32 {
+	if len(fileID) != 228 {
+		return maxAttachmentChunkSize
+	}
+	decoded, err := hex.DecodeString(fileID)
+	if err != nil || len(decoded) != 114 || decoded[0] != 0x7f {
+		return maxAttachmentChunkSize
+	}
+	return maxCDNAttachmentChunkSize
+}
+
+// DownloadCDNAttachmentChunk 使用独立的 CDN 分片接口。fileID 与 aesKey
+// 只放在 gRPC 请求体中，不进入 URL 或日志。
+func (w remote) DownloadCDNAttachmentChunk(fileID, aesKey string, offset, chunkSize uint32) ([]byte, error) {
+	if fileID == "" || len(fileID) > 4096 || len(aesKey) != 32 ||
+		offset >= maxCDNCiphertextSize || offset%16 != 0 || chunkSize == 0 || chunkSize%16 != 0 || chunkSize > CDNAttachmentChunkLimit(fileID) ||
+		uint64(offset)+uint64(chunkSize) > maxCDNCiphertextSize {
+		return nil, errors.New("invalid CDN attachment identity, offset or chunk size")
+	}
+	if _, err := hex.DecodeString(aesKey); err != nil {
+		return nil, errors.New("invalid CDN attachment AES key")
+	}
+	data, err := w.core().Post("/api/cdn/download/attachment/chunk").Body(map[string]any{
+		"file_id": fileID, "aes_key": aesKey, "offset": offset, "chunk_size": chunkSize,
+	}).DoBinary()
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 || uint32(len(data)) > chunkSize {
+		return nil, errors.New("CDN attachment chunk size mismatch")
+	}
+	return data, nil
+}
+
+// DownloadFileChunk 只取一个分块，避免大附件在 gateway 内组装成一条响应。
+func (w remote) DownloadFileChunk(receiver, fileId, appID string, totalSize, offset, chunkSize uint32) (*DownloadFileResponse, error) {
+	if receiver == "" || fileId == "" || totalSize == 0 || totalSize > maxAttachmentDownloadSize ||
+		offset >= totalSize || chunkSize == 0 || chunkSize > maxAttachmentChunkSize || chunkSize > totalSize-offset {
+		return nil, errors.New("invalid attachment identity, size, offset or chunk size")
+	}
+	var resp DownloadFileResponse
+	if err := w.core().Post("/api/message/download/file").Body(map[string]any{
+		"app_id": appID, "attach_id": fileId, "username": receiver, "size": totalSize, "offset": offset, "chunk_size": chunkSize,
+	}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	chunk := resp.GetChunk().GetData()
+	if resp.GetBaseResponse() != nil && resp.GetBaseResponse().GetCode() != 0 {
+		return nil, fmt.Errorf("attachment download rejected with code %d", resp.GetBaseResponse().GetCode())
+	}
+	if resp.GetChunk() == nil || resp.GetOffset() != offset || resp.GetSize() != totalSize || len(chunk) == 0 ||
+		uint32(len(chunk)) > chunkSize || resp.GetChunkSize() != uint32(len(chunk)) ||
+		(resp.GetChunk().Size != nil && resp.GetChunk().GetSize() != uint32(len(chunk))) ||
+		(resp.GetMediaId() != "" && resp.GetMediaId() != fileId) {
+		return nil, errors.New("attachment chunk receipt mismatch")
+	}
+	return &resp, nil
+}
+
+// DownloadFile 保留小附件整块响应，SDK 下载改用 DownloadFileChunk 流式读取。
 func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) (*DownloadFileResponse, error) {
 	if aesKey != "" {
 		return nil, errors.New("attachment download requires an attach ID, not a CDN AES key")
@@ -287,18 +393,15 @@ func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) 
 	data := make([]byte, 0, totalSize)
 	var last *DownloadFileResponse
 	for offset := uint32(0); offset < totalSize; {
-		var resp DownloadFileResponse
 		length := min(totalSize-offset, uint32(32<<10))
-		if err := w.core().Post("/api/message/download/file").Body(map[string]any{"attach_id": fileId, "username": receiver, "size": totalSize, "offset": offset, "chunk_size": length}).DoProto(&resp); err != nil {
+		resp, err := w.DownloadFileChunk(receiver, fileId, "", totalSize, offset, length)
+		if err != nil {
 			return nil, err
 		}
 		chunk := resp.GetChunk().GetData()
-		if resp.GetOffset() != offset || resp.GetSize() != totalSize || len(chunk) == 0 || uint32(len(chunk)) > length || resp.GetChunkSize() != uint32(len(chunk)) {
-			return nil, errors.New("attachment chunk receipt mismatch")
-		}
 		data = append(data, chunk...)
 		offset += uint32(len(chunk))
-		last = &resp
+		last = resp
 	}
 	last.Offset = proto.Uint32(0)
 	last.ChunkSize = proto.Uint32(uint32(len(data)))

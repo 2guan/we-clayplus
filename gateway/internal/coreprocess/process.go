@@ -23,7 +23,7 @@ type Process struct {
 	stopOnce sync.Once
 }
 
-// Start 仅启动当前 Run 拥有的子进程；不会接管端口上的其他进程。
+// Start 启动本机 core；KeepAlive 时子进程脱离当前终端和 Run 的生命周期。
 func Start(ctx context.Context, binary string, cfg config.Config) (*Process, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -50,23 +50,32 @@ func Start(ctx context.Context, binary string, cfg config.Config) (*Process, err
 	if loginAddress == "-" {
 		loginAddress = ""
 	}
-	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", "mac", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
+	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", "mac", "-update-version=false", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
+	if c.DeviceName != "" {
+		args = append(args, "-device-name", c.DeviceName)
+	}
 	if c.StorageEncrypted {
 		args = append(args, "-storage-encrypt")
 	}
 	p := &Process{cmd: exec.Command(binary, args...), done: make(chan struct{}), logPath: filepath.Join(c.DataDir, "core.log")}
+	if c.KeepAlive {
+		detach(p.cmd)
+	}
 	log, err := os.OpenFile(p.logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, err
 	}
 	p.cmd.Stdout, p.cmd.Stderr = log, log
-	p.cmd.Env = childEnv(os.Environ(), cfg.CoreToken, c.GitHubTokenEnv)
+	p.cmd.Env = authorizationEnv(childEnv(os.Environ(), cfg.CoreToken, c.GitHubTokenEnv), c.AuthKeyEnv)
 	if err = p.cmd.Start(); err != nil {
 		log.Close()
 		return nil, fmt.Errorf("启动 core 失败: %w", err)
 	}
 	go func() { p.err = p.cmd.Wait(); log.Close(); close(p.done) }()
 	go func() {
+		if c.KeepAlive {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			p.Stop()
@@ -99,7 +108,7 @@ func childEnv(env []string, token, githubEnv string) []string {
 	out := make([]string, 0, len(env)+1)
 	for _, entry := range env {
 		key, _, _ := strings.Cut(entry, "=")
-		if strings.EqualFold(key, "WE_CLAY_GATEWAY_CORE_TOKEN") || strings.EqualFold(key, githubEnv) || strings.EqualFold(key, "GH_TOKEN") || strings.EqualFold(key, "GITHUB_TOKEN") {
+		if strings.EqualFold(key, "OSS_ACCESS_KEY_ID") || strings.EqualFold(key, "OSS_ACCESS_KEY_SECRET") || strings.EqualFold(key, "OSS_SESSION_TOKEN") || strings.EqualFold(key, "SDK_SOURCE_TOKEN") || strings.EqualFold(key, "WE_CLAY_GATEWAY_CORE_TOKEN") || strings.EqualFold(key, githubEnv) || strings.EqualFold(key, "GH_TOKEN") || strings.EqualFold(key, "GITHUB_TOKEN") {
 			continue
 		}
 		out = append(out, entry)
@@ -130,4 +139,24 @@ func (p *Process) Stop() {
 			<-p.done
 		}
 	})
+}
+
+// 只传给 core 固定名称；Key 不出现在 argv、TOML 或进程记录。
+func authorizationEnv(env []string, keyEnv string) []string {
+	if keyEnv == "" {
+		keyEnv = "WE_CLAY_AUTH_KEY"
+	}
+	key := os.Getenv(keyEnv)
+	out := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.EqualFold(name, keyEnv) || strings.EqualFold(name, "WE_CLAY_AUTH_KEY") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	if key != "" {
+		out = append(out, "WE_CLAY_AUTH_KEY="+key)
+	}
+	return out
 }

@@ -5,10 +5,11 @@
       "Send",
       "Forward",
       "Revoke",
+      "Pat",
       "Download"
     ],
     "placeholder": [],
-    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；部分媒体仅回执或格式校验"
+    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；拍一拍在 Mac 模式下经 core HTTP 私聊与群聊真机验证，SDK/gateway 调用链仅完成离线测试，仍需 core 显式开启实验接口"
   },
   "contact": {
     "label": "联系人",
@@ -174,21 +175,22 @@
   },
   "payment": {
     "label": "支付",
-    "enabled": [],
-    "placeholder": [
-      "GeneratePayQCode",
-      "GetBandCardList",
-      "CreateHongBao",
+    "enabled": [
       "ReceiveHongBao",
       "OpenHongBao",
       "GrabHongBao",
       "QueryHongBaoDetail",
       "QueryHongBaoList",
-      "CreatePreTransfer",
-      "ConfirmPreTransfer",
       "CollectMoney"
     ],
-    "evidence": "没有真实验收，保留占位"
+    "placeholder": [
+      "GeneratePayQCode",
+      "GetBandCardList",
+      "CreateHongBao",
+      "CreatePreTransfer",
+      "ConfirmPreTransfer"
+    ],
+    "evidence": "已对照 core v0.3.2 接通收红包、红包查询与确认收款，未执行真实资金验收；付款及支付账户查询继续保留占位。"
   },
   "report": {
     "label": "状态通知",

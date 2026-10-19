@@ -1,3 +1,6 @@
+// 文件名：revoke_test.go
+// 主要功能：验证发送、回执恢复及撤回参数完整传递到 core 契约。
+// 作者：2guan
 package messageability
 
 import (
@@ -109,9 +112,15 @@ func TestSendThenRevokePreservesOriginalReceipt(t *testing.T) {
 				t.Fatal("missing receipt reached core")
 			}
 
+			// 模拟宿主从持久化归档恢复，仍需通过原始字段校验，不能只验证成功响应。
+			impl.receipts.remember("test-peer", newID, clientID, created)
+			if _, err = impl.Revoke("test-peer", newID); err != nil {
+				t.Fatal(err)
+			}
+			<-revoked
 		})
 	}
-	if revokes.Load() != 3 {
+	if revokes.Load() != 6 {
 		t.Fatal("revoke repeated or missing")
 	}
 }

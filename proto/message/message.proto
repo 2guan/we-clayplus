@@ -20,6 +20,8 @@ service MessageService {
   rpc Revoke(Revoke.Request) returns (Revoke.Response);
   // Download 下载媒体资源（server-stream：流式返回二进制数据）
   rpc Download(Download.Request) returns (stream Download.Response);
+  // Pat 在指定会话里拍一拍联系人。私聊时两个用户名相同。
+  rpc Pat(Pat.Request) returns (Pat.Response);
 }
 
 // ==================== RPC 消息 ====================
@@ -86,5 +88,18 @@ message SendCapabilities {
     uint64 max_media_bytes = 3;
     uint64 max_thumb_bytes = 4;
     bool file_send = 5;
+  }
+}
+
+message Pat {
+  message Request {
+    string receiver = 1; // 私聊对象或群 ID
+    string patted_username = 2; // 被拍者微信 ID，群聊时为群成员
+  }
+  message Response {
+    uint64 id = 1; // 微信回执 ID，服务端可能不返回
+    string self_message = 2;
+    string suffix = 3;
+    int64 suffix_version = 4;
   }
 }

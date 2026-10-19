@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,23 +32,23 @@ func TestGRPCConfigurationAndNoHTTPFallback(t *testing.T) {
 }
 
 func TestManagedCoreConfig(t *testing.T) {
-	cfg, err := (Config{Core: &CoreConfig{Version: "v1.0.0"}}).Resolve()
+	cfg, err := (Config{Core: &CoreConfig{Version: "v1.0.0", DataDir: t.TempDir()}}).Resolve()
 	if err != nil || cfg.Core.Repository != "we-clay/core-release" || cfg.Core.StartupTimeout != 2*time.Minute {
 		t.Fatalf("defaults: %v", err)
 	}
 	for _, version := range []string{"", "latest", "../v1", "v1/tag"} {
-		if _, err := (Config{Core: &CoreConfig{Version: version}}).Resolve(); err == nil {
+		if _, err := (Config{Core: &CoreConfig{Version: version, DataDir: t.TempDir()}}).Resolve(); err == nil {
 			t.Errorf("accepted version %q", version)
 		}
 	}
 	path := filepath.Join(t.TempDir(), "config.toml")
-	if err := os.WriteFile(path, []byte("[core]\nversion = \"v1.0.0\"\n"), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(fmt.Sprintf("[core]\nversion = \"v1.0.0\"\ndata_dir = %q\n", t.TempDir())), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if cfg, err = Load(path); err != nil || cfg.Core == nil {
 		t.Fatalf("nested config: %v", err)
 	}
-	if _, err = (Config{Core: &CoreConfig{Version: "v1", LoginAddress: "0.0.0.0:8086"}}).Resolve(); err == nil {
+	if _, err = (Config{Core: &CoreConfig{Version: "v1", DataDir: t.TempDir(), LoginAddress: "0.0.0.0:8086"}}).Resolve(); err == nil {
 		t.Fatal("accepted public listener")
 	}
 }

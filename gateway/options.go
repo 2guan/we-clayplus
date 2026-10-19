@@ -12,6 +12,9 @@ import (
 // 回调串行执行，应及时返回并遵守 ctx 取消。返回错误或 panic 会停止 Run，
 // 不自动重试回调；未确认的事件在下次启动时可能重放，业务需按消息 ID 去重。
 type Handlers struct {
+	// OnConnectionChanged 通知 core 登录阶段变化，与其他回调串行。
+	// 此回调可能先于 OnReady；业务调用必须等到 OnReady。掉线后 Run 返回 ErrLoginRequired。
+	OnConnectionChanged func(context.Context, ConnectionState) error
 	// OnReady 在登录、缓存初始化和首次事件订阅成功后调用一次；重连不重复调用。
 	OnReady func(context.Context, *Client) error
 	// OnMessage 接收正常解析的消息，先于内置命令和插件执行。
@@ -22,9 +25,11 @@ type Handlers struct {
 }
 
 type runOptions struct {
-	handlers       Handlers
-	withoutPlugins bool
-	offline        bool
+	handlers               Handlers
+	withoutPlugins         bool
+	withoutExternalPlugins bool
+	withoutDashboard       bool
+	withoutAI              bool
 }
 
 // Option 配置直接接入行为，不写入 TOML。
@@ -41,14 +46,10 @@ func WithoutPlugins() Option {
 	return func(o *runOptions) { o.withoutPlugins = true }
 }
 
-// WithOffline 开启脱机/Mock 预览模式，不启动独立 core 与真实微信连接，使用本地缓存与 Mock 数据。
-func WithOffline() Option {
-	return func(o *runOptions) { o.offline = true }
-}
-
-// WithMock 是 WithOffline 的别名，便于开发者调用。
-func WithMock() Option {
-	return WithOffline()
+// WithoutExternalPlugins 只禁止外部插件进程的发现、启动和手动加载。
+// 控制台、AI 等内建功能仍会运行；适合仅交付主程序二进制的部署。
+func WithoutExternalPlugins() Option {
+	return func(o *runOptions) { o.withoutExternalPlugins = true }
 }
 
 func invokeHandler(name string, fn func() error) (err error) {
@@ -62,3 +63,9 @@ func invokeHandler(name string, fn func() error) (err error) {
 	}
 	return nil
 }
+
+// WithoutDashboard 仅关闭 Web 监听，保留 AI 基础插件。
+func WithoutDashboard() Option { return func(o *runOptions) { o.withoutDashboard = true } }
+
+// WithoutAI 关闭 AI 基础插件，控制台和扩展插件继续运行。
+func WithoutAI() Option { return func(o *runOptions) { o.withoutAI = true } }

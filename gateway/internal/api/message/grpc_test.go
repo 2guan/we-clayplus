@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -124,5 +125,184 @@ func TestGRPCMediaAdapters(t *testing.T) {
 	}
 	if len(paths) != 9 {
 		t.Fatal("invalid input reached core")
+	}
+}
+
+func TestGRPCPatPreservesCoreReceiptAndExperimentalFlag(t *testing.T) {
+	const id = uint64(9007199254740993)
+	calls := 0
+	s := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != http.MethodPost || r.URL.Path != "/api/message/pat" {
+			t.Errorf("wrong core route: %s %s", r.Method, r.URL.Path)
+		}
+		var q struct {
+			Receiver       string `json:"receiver"`
+			PattedUsername string `json:"patted_username"`
+			Experimental   bool   `json:"experimental"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil || q.Receiver != "synthetic_friend" || q.PattedUsername != "synthetic_friend" || !q.Experimental {
+			t.Errorf("wrong pat request: %+v err=%v", q, err)
+		}
+		_, _ = io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"id":"9007199254740993","self_message":"accepted","suffix":"demo","suffix_version":"1"}}`)
+	}))
+	defer s.Close()
+	c, err := api.NewGRPCClient(context.Background(), s.Address, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	resp, err := (remote{client: c}).Pat("synthetic_friend", "synthetic_friend")
+	if err != nil || calls != 1 || resp.GetId() != id || resp.GetSelfMessage() != "accepted" || resp.GetSuffix() != "demo" || resp.GetSuffixVersion() != 1 {
+		t.Fatalf("pat receipt lost: resp=%+v calls=%d err=%v", resp, calls, err)
+	}
+}
+
+func TestLargeAttachmentChunkUsesBoundedCoreRequest(t *testing.T) {
+	const total uint32 = 300 << 20
+	const offset uint32 = 131072
+	const chunkSize uint32 = 64 << 10
+	requests := 0
+	s := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/message/download/file" {
+			t.Errorf("wrong core route %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var q struct {
+			AppID     string `json:"app_id"`
+			AttachID  string `json:"attach_id"`
+			Username  string `json:"username"`
+			Size      uint32 `json:"size"`
+			Offset    uint32 `json:"offset"`
+			ChunkSize uint32 `json:"chunk_size"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil || q.AppID != "synthetic-app" || q.AttachID != "test-attach" ||
+			q.Username != "test-peer" || q.Size != total || q.Offset != offset || q.ChunkSize != chunkSize {
+			t.Errorf("wrong large attachment request: err=%v size=%d offset=%d chunk=%d", err, q.Size, q.Offset, q.ChunkSize)
+		}
+		data := make([]byte, chunkSize)
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": &DownloadFileResponse{
+			BaseResponse: &baseapi.BaseResponse{Code: proto.Int32(0)}, Size: proto.Uint32(total),
+			Offset: proto.Uint32(offset), ChunkSize: proto.Uint32(chunkSize),
+			Chunk: &baseapi.Buffer{Size: proto.Uint32(chunkSize), Data: data},
+		}})
+	}))
+	defer s.Close()
+	c, _ := api.NewGRPCClient(context.Background(), s.Address, "")
+	w := remote{client: c}
+	resp, err := w.DownloadFileChunk("test-peer", "test-attach", "synthetic-app", total, offset, chunkSize)
+	if err != nil || len(resp.GetChunk().GetData()) != int(chunkSize) || requests != 1 {
+		t.Fatalf("large chunk failed: err=%v requests=%d", err, requests)
+	}
+	if _, err := w.DownloadFileChunk("test-peer", "test-attach", "synthetic-app", total, total-1, chunkSize); err == nil || requests != 1 {
+		t.Fatalf("invalid final range reached core: err=%v requests=%d", err, requests)
+	}
+	if _, err := w.DownloadFileChunk("test-peer", "test-attach", "synthetic-app", total, offset, chunkSize+1); err == nil || requests != 1 {
+		t.Fatalf("CGI chunk over 64 KiB reached core: err=%v requests=%d", err, requests)
+	}
+}
+
+func TestCDNAttachmentChunkUsesBinaryCoreRoute(t *testing.T) {
+	const offset uint32 = 256 << 10
+	const chunkSize uint32 = 256 << 10
+	bigCDNID := "7f" + strings.Repeat("00", 113)
+	normalCDNID := "05" + strings.Repeat("00", 113)
+	requests := 0
+	s := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Method != http.MethodPost || r.URL.Path != "/api/cdn/download/attachment/chunk" {
+			t.Errorf("wrong CDN attachment route: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var q struct {
+			FileID    string `json:"file_id"`
+			AESKey    string `json:"aes_key"`
+			Offset    uint32 `json:"offset"`
+			ChunkSize uint32 `json:"chunk_size"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil || q.FileID != bigCDNID ||
+			q.AESKey != "00112233445566778899aabbccddeeff" || q.Offset != offset || q.ChunkSize != chunkSize {
+			t.Errorf("wrong CDN chunk request: err=%v offset=%d chunk=%d", err, q.Offset, q.ChunkSize)
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("synthetic chunk"))
+	}))
+	defer s.Close()
+	c, err := api.NewGRPCClient(context.Background(), s.Address, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	w := remote{client: c}
+	data, err := w.DownloadCDNAttachmentChunk(bigCDNID, "00112233445566778899aabbccddeeff", offset, chunkSize)
+	if err != nil || string(data) != "synthetic chunk" || requests != 1 {
+		t.Fatalf("CDN chunk failed: bytes=%d err=%v requests=%d", len(data), err, requests)
+	}
+	if _, err := w.DownloadCDNAttachmentChunk(bigCDNID, "invalid-key", 0, 1); err == nil || requests != 1 {
+		t.Fatalf("invalid key reached core: err=%v requests=%d", err, requests)
+	}
+	if _, err := w.DownloadCDNAttachmentChunk(bigCDNID, "00112233445566778899aabbccddeeff", 0, 6659); err == nil || requests != 1 {
+		t.Fatalf("unaligned encrypted range reached core: err=%v requests=%d", err, requests)
+	}
+	if _, err := w.DownloadCDNAttachmentChunk(bigCDNID, "00112233445566778899aabbccddeeff", 0, chunkSize+16); err == nil || requests != 1 {
+		t.Fatalf("CDN chunk over 256 KiB reached core: err=%v requests=%d", err, requests)
+	}
+	if _, err := w.DownloadCDNAttachmentChunk(normalCDNID, "00112233445566778899aabbccddeeff", 0, chunkSize); err == nil || requests != 1 {
+		t.Fatalf("ordinary CDN chunk over 64 KiB reached core: err=%v requests=%d", err, requests)
+	}
+}
+
+func TestCDNAttachmentChunkLimitRequiresExactType7ID(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		id   string
+		want uint32
+	}{
+		{"type7", "7f" + strings.Repeat("00", 113), 256 << 10},
+		{"type5", "05" + strings.Repeat("00", 113), 64 << 10},
+		{"wrong length", "7f" + strings.Repeat("00", 112), 64 << 10},
+		{"invalid hex", "7f" + strings.Repeat("00", 112) + "zz", 64 << 10},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CDNAttachmentChunkLimit(tc.id); got != tc.want {
+				t.Fatalf("chunk limit=%d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCDNAttachmentAllowsFinalPaddingAtOneGiB(t *testing.T) {
+	const offset uint32 = maxAttachmentDownloadSize - 16
+	const chunkSize uint32 = 32
+	requests := 0
+	s := coretest.NewServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var q struct {
+			Offset    uint32 `json:"offset"`
+			ChunkSize uint32 `json:"chunk_size"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil || q.Offset != offset || q.ChunkSize != chunkSize {
+			t.Errorf("wrong final encrypted range: offset=%d chunk=%d err=%v", q.Offset, q.ChunkSize, err)
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte("final"))
+	}))
+	defer s.Close()
+	c, err := api.NewGRPCClient(context.Background(), s.Address, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	w := remote{client: c}
+	id := "7f" + strings.Repeat("00", 113)
+	key := strings.Repeat("00", 16)
+	if _, err := w.DownloadCDNAttachmentChunk(id, key, offset, chunkSize); err != nil || requests != 1 {
+		t.Fatalf("final padding range rejected: err=%v requests=%d", err, requests)
+	}
+	if _, err := w.DownloadCDNAttachmentChunk(id, key, offset, chunkSize+16); err == nil || requests != 1 {
+		t.Fatalf("range beyond ciphertext cap reached core: err=%v requests=%d", err, requests)
 	}
 }

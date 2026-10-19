@@ -37,6 +37,10 @@ type MessageService interface {
 	ForwardFile(receiver, xml string) (*SendAppMessageResponse, error)
 	// Revoke 撤回消息
 	Revoke(receiver string, newMsgId, clientMsgId, timestamp uint64) (*RevokeMessageResponse, error)
+	// RevokeWithClientID 使用媒体发送时的原始字符串客户端 ID。
+	RevokeWithClientID(receiver string, newMsgId uint64, clientMsgId string, timestamp uint64) (*RevokeMessageResponse, error)
+	// Pat 在 receiver 会话里拍 pattedUsername。
+	Pat(receiver, pattedUsername string) (*SendPatResponse, error)
 	// DownloadImg 下载消息图片
 	DownloadImg(receiver, fileId, aesKey string, totalSize uint32) (*DownloadImageResponse, error)
 	// DownloadVideo 下载视频
@@ -45,4 +49,8 @@ type MessageService interface {
 	DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceLength uint32) (*DownloadVoiceResponse, error)
 	// DownloadFile 下载文件附件
 	DownloadFile(receiver, fileId, aesKey string, totalSize uint32) (*DownloadFileResponse, error)
+	// DownloadFileChunk 按偏移下载一个附件分块；大文件调用方应逐块消费。
+	DownloadFileChunk(receiver, fileId, appID string, totalSize, offset, chunkSize uint32) (*DownloadFileResponse, error)
+	// DownloadCDNAttachmentChunk 下载一个已上传完成的 CDN 附件明文分块。
+	DownloadCDNAttachmentChunk(fileID, aesKey string, offset, chunkSize uint32) ([]byte, error)
 }

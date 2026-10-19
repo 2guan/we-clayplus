@@ -1,8 +1,12 @@
+// 文件名：receipts.go
+// 主要功能：管理原始撤回回执缓存，并向宿主提供可持久化的原始字段。
+// 作者：2guan
 package messageability
 
 import (
 	"container/list"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -16,6 +20,7 @@ type receiptKey struct {
 type revokeReceipt struct {
 	key               receiptKey
 	clientID, created uint64
+	stringClientID    string
 }
 type receiptCache struct {
 	mu      sync.Mutex
@@ -27,12 +32,22 @@ func (c *receiptCache) remember(receiver string, newID, clientID, created uint64
 	if receiver == "" || newID == 0 || clientID == 0 || created == 0 {
 		return false
 	}
+	return c.rememberReceipt(revokeReceipt{key: receiptKey{receiver, newID}, clientID: clientID, created: created})
+}
+
+func (c *receiptCache) rememberString(receiver string, newID uint64, clientID string, created uint64) bool {
+	if receiver == "" || newID == 0 || created == 0 || clientID == "" || len(clientID) > 512 || strings.ContainsRune(clientID, 0) {
+		return false
+	}
+	return c.rememberReceipt(revokeReceipt{key: receiptKey{receiver, newID}, stringClientID: clientID, created: created})
+}
+
+func (c *receiptCache) rememberReceipt(r revokeReceipt) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
 		c.entries = make(map[receiptKey]*list.Element)
 	}
-	r := revokeReceipt{receiptKey{receiver, newID}, clientID, created}
 	if e := c.entries[r.key]; e != nil {
 		e.Value = r
 		c.order.MoveToBack(e)
@@ -73,10 +88,16 @@ func RememberReceipt(receiver string, newID, clientID, created uint64) {
 }
 
 func numericClientID(value string) uint64 {
-	// 媒体回执可能是不可用于撤回的字符串 ID；不得哈希、截断或用时间代替。
+	// 非数字媒体回执另存原始字符串；不得哈希、截断或用时间代替。
 	id, err := strconv.ParseUint(value, 10, 64)
 	if err != nil {
 		return 0
 	}
 	return id
+}
+
+// ReceiptFields 仅导出真实发送回执，不能用本地时间或随机 ID 补齐。
+func ReceiptFields(receiver string, newID uint64) (uint64, string, uint64, bool) {
+	r, ok := instance.receipts.get(receiver, newID)
+	return r.clientID, r.stringClientID, r.created, ok
 }

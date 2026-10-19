@@ -1,3 +1,6 @@
+// 文件名：ready_test.go
+// 主要功能：验证登录等待、失败退出以及控制台模式的持续可用性。
+// 作者：2guan
 package coreprocess
 
 import (
@@ -52,7 +55,7 @@ func TestWaitForLoginOverGRPC(t *testing.T) {
 			}
 			defer client.Close()
 			c := config.CoreConfig{StartupTimeout: 100 * time.Millisecond, LoginTimeout: 700 * time.Millisecond, LoginAddress: "-"}
-			err = WaitOnline(ctx, client, c)
+			err = WaitOnline(ctx, client, c, false)
 			if (err == nil) != (mode == "") {
 				t.Fatalf("mode %s: %v", mode, err)
 			}
@@ -60,5 +63,21 @@ func TestWaitForLoginOverGRPC(t *testing.T) {
 				t.Fatal("did not wait for scan")
 			}
 		})
+	}
+}
+
+// 扫码暂停和登录超时不应关闭控制台，用户取消仍能及时停止。
+func TestPausedLoginKeepsConsoleAlive(t *testing.T) {
+	server := coretest.NewService(t, &loginService{mode: "paused"})
+	ctx, cancel := context.WithTimeout(context.Background(), 650*time.Millisecond)
+	defer cancel()
+	client, err := api.NewGRPCClient(ctx, server.Address, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	err = WaitOnline(ctx, client, config.CoreConfig{StartupTimeout: time.Second, LoginTimeout: 10 * time.Millisecond, LoginAddress: "-"}, true)
+	if err != context.DeadlineExceeded || ctx.Err() == nil {
+		t.Fatalf("扫码暂停提前关闭控制台: %v", err)
 	}
 }

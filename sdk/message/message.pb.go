@@ -202,6 +202,42 @@ func (*SendCapabilities) Descriptor() ([]byte, []int) {
 	return file_message_message_proto_rawDescGZIP(), []int{4}
 }
 
+type Pat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Pat) Reset() {
+	*x = Pat{}
+	mi := &file_message_message_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Pat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Pat) ProtoMessage() {}
+
+func (x *Pat) ProtoReflect() protoreflect.Message {
+	mi := &file_message_message_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Pat.ProtoReflect.Descriptor instead.
+func (*Pat) Descriptor() ([]byte, []int) {
+	return file_message_message_proto_rawDescGZIP(), []int{5}
+}
+
 // Request 发送消息请求（client-stream 首包）
 type Send_Request struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -217,7 +253,7 @@ type Send_Request struct {
 
 func (x *Send_Request) Reset() {
 	*x = Send_Request{}
-	mi := &file_message_message_proto_msgTypes[5]
+	mi := &file_message_message_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -229,7 +265,7 @@ func (x *Send_Request) String() string {
 func (*Send_Request) ProtoMessage() {}
 
 func (x *Send_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[5]
+	mi := &file_message_message_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -297,7 +333,7 @@ type Send_Data struct {
 
 func (x *Send_Data) Reset() {
 	*x = Send_Data{}
-	mi := &file_message_message_proto_msgTypes[6]
+	mi := &file_message_message_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -309,7 +345,7 @@ func (x *Send_Data) String() string {
 func (*Send_Data) ProtoMessage() {}
 
 func (x *Send_Data) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[6]
+	mi := &file_message_message_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -344,7 +380,7 @@ type Send_Response struct {
 
 func (x *Send_Response) Reset() {
 	*x = Send_Response{}
-	mi := &file_message_message_proto_msgTypes[7]
+	mi := &file_message_message_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -356,7 +392,7 @@ func (x *Send_Response) String() string {
 func (*Send_Response) ProtoMessage() {}
 
 func (x *Send_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[7]
+	mi := &file_message_message_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -403,7 +439,7 @@ type Forward_Request struct {
 
 func (x *Forward_Request) Reset() {
 	*x = Forward_Request{}
-	mi := &file_message_message_proto_msgTypes[8]
+	mi := &file_message_message_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -415,7 +451,7 @@ func (x *Forward_Request) String() string {
 func (*Forward_Request) ProtoMessage() {}
 
 func (x *Forward_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[8]
+	mi := &file_message_message_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -455,7 +491,7 @@ type Forward_Response struct {
 
 func (x *Forward_Response) Reset() {
 	*x = Forward_Response{}
-	mi := &file_message_message_proto_msgTypes[9]
+	mi := &file_message_message_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -467,7 +503,7 @@ func (x *Forward_Response) String() string {
 func (*Forward_Response) ProtoMessage() {}
 
 func (x *Forward_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[9]
+	mi := &file_message_message_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -507,7 +543,7 @@ type Revoke_Request struct {
 
 func (x *Revoke_Request) Reset() {
 	*x = Revoke_Request{}
-	mi := &file_message_message_proto_msgTypes[10]
+	mi := &file_message_message_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -519,7 +555,7 @@ func (x *Revoke_Request) String() string {
 func (*Revoke_Request) ProtoMessage() {}
 
 func (x *Revoke_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[10]
+	mi := &file_message_message_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -559,7 +595,7 @@ type Revoke_Response struct {
 
 func (x *Revoke_Response) Reset() {
 	*x = Revoke_Response{}
-	mi := &file_message_message_proto_msgTypes[11]
+	mi := &file_message_message_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -571,7 +607,7 @@ func (x *Revoke_Response) String() string {
 func (*Revoke_Response) ProtoMessage() {}
 
 func (x *Revoke_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[11]
+	mi := &file_message_message_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -610,7 +646,7 @@ type Download_Request struct {
 
 func (x *Download_Request) Reset() {
 	*x = Download_Request{}
-	mi := &file_message_message_proto_msgTypes[12]
+	mi := &file_message_message_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -622,7 +658,7 @@ func (x *Download_Request) String() string {
 func (*Download_Request) ProtoMessage() {}
 
 func (x *Download_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[12]
+	mi := &file_message_message_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -654,7 +690,7 @@ type Download_Response struct {
 
 func (x *Download_Response) Reset() {
 	*x = Download_Response{}
-	mi := &file_message_message_proto_msgTypes[13]
+	mi := &file_message_message_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -666,7 +702,7 @@ func (x *Download_Response) String() string {
 func (*Download_Response) ProtoMessage() {}
 
 func (x *Download_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[13]
+	mi := &file_message_message_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -697,7 +733,7 @@ type SendCapabilities_Request struct {
 
 func (x *SendCapabilities_Request) Reset() {
 	*x = SendCapabilities_Request{}
-	mi := &file_message_message_proto_msgTypes[14]
+	mi := &file_message_message_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -709,7 +745,7 @@ func (x *SendCapabilities_Request) String() string {
 func (*SendCapabilities_Request) ProtoMessage() {}
 
 func (x *SendCapabilities_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[14]
+	mi := &file_message_message_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -738,7 +774,7 @@ type SendCapabilities_Response struct {
 
 func (x *SendCapabilities_Response) Reset() {
 	*x = SendCapabilities_Response{}
-	mi := &file_message_message_proto_msgTypes[15]
+	mi := &file_message_message_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -750,7 +786,7 @@ func (x *SendCapabilities_Response) String() string {
 func (*SendCapabilities_Response) ProtoMessage() {}
 
 func (x *SendCapabilities_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_message_message_proto_msgTypes[15]
+	mi := &file_message_message_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -801,6 +837,126 @@ func (x *SendCapabilities_Response) GetFileSend() bool {
 	return false
 }
 
+type Pat_Request struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Receiver       string                 `protobuf:"bytes,1,opt,name=receiver,proto3" json:"receiver,omitempty"`                                   // 私聊对象或群 ID
+	PattedUsername string                 `protobuf:"bytes,2,opt,name=patted_username,json=pattedUsername,proto3" json:"patted_username,omitempty"` // 被拍者微信 ID，群聊时为群成员
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Pat_Request) Reset() {
+	*x = Pat_Request{}
+	mi := &file_message_message_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Pat_Request) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Pat_Request) ProtoMessage() {}
+
+func (x *Pat_Request) ProtoReflect() protoreflect.Message {
+	mi := &file_message_message_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Pat_Request.ProtoReflect.Descriptor instead.
+func (*Pat_Request) Descriptor() ([]byte, []int) {
+	return file_message_message_proto_rawDescGZIP(), []int{5, 0}
+}
+
+func (x *Pat_Request) GetReceiver() string {
+	if x != nil {
+		return x.Receiver
+	}
+	return ""
+}
+
+func (x *Pat_Request) GetPattedUsername() string {
+	if x != nil {
+		return x.PattedUsername
+	}
+	return ""
+}
+
+type Pat_Response struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"` // 微信回执 ID，服务端可能不返回
+	SelfMessage   string                 `protobuf:"bytes,2,opt,name=self_message,json=selfMessage,proto3" json:"self_message,omitempty"`
+	Suffix        string                 `protobuf:"bytes,3,opt,name=suffix,proto3" json:"suffix,omitempty"`
+	SuffixVersion int64                  `protobuf:"varint,4,opt,name=suffix_version,json=suffixVersion,proto3" json:"suffix_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Pat_Response) Reset() {
+	*x = Pat_Response{}
+	mi := &file_message_message_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Pat_Response) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Pat_Response) ProtoMessage() {}
+
+func (x *Pat_Response) ProtoReflect() protoreflect.Message {
+	mi := &file_message_message_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Pat_Response.ProtoReflect.Descriptor instead.
+func (*Pat_Response) Descriptor() ([]byte, []int) {
+	return file_message_message_proto_rawDescGZIP(), []int{5, 1}
+}
+
+func (x *Pat_Response) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *Pat_Response) GetSelfMessage() string {
+	if x != nil {
+		return x.SelfMessage
+	}
+	return ""
+}
+
+func (x *Pat_Response) GetSuffix() string {
+	if x != nil {
+		return x.Suffix
+	}
+	return ""
+}
+
+func (x *Pat_Response) GetSuffixVersion() int64 {
+	if x != nil {
+		return x.SuffixVersion
+	}
+	return 0
+}
+
 var File_message_message_proto protoreflect.FileDescriptor
 
 const file_message_message_proto_rawDesc = "" +
@@ -849,13 +1005,23 @@ const file_message_message_proto_rawDesc = "" +
 	"\x0fmax_chunk_bytes\x18\x02 \x01(\rR\rmaxChunkBytes\x12&\n" +
 	"\x0fmax_media_bytes\x18\x03 \x01(\x04R\rmaxMediaBytes\x12&\n" +
 	"\x0fmax_thumb_bytes\x18\x04 \x01(\x04R\rmaxThumbBytes\x12\x1b\n" +
-	"\tfile_send\x18\x05 \x01(\bR\bfileSend2\xe9\x02\n" +
+	"\tfile_send\x18\x05 \x01(\bR\bfileSend\"\xd3\x01\n" +
+	"\x03Pat\x1aN\n" +
+	"\aRequest\x12\x1a\n" +
+	"\breceiver\x18\x01 \x01(\tR\breceiver\x12'\n" +
+	"\x0fpatted_username\x18\x02 \x01(\tR\x0epattedUsername\x1a|\n" +
+	"\bResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12!\n" +
+	"\fself_message\x18\x02 \x01(\tR\vselfMessage\x12\x16\n" +
+	"\x06suffix\x18\x03 \x01(\tR\x06suffix\x12%\n" +
+	"\x0esuffix_version\x18\x04 \x01(\x03R\rsuffixVersion2\x9d\x03\n" +
 	"\x0eMessageService\x12\\\n" +
 	"\x13GetSendCapabilities\x12!.message.SendCapabilities.Request\x1a\".message.SendCapabilities.Response\x127\n" +
 	"\x04Send\x12\x15.message.Send.Request\x1a\x16.message.Send.Response(\x01\x12>\n" +
 	"\aForward\x12\x18.message.Forward.Request\x1a\x19.message.Forward.Response\x12;\n" +
 	"\x06Revoke\x12\x17.message.Revoke.Request\x1a\x18.message.Revoke.Response\x12C\n" +
-	"\bDownload\x12\x19.message.Download.Request\x1a\x1a.message.Download.Response0\x01B(Z&github.com/we-clay/we-clay/sdk/messageb\x06proto3"
+	"\bDownload\x12\x19.message.Download.Request\x1a\x1a.message.Download.Response0\x01\x122\n" +
+	"\x03Pat\x12\x14.message.Pat.Request\x1a\x15.message.Pat.ResponseB(Z&github.com/we-clay/we-clay/sdk/messageb\x06proto3"
 
 var (
 	file_message_message_proto_rawDescOnce sync.Once
@@ -869,44 +1035,49 @@ func file_message_message_proto_rawDescGZIP() []byte {
 	return file_message_message_proto_rawDescData
 }
 
-var file_message_message_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_message_message_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_message_message_proto_goTypes = []any{
 	(*Send)(nil),                      // 0: message.Send
 	(*Forward)(nil),                   // 1: message.Forward
 	(*Revoke)(nil),                    // 2: message.Revoke
 	(*Download)(nil),                  // 3: message.Download
 	(*SendCapabilities)(nil),          // 4: message.SendCapabilities
-	(*Send_Request)(nil),              // 5: message.Send.Request
-	(*Send_Data)(nil),                 // 6: message.Send.Data
-	(*Send_Response)(nil),             // 7: message.Send.Response
-	(*Forward_Request)(nil),           // 8: message.Forward.Request
-	(*Forward_Response)(nil),          // 9: message.Forward.Response
-	(*Revoke_Request)(nil),            // 10: message.Revoke.Request
-	(*Revoke_Response)(nil),           // 11: message.Revoke.Response
-	(*Download_Request)(nil),          // 12: message.Download.Request
-	(*Download_Response)(nil),         // 13: message.Download.Response
-	(*SendCapabilities_Request)(nil),  // 14: message.SendCapabilities.Request
-	(*SendCapabilities_Response)(nil), // 15: message.SendCapabilities.Response
-	(*Message)(nil),                   // 16: message.Message
-	(*Media)(nil),                     // 17: message.Media
+	(*Pat)(nil),                       // 5: message.Pat
+	(*Send_Request)(nil),              // 6: message.Send.Request
+	(*Send_Data)(nil),                 // 7: message.Send.Data
+	(*Send_Response)(nil),             // 8: message.Send.Response
+	(*Forward_Request)(nil),           // 9: message.Forward.Request
+	(*Forward_Response)(nil),          // 10: message.Forward.Response
+	(*Revoke_Request)(nil),            // 11: message.Revoke.Request
+	(*Revoke_Response)(nil),           // 12: message.Revoke.Response
+	(*Download_Request)(nil),          // 13: message.Download.Request
+	(*Download_Response)(nil),         // 14: message.Download.Response
+	(*SendCapabilities_Request)(nil),  // 15: message.SendCapabilities.Request
+	(*SendCapabilities_Response)(nil), // 16: message.SendCapabilities.Response
+	(*Pat_Request)(nil),               // 17: message.Pat.Request
+	(*Pat_Response)(nil),              // 18: message.Pat.Response
+	(*Message)(nil),                   // 19: message.Message
+	(*Media)(nil),                     // 20: message.Media
 }
 var file_message_message_proto_depIdxs = []int32{
-	16, // 0: message.Send.Request.message:type_name -> message.Message
-	17, // 1: message.Send.Response.media:type_name -> message.Media
-	16, // 2: message.Forward.Request.message:type_name -> message.Message
-	16, // 3: message.Download.Request.message:type_name -> message.Message
-	14, // 4: message.MessageService.GetSendCapabilities:input_type -> message.SendCapabilities.Request
-	5,  // 5: message.MessageService.Send:input_type -> message.Send.Request
-	8,  // 6: message.MessageService.Forward:input_type -> message.Forward.Request
-	10, // 7: message.MessageService.Revoke:input_type -> message.Revoke.Request
-	12, // 8: message.MessageService.Download:input_type -> message.Download.Request
-	15, // 9: message.MessageService.GetSendCapabilities:output_type -> message.SendCapabilities.Response
-	7,  // 10: message.MessageService.Send:output_type -> message.Send.Response
-	9,  // 11: message.MessageService.Forward:output_type -> message.Forward.Response
-	11, // 12: message.MessageService.Revoke:output_type -> message.Revoke.Response
-	13, // 13: message.MessageService.Download:output_type -> message.Download.Response
-	9,  // [9:14] is the sub-list for method output_type
-	4,  // [4:9] is the sub-list for method input_type
+	19, // 0: message.Send.Request.message:type_name -> message.Message
+	20, // 1: message.Send.Response.media:type_name -> message.Media
+	19, // 2: message.Forward.Request.message:type_name -> message.Message
+	19, // 3: message.Download.Request.message:type_name -> message.Message
+	15, // 4: message.MessageService.GetSendCapabilities:input_type -> message.SendCapabilities.Request
+	6,  // 5: message.MessageService.Send:input_type -> message.Send.Request
+	9,  // 6: message.MessageService.Forward:input_type -> message.Forward.Request
+	11, // 7: message.MessageService.Revoke:input_type -> message.Revoke.Request
+	13, // 8: message.MessageService.Download:input_type -> message.Download.Request
+	17, // 9: message.MessageService.Pat:input_type -> message.Pat.Request
+	16, // 10: message.MessageService.GetSendCapabilities:output_type -> message.SendCapabilities.Response
+	8,  // 11: message.MessageService.Send:output_type -> message.Send.Response
+	10, // 12: message.MessageService.Forward:output_type -> message.Forward.Response
+	12, // 13: message.MessageService.Revoke:output_type -> message.Revoke.Response
+	14, // 14: message.MessageService.Download:output_type -> message.Download.Response
+	18, // 15: message.MessageService.Pat:output_type -> message.Pat.Response
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -924,7 +1095,7 @@ func file_message_message_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_message_message_proto_rawDesc), len(file_message_message_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

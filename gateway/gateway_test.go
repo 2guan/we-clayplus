@@ -1,9 +1,13 @@
+// 文件名：gateway_test.go
+// 主要功能：使用独立临时目录和临时控制台端口验证 gateway 生命周期，避免与开发预览冲突。
+// 作者：2guan
 package gateway_test
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/we-clay/we-clay/sdk/control"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -97,7 +101,7 @@ func fixture(t *testing.T) (*fakeCore, gateway.Config) {
 	server := &fakeCore{acked: make(chan struct{}, 4)}
 	rpc := coretest.NewService(t, server)
 	root := t.TempDir()
-	return server, gateway.Config{CoreAddress: rpc.Address, CoreToken: "synthetic-token", DataDir: filepath.Join(root, "data"), PluginsDir: filepath.Join(root, "plugins")}
+	return server, gateway.Config{Console: &control.Config{Address: "127.0.0.1:0"}, CoreAddress: rpc.Address, CoreToken: "synthetic-token", DataDir: filepath.Join(root, "data"), PluginsDir: filepath.Join(root, "plugins")}
 }
 func TestRunLifecycleAndAccountIsolation(t *testing.T) {
 	server, cfg := fixture(t)
@@ -166,7 +170,7 @@ func TestFailedStartCanBeRetried(t *testing.T) {
 }
 func TestCancelledAndInvalidRunDoNotCreateDirectories(t *testing.T) {
 	root := t.TempDir()
-	cfg := gateway.Config{DataDir: filepath.Join(root, "data"), PluginsDir: filepath.Join(root, "plugins")}
+	cfg := gateway.Config{Console: &control.Config{Address: "127.0.0.1:0"}, DataDir: filepath.Join(root, "data"), PluginsDir: filepath.Join(root, "plugins")}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := gateway.Run(ctx, cfg); err != nil {
@@ -214,34 +218,3 @@ func TestRunLoadsPluginAndStopsItsProcess(t *testing.T) {
 	}
 	// 第二次成功加载同名插件还检查了 SDK 客户端注册表清理。
 }
-
-func TestRunOfflineMockMode(t *testing.T) {
-	root := t.TempDir()
-	cfg := gateway.Config{
-		Offline:    true,
-		DataDir:    filepath.Join(root, "data"),
-		PluginsDir: filepath.Join(root, "plugins"),
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var readyCalled bool
-	err := gateway.Run(ctx, cfg, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{
-		OnReady: func(_ context.Context, c *gateway.Client) error {
-			readyCalled = true
-			self := c.Contact.GetSelf()
-			if self == nil || self.Nickname == "" {
-				t.Errorf("expected self nickname in offline mode")
-			}
-			cancel()
-			return nil
-		},
-	}))
-	if err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("offline run failed: %v", err)
-	}
-	if !readyCalled {
-		t.Fatal("OnReady was not called in offline mode")
-	}
-}
-

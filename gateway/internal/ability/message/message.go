@@ -1,8 +1,13 @@
+// 文件名：message.go
+// 主要功能：分发消息发送、引用、转发、撤回与媒体下载，保存原始回执。
+// 作者：2guan
 // Package messageability 提供消息能力的实现。
 package messageability
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -21,6 +26,8 @@ import (
 	api "github.com/we-clay/we-clay/gateway/internal/api/message"
 	"github.com/we-clay/we-clay/sdk/contact"
 	sdk "github.com/we-clay/we-clay/sdk/message"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ability 消息能力实现
@@ -72,6 +79,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 	msg = proto.Clone(msg).(*sdk.Message)
 	var result sdk.Send_Response
 	var clientID uint64
+	var stringClientID string
 	receiver := msg.GetReceiver().GetUsername()
 
 	switch msg.GetType().GetCode() {
@@ -112,7 +120,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 		msg.Content = data.GetFilename()
 	case sdk.TypeImage.Code:
 		data := msg.GetImage()
@@ -126,7 +135,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = resp.GetCreateTime()
-		clientID = numericClientID(resp.GetClientId().GetValue())
+		stringClientID = resp.GetClientId().GetValue()
+		clientID = numericClientID(stringClientID)
 		result.Media = &sdk.Media{
 			Key:  resp.GetAesKey(),
 			Url:  resp.GetFileId(),
@@ -148,7 +158,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = resp.GetCreateTime()
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 		result.Media = &sdk.Media{
 			Url:  resp.GetClientId(),
 			Size: uint32(resp.GetSize()),
@@ -164,7 +175,12 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			return nil, err
 		}
 		result.NewId = resp.GetNewId()
-		//result.CreateTime = resp.CreateTime
+		// core 使用请求的秒级时间作视频 ClientId，且校验了回执回显。
+		// 恢复的是原始请求值，不生成新的撤回 ID 或时间。
+		if id, parseErr := strconv.ParseUint(resp.GetClientId(), 10, 32); parseErr == nil && id != 0 {
+			clientID = id
+			result.CreateTime = uint32(id)
+		}
 		result.Media = &sdk.Media{
 			Key:  resp.GetAesKey(),
 			Url:  resp.GetExtendXml(),
@@ -172,17 +188,39 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 	case sdk.TypeEmoji.Code:
 		data := msg.GetEmoji()
-		if data.GetMedia() == nil || len(data.GetMedia().GetData()) == 0 {
+		digest, e := hex.DecodeString(data.GetMedia().GetMd5())
+		if data.GetMedia() == nil || (len(data.GetMedia().GetData()) == 0 && (e != nil || len(digest) != 16)) {
 			return nil, errors.New("缺少待发送的媒体数据")
+		}
+		// 在进入 core 前检查原始字节与资源标识，禁止悄悄重编码动图。
+		media := data.GetMedia()
+		if len(media.Data) > 32<<20 {
+			return nil, errors.New("表情超过 32 MB")
+		}
+		expected := strings.ToLower(media.Md5)
+		if len(media.Data) > 0 {
+			sum := fmt.Sprintf("%x", md5.Sum(media.Data))
+			if expected != "" && e == nil && len(digest) == 16 && expected != sum {
+				return nil, errors.New("表情 MD5 与原文件不一致")
+			}
+			expected = sum
 		}
 		resp, err := a.api.SendEmoji(receiver, data.GetMedia().GetMd5(), data.GetMedia().Data)
 		if err != nil {
 			return nil, err
 		}
+		if len(resp.GetResult()) != 1 || resp.GetResult()[0].GetCode() != 0 || resp.GetResult()[0].GetNewId() == 0 || (resp.GetResult()[0].GetMd5() != "" && !strings.EqualFold(resp.GetResult()[0].GetMd5(), expected)) {
+			return nil, errors.New("表情发送回执无效，结果未知，请勿自动重试")
+		}
 		if len(resp.GetResult()) > 0 {
 			item := resp.GetResult()[0]
 			result.NewId = item.GetNewId()
 			result.Media = &sdk.Media{Md5: item.GetMd5(), Size: uint32(item.GetSize())}
+			stringClientID = resp.GetRevokeClientId()
+			if resp.GetRevokeCreateTime() > 0 && resp.GetRevokeCreateTime() <= uint64(^uint32(0)) {
+				result.CreateTime = uint32(resp.GetRevokeCreateTime())
+				clientID = numericClientID(stringClientID)
+			}
 		}
 	case sdk.TypeLocation.Code:
 		data := msg.GetLocation()
@@ -201,6 +239,32 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 	case sdk.TypeApplication.Code, sdk.TypeAppChatRecord.Code, sdk.TypeAppMusic.Code:
 		return nil, sdkroot.NotImplemented("message.Send: 通用应用/聊天记录/音乐")
+	case sdk.TypeAppQuote.Code:
+		data := msg.GetApp()
+		if data == nil || data.GetSubType() != 57 {
+			return nil, errors.New("缺少引用消息参数")
+		}
+		var q struct {
+			Type  int    `xml:"type"`
+			Title string `xml:"title"`
+			Ref   struct {
+				ID string `xml:"svrid"`
+			} `xml:"refermsg"`
+		}
+		if xml.Unmarshal([]byte(data.GetXml()), &q) != nil || q.Type != 57 || strings.TrimSpace(q.Title) == "" || q.Ref.ID == "" {
+			return nil, errors.New("引用消息 XML 无效")
+		}
+		resp, err := a.api.SendApp(receiver, data.GetXml(), data.GetExtendXml(), 57)
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			return nil, errors.New("引用消息回执缺失，结果未确认")
+		}
+		result.NewId = resp.GetNewId()
+		result.CreateTime = uint32(resp.GetCreateTime())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 	case sdk.TypeAppLink.Code:
 		data := msg.GetApp()
 		if data == nil {
@@ -212,7 +276,8 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		}
 		result.NewId = resp.GetNewId()
 		result.CreateTime = uint32(resp.GetCreateTime())
-		clientID = numericClientID(resp.GetClientId())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 
 	default:
 		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Send: type=%d", msg.GetType().GetCode()))
@@ -221,6 +286,9 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		return nil, errors.New("消息回执缺少消息 ID，结果未确认，请勿自动重试")
 	}
 	canRevoke := a.receipts.remember(receiver, result.NewId, clientID, uint64(result.CreateTime))
+	if !canRevoke {
+		canRevoke = a.receipts.rememberString(receiver, result.NewId, stringClientID, uint64(result.CreateTime))
+	}
 	slog.Info(fmt.Sprintf("[%s] -> %s : %s", msg.GetType().GetDesc(), msg.GetReceiver().GetNickname(), msg.Content))
 
 	// 自动撤回绑定当前连接和 context，不能在下一次 Run 操作另一个账号。
@@ -232,6 +300,7 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 		scoped := api.New(conn)
 		ctx := conn.Context()
 		newID, created := result.NewId, result.CreateTime
+		originalStringID := stringClientID
 		timer := time.NewTimer(time.Duration(msg.Timestamp) * time.Second)
 		go func() {
 			defer timer.Stop()
@@ -243,7 +312,13 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			if ctx.Err() != nil {
 				return
 			}
-			if _, err := scoped.Revoke(receiver, newID, clientID, uint64(created)); err != nil {
+			var err error
+			if clientID != 0 {
+				_, err = scoped.Revoke(receiver, newID, clientID, uint64(created))
+			} else {
+				_, err = scoped.RevokeWithClientID(receiver, newID, originalStringID, uint64(created))
+			}
+			if err != nil {
 				slog.Warn("消息撤回失败", "err", err)
 			}
 		}()
@@ -288,6 +363,8 @@ func (a *ability) Forward(msg *sdk.Message, receiver string) (*sdk.Forward_Respo
 			return nil, errors.New("转发回执缺少消息 ID，结果未确认，请勿自动重试")
 		}
 		return &sdk.Forward_Response{NewId: resp.GetNewId()}, nil
+	case sdk.TypeAppFileNotify.Code:
+		return nil, status.Error(codes.FailedPrecondition, "文件仍在上传，尚不可转发；请等待附件完成消息")
 	case sdk.TypeAppFileAttach.Code:
 		raw, err := messageXML(msg)
 		if err != nil {
@@ -347,7 +424,13 @@ func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response
 	if !ok {
 		return nil, sdk.ErrRevokeReceiptUnavailable
 	}
-	resp, err := a.api.Revoke(receiver, newMsgId, receipt.clientID, receipt.created)
+	var resp *api.RevokeMessageResponse
+	var err error
+	if receipt.clientID != 0 {
+		resp, err = a.api.Revoke(receiver, newMsgId, receipt.clientID, receipt.created)
+	} else {
+		resp, err = a.api.RevokeWithClientID(receiver, newMsgId, receipt.stringClientID, receipt.created)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -360,6 +443,31 @@ func (a *ability) Revoke(receiver string, newMsgId uint64) (*sdk.Revoke_Response
 	return &sdk.Revoke_Response{Code: 0}, nil
 }
 
+// Pat 在私聊或群聊里发送一次拍一拍。当前底层协议仍在实测阶段，
+// 只有 core 明确返回成功才视为完成；结果不明时不得自动重试。
+func (a *ability) Pat(receiver, pattedUsername string) (*sdk.Pat_Response, error) {
+	if receiver == "" || pattedUsername == "" {
+		return nil, errors.New("拍一拍需要会话 ID 和被拍者微信 ID")
+	}
+	if err := ensureOutboundReady(); err != nil {
+		return nil, err
+	}
+	resp, err := a.api.Pat(receiver, pattedUsername)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.GetBaseResponse() == nil || resp.GetBaseResponse().Code == nil {
+		return nil, errors.New("拍一拍回执不完整，结果未确认，请勿自动重试")
+	}
+	if code := resp.GetBaseResponse().GetCode(); code != 0 {
+		return nil, fmt.Errorf("拍一拍失败，返回码 %d", code)
+	}
+	return &sdk.Pat_Response{
+		Id: resp.GetId(), SelfMessage: resp.GetSelfMessage(),
+		Suffix: resp.GetSuffix(), SuffixVersion: resp.GetSuffixVersion(),
+	}, nil
+}
+
 // Download 下载媒体资源
 func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 	if msg == nil {
@@ -367,6 +475,8 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 	}
 	receiver := msg.GetSender().GetUsername()
 	switch msg.GetType().GetCode() {
+	case sdk.TypeEmoji.Code:
+		return downloadEmoji(coreapi.GetCore().Context(), msg.GetEmoji().GetMedia().GetUrl())
 	case sdk.TypeImage.Code:
 		media := msg.GetImage().GetMedia()
 		if media.GetUrl() == "" || media.GetKey() == "" {
@@ -397,6 +507,8 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 			return nil, err
 		}
 		return io.NopCloser(bytes.NewReader(resp.GetData().GetData())), nil
+	case sdk.TypeAppFileNotify.Code:
+		return nil, status.Error(codes.FailedPrecondition, "文件仍在上传，尚不可下载；请等待附件完成消息")
 	case sdk.TypeAppFileAttach.Code:
 		raw, err := messageXML(msg)
 		if err != nil {
@@ -404,23 +516,33 @@ func (a *ability) Download(msg *sdk.Message) (io.ReadCloser, error) {
 		}
 		var item struct {
 			App struct {
+				AppID  string `xml:"appid,attr"`
+				MD5    string `xml:"md5"`
 				Attach struct {
-					ID   string `xml:"attachid"`
-					Size uint32 `xml:"totallen"`
+					ID     string `xml:"attachid"`
+					Size   uint32 `xml:"totallen"`
+					CDNID  string `xml:"cdnattachurl"`
+					AESKey string `xml:"aeskey"`
 				} `xml:"appattach"`
 			} `xml:"appmsg"`
 		}
 		if err = xml.Unmarshal([]byte(raw), &item); err != nil {
 			return nil, errors.New("文件消息 XML 无法解析")
 		}
-		if item.App.Attach.ID == "" || item.App.Attach.Size == 0 {
-			return nil, errors.New("文件消息缺少附件 ID 或长度")
+		if item.App.Attach.Size == 0 {
+			return nil, status.Error(codes.FailedPrecondition, "文件附件尚未上传完成，缺少文件长度")
 		}
-		resp, err := a.api.DownloadFile(receiver, item.App.Attach.ID, "", item.App.Attach.Size)
-		if err != nil {
-			return nil, err
+		// CDN 完成消息的 attachid 是复合标识，不能直接交给旧 CGI。
+		if item.App.Attach.CDNID != "" || item.App.Attach.AESKey != "" || strings.HasPrefix(item.App.Attach.ID, "@cdn_") {
+			if item.App.Attach.CDNID == "" || item.App.Attach.AESKey == "" {
+				return nil, status.Error(codes.FailedPrecondition, "文件附件尚未上传完成，缺少 CDN 下载信息")
+			}
+			return newCDNAttachmentReader(a.api, item.App.Attach.CDNID, item.App.Attach.AESKey, item.App.MD5, item.App.Attach.Size)
 		}
-		return io.NopCloser(bytes.NewReader(resp.GetChunk().GetData())), nil
+		if item.App.Attach.ID == "" {
+			return nil, status.Error(codes.FailedPrecondition, "文件附件尚未上传完成，缺少附件 ID")
+		}
+		return newAttachmentReader(a.api, receiver, item.App.Attach.ID, item.App.AppID, item.App.Attach.Size)
 	default:
 		return nil, sdkroot.NotImplemented(fmt.Sprintf("message.Download: type=%d", msg.GetType().GetCode()))
 	}
