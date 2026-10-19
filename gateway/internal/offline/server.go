@@ -11,6 +11,7 @@ import (
 	"html"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -37,10 +38,12 @@ import (
 type Server struct {
 	corewire.UnimplementedCoreServiceServer
 
-	Address    string
-	Token      string
-	listener   net.Listener
-	grpcServer *grpc.Server
+	Address       string
+	Token         string
+	listener      net.Listener
+	grpcServer    *grpc.Server
+	loginListener net.Listener
+	loginHttpSrv  *http.Server
 
 	mu          sync.RWMutex
 	dataDir     string
@@ -84,9 +87,20 @@ type chatroomMemberInfo struct {
 
 // Start 启动脱机 Mock Core 服务
 func Start(ctx context.Context, dataDir string) (*Server, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	listenAddr := "127.0.0.1:0"
+	if addr := os.Getenv("WE_CLAY_MOCK_CORE_ADDRESS"); addr != "" {
+		listenAddr = addr
+	} else if port := os.Getenv("WE_CLAY_CORE_PORT"); port != "" {
+		listenAddr = "127.0.0.1:" + port
+	}
+
+	l, err := net.Listen("tcp", listenAddr)
 	if err != nil {
-		return nil, fmt.Errorf("创建脱机服务监听端口失败: %w", err)
+		// 端口被占时平滑降级到随机可用端口
+		l, err = net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, fmt.Errorf("创建脱机服务监听端口失败: %w", err)
+		}
 	}
 
 	srv := &Server{
@@ -115,6 +129,31 @@ func Start(ctx context.Context, dataDir string) (*Server, error) {
 		}
 	}()
 
+	// 3. 可选启动登录展示 HTTP 服务（若指定登录地址）
+	loginAddr := os.Getenv("WE_CLAY_LOGIN_ADDRESS")
+	if loginAddr == "" {
+		if p := os.Getenv("WE_CLAY_LOGIN_PORT"); p != "" {
+			loginAddr = "127.0.0.1:" + p
+		}
+	}
+	if loginAddr != "" && loginAddr != "-" {
+		loginListener, lErr := net.Listen("tcp", loginAddr)
+		if lErr == nil {
+			srv.loginListener = loginListener
+			loginMux := http.NewServeMux()
+			loginMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>微信脱机扫码登录</title><style>body{font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f7fa;color:#333;}.card{background:#fff;padding:32px;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.08);text-align:center;max-width:380px;}.badge{display:inline-block;padding:4px 12px;background:#e6f7ed;color:#10b981;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:16px;}</style></head><body><div class="card"><div class="badge">脱机 Mock 预览模式</div><h2 style="margin:0 0 8px;">微信已就绪</h2><p style="color:#666;font-size:14px;margin-bottom:20px;">当前为脱机免扫码模式，用户【%s】直接登录成功！<br>请访问 Dashboard 控制台开始管理。</p><a href="http://127.0.0.1:5699" style="display:inline-block;padding:10px 20px;background:#10b981;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;">前往控制台 (5699)</a></div></body></html>`, srv.selfNickname)
+			})
+			loginHttpSrv := &http.Server{Handler: loginMux}
+			srv.loginHttpSrv = loginHttpSrv
+			go func() {
+				_ = loginHttpSrv.Serve(loginListener)
+			}()
+			slog.Info("[offline core] 登录引导页面已就绪", "address", loginAddr)
+		}
+	}
+
 	go func() {
 		<-ctx.Done()
 		srv.Close()
@@ -131,6 +170,12 @@ func Start(ctx context.Context, dataDir string) (*Server, error) {
 
 // Close 关闭脱机服务
 func (s *Server) Close() {
+	if s.loginHttpSrv != nil {
+		_ = s.loginHttpSrv.Close()
+	}
+	if s.loginListener != nil {
+		_ = s.loginListener.Close()
+	}
 	if s.grpcServer != nil {
 		s.grpcServer.GracefulStop()
 	}

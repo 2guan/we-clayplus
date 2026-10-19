@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -47,6 +48,22 @@ func main() {
 		Owner:      owner,
 	}
 
+	loginPort := os.Getenv("WE_CLAY_LOGIN_PORT")
+	if loginPort == "" {
+		loginPort = "5668"
+		os.Setenv("WE_CLAY_LOGIN_PORT", loginPort)
+	}
+	dashboardPort := os.Getenv("WE_CLAY_DASHBOARD_PORT")
+	if dashboardPort == "" {
+		dashboardPort = "5699"
+		os.Setenv("WE_CLAY_DASHBOARD_PORT", dashboardPort)
+	}
+	corePort := os.Getenv("WE_CLAY_CORE_PORT")
+	if corePort == "" {
+		corePort = "5666"
+		os.Setenv("WE_CLAY_CORE_PORT", corePort)
+	}
+
 	isMock := *mockFlag || *offlineFlag || os.Getenv("WE_CLAY_MOCK") == "true" || os.Getenv("WE_CLAY_OFFLINE") == "true"
 	if isMock {
 		cfg.Offline = true
@@ -55,13 +72,15 @@ func main() {
 			"mode", "offline_mock",
 			"plugins_dir", pluginsDir)
 		slog.Info("💡 提示：脱机模式跳过 Core 进程与微信扫码，直接使用本地缓存与 Mock 数据，零风控风险")
-		slog.Info("💡 提示：Dashboard 控制台将托管在 http://127.0.0.1:8899")
+		slog.Info(fmt.Sprintf("💡 提示：微信登录页面（脱机引导）托管在 http://127.0.0.1:%s", loginPort))
+		slog.Info(fmt.Sprintf("💡 提示：Mock Core (gRPC) 监听端口: %s", corePort))
+		slog.Info(fmt.Sprintf("💡 提示：Dashboard 控制台托管在 http://127.0.0.1:%s", dashboardPort))
 	} else {
 		slog.Info("正在启动 we-clayplus 网关服务...",
 			"core_version", coreVersion,
 			"plugins_dir", pluginsDir)
-		slog.Info("💡 提示：Core 启动后请在浏览器打开 http://127.0.0.1:8086 完成微信 Mac 扫码登录")
-		slog.Info("💡 提示：登录成功后 Dashboard 控制台将托管在 http://127.0.0.1:8899")
+		slog.Info(fmt.Sprintf("💡 提示：Core 启动后请在浏览器打开 http://127.0.0.1:%s 完成微信 Mac 扫码登录", loginPort))
+		slog.Info(fmt.Sprintf("💡 提示：登录成功后 Dashboard 控制台将托管在 http://127.0.0.1:%s", dashboardPort))
 	}
 
 	err := gateway.Run(ctx, cfg, gateway.WithHandlers(gateway.Handlers{
@@ -76,7 +95,7 @@ func main() {
 			} else {
 				slog.Info("🎉 微信已登录就绪！", "nickname", name)
 			}
-			slog.Info("🚀 控制台已就绪：请访问 http://127.0.0.1:8899 查看高仿微信控制台与AI插件")
+			slog.Info(fmt.Sprintf("🚀 控制台已就绪：请访问 http://127.0.0.1:%s 查看高仿微信控制台与AI插件", dashboardPort))
 			return nil
 		},
 	}))

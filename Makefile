@@ -18,7 +18,7 @@ ai:
 run: dashboard ai
 	$(GO) run ./examples/bot
 mock: dashboard ai
-	$(GO) run ./examples/bot -mock
+	WE_CLAY_LOGIN_PORT=5668 WE_CLAY_CORE_PORT=5666 WE_CLAY_DASHBOARD_PORT=5699 $(GO) run ./examples/bot -mock
 test:
 
 	$(GO) test -race ./...

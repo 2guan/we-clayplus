@@ -86,7 +86,17 @@ func (p *DashboardPlugin) OnLoad() error {
 
 	// 5. 初始化并启动 HTTP Web 服务
 	p.server = NewServer(p, p.store, p.sse)
-	addr := fmt.Sprintf("%s:%d", p.Config.Host, p.Config.Port)
+	port := p.Config.Port
+	if pStr := os.Getenv("WE_CLAY_DASHBOARD_PORT"); pStr != "" {
+		if pVal, err := strconv.Atoi(pStr); err == nil && pVal > 0 {
+			port = pVal
+		}
+	} else if pStr := os.Getenv("PORT"); pStr != "" {
+		if pVal, err := strconv.Atoi(pStr); err == nil && pVal > 0 {
+			port = pVal
+		}
+	}
+	addr := fmt.Sprintf("%s:%d", p.Config.Host, port)
 	if err := p.server.Start(addr); err != nil {
 		return fmt.Errorf("启动 HTTP 服务失败: %w", err)
 	}
