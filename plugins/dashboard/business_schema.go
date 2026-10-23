@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pelletier/go-toml/v2"
+	"github.com/we-clay/we-clay/plugins/playroom"
 	"github.com/we-clay/we-clay/plugins/toolbox"
-	"github.com/we-clay/we-clay/sdk/control"
 	"regexp"
 	"strings"
 	"time"
@@ -27,11 +27,15 @@ func businessGroups() []Group {
 	out := []Group{}
 	for _, d := range toolbox.Catalog {
 		fields := []Field{
-			choice("scope", "名单模式", "自动触发及发送均受此名单约束；白名单为空时不执行。", "whitelist", "whitelist", "blacklist"),
-			entry("targets", "生效名单", "逗号分隔的会话 ID；好友验证使用申请人 ID。", ""),
+			choice("scope", "名单模式", "默认黑名单；启用插件后，空黑名单全局生效。白名单仅允许名单内对象，留空不生效。", "blacklist", "blacklist", "whitelist"),
+			entry("targets", "黑白名单", "逗号分隔的会话 ID。黑名单模式填写排除对象，留空全局生效；白名单模式填写允许对象。好友验证使用申请人 ID。", ""),
 			number("cooldown", "冷却时间（秒）", "限制同一插件、同一目标的自动执行频率。", 30, 0, 86400),
 		}
 		switch d.ID {
+		case "turtlesoup":
+			fields = fields[:2]
+			fields = append(fields, flag("group_start_mention", "群聊开局必须 @ 本人", "群聊须通过微信真实 @ 当前账号后发送来碗海龟汤，私聊和开局后的提问不受影响。", true))
+			fields = append(fields, choice("group_mode", "群聊提问方式", "自然模式识别每条文字，非游戏消息交回普通对话；定向模式仅处理 @、引用游戏消息或汤问前缀。", "natural", "natural", "direct"), entry("model", "指定模型 ID", "留空沿用模型中心的对话流水线及故障切换配置。", ""), entry("self_name", "主持自称", "留空使用当前微信昵称；不会猜测身份、工作或状态。", ""), number("idle_minutes", "空闲暂停（分钟）", "到期暂停，发送继续恢复；不会自动揭底。", 30, 1, 1440), number("max_hints", "每局提示上限", "按题目预设提示依次公开。", 3, 1, 5))
 		case "cron":
 			fields = append(fields, entry("timezone", "默认时区", "新建任务的缺省时区；每项任务可独立设置。", "Asia/Shanghai"))
 		case "statistics":
@@ -45,8 +49,10 @@ func businessGroups() []Group {
 		case "digest":
 			fields = append(fields, number("days", "默认范围（天）", "摘要读取指定会话的原始归档。", 1, 1, 365), number("max_messages", "消息数量", "超过上限取最近记录；模型容量不足会明确报错。", 200, 1, 20000), entry("prompt", "摘要要求", "复用默认对话流水线和提示词防护。", "请总结讨论重点、已作决定和待办，保留信息来源，不编造事实。"))
 		case "news":
-			fields = append(fields, entry("endpoint", "RSS / Atom 地址", "只支持公网 HTTP(S)，不填写凭据或带密钥的查询参数。", ""), entry("key_env", "凭据环境变量名", "可选，从服务端环境读取 Bearer Key，配置中不保存密钥。", ""), number("limit", "结果数量", "一次最多展示与发送的新闻数量。", 8, 1, 20))
-		case "music", "video_parser", "meme":
+			fields = append(fields, choice("default_mode", "默认新闻类型", "新闻口令及未指定类型的任务使用此项；今日新闻、今日图卦口令始终取对应图片。", "today", "today", "diagram", "rss"), entry("today_template", "今日新闻图片地址", "沿用 Golem 原数据源，{date} 为北京时间 YYYY-MM-DD。", toolbox.DefaultNewsTemplate), entry("diagram_template", "图卦图片地址", "沿用 Golem 原数据源，读取昨日两张；{month}=YYYYMM，{date}=YYYYMMDD，{index}=1 或 2。", toolbox.DefaultDiagramTemplate), entry("endpoint", "RSS / Atom 地址", "仅 RSS 模式使用；只支持公网 HTTP(S)，不填写凭据或带密钥的查询参数。", ""), entry("key_env", "凭据环境变量名", "可选，从服务端环境读取 Bearer Key，配置中不保存密钥。", ""), number("limit", "结果数量", "一次最多展示与发送的新闻数量。", 8, 1, 20))
+		case "music":
+			fields = append(fields, choice("source", "音乐音源", "自动模式优先酷我，失败后尝试抖音。内置酷我地址："+toolbox.KuwoMusicEndpoint+"；内置抖音地址："+toolbox.DouyinMusicEndpoint+"。两条地址由程序内置；QQ 接口仅在自定义服务模式下显示并生效。", "auto", "auto", "kuwo", "douyin", "custom"), entry("endpoint", "自定义服务地址", "仅自定义模式使用；保留 Golem Music 的原 QQ 音乐地址。", toolbox.DefaultMusicEndpoint), choice("api_format", "自定义接口格式", "仅自定义模式使用。Golem 接口使用 msg/code/data；兼容服务使用 q/url/limit/items。", "golem", "golem", "items"), entry("key_env", "凭据环境变量名", "仅自定义模式使用的可选 Bearer Key 环境变量名，不填写密钥本身。", ""), number("limit", "搜索结果数量", "抖音最多检查的候选数；内置音源返回首个可播放结果，自定义服务可选择其它结果。", 5, 1, 20), choice("send_mode", "默认分享形式", "音乐卡片需要播放地址；也可选择文字链接。", "card", "card", "link"), entry("app_id", "卡片来源 AppID", "random 沿用 Golem 的随机来源；可填固定 wx AppID，留空不标来源。", "random"))
+		case "video_parser", "meme":
 			fields = append(fields, entry("endpoint", "服务地址", "GET 请求附带 q、url、limit；返回 items 数组，完整契约见运行说明。", ""), entry("key_env", "凭据环境变量名", "可选的 Bearer Key 环境变量名；不填写密钥本身。", ""), number("limit", "搜索结果数量", "搜索后可单独预览或发送某一项。", 5, 1, 20))
 			if d.ID == "meme" {
 				fields = append(fields, entry("font", "中文字体路径", "生成文字表情使用本机字体。", ""))
@@ -55,6 +61,19 @@ func businessGroups() []Group {
 			fields = append(fields, entry("menu", "自定义菜单", "每行一道菜或一个餐厅。", "番茄鸡蛋面\n牛肉饭\n菌菇汤\n清蒸鱼\n饺子\n蔬菜沙拉"), entry("exclude", "排除项", "逗号分隔；匹配菜名中的文字。", ""))
 		case "moyu_daily":
 			fields = append(fields, entry("holidays", "节假日 JSON", "日期到名称的映射；自行维护，不假定法定调休。", "{}"), entry("font", "中文字体路径", "生成日报图片使用本机字体。", ""))
+		}
+		if _, ok := playroom.Find(d.ID); ok {
+			fields = fields[:2]
+			fields = append(fields, entry("model", "指定模型 ID", "留空沿用模型中心流水线和故障切换；模型失败自动再试一轮。", ""))
+			if d.ID == "romance" {
+				fields = append(fields, choice("tone", "剧情尺度", "仅虚构互动；成人暧昧仅供成年用户主动选择，不包含露骨内容。", "清水", "清水", "暧昧", "成人暧昧"))
+			}
+			if d.ID == "group_digest" {
+				fields = append(fields, number("max_messages", "报告消息上限", "超过上限明确失败，不静默删减；范围按北京时间。", 1000, 10, 20000))
+			}
+		}
+		if d.Trigger != "" && d.ID != "turtlesoup" && d.ID != "romance" && d.ID != "radio" {
+			fields = append(fields, flag("group_mention_required", "群聊触发必须 @ 本人", "默认开启，须在微信真实 @ 当前账号；手写昵称、@ 他人或 @所有人不能替代。私聊、工作台和定时任务不受影响；互动游戏仅限制开局或重新触发，局内正常指令不受影响。", true))
 		}
 		// 长文本使用多行编辑器，避免菜单、词典和 JSON 中的换行被 input 吞掉。
 		for i := range fields {
@@ -75,7 +94,12 @@ func validateBusinessSetting(group, key string, value any) error {
 	}
 	text, _ := value.(string)
 	switch key {
-	case "endpoint":
+	case "app_id":
+		if group == "music" {
+			_, e := toolbox.MusicAppID(text)
+			return e
+		}
+	case "endpoint", "today_template", "diagram_template":
 		if text != "" {
 			return toolbox.PublicURL(text)
 		}
@@ -105,31 +129,6 @@ func validateBusinessSetting(group, key string, value any) error {
 		}
 	}
 	return nil
-}
-func businessUsage(id string) *control.PluginUsage {
-	d, ok := toolbox.Find(id)
-	if !ok {
-		return nil
-	}
-	u := &control.PluginUsage{Steps: []string{"在配置中设置生效名单、冷却时间和功能参数；真实模式默认关闭业务插件，启用后只在允许的目标执行。", "工作台支持预览、单独发送和查看执行记录。脱机模式不访问外部服务或真实微信。"}}
-	if d.Trigger != "" {
-		u.Commands = []control.PluginCommandHelp{{Name: d.Trigger, Description: d.Description, Syntax: d.Trigger + " [参数]", Examples: []string{d.Example}}}
-	}
-	switch id {
-	case "cron":
-		u.Steps = append(u.Steps, "工作台创建单次或五段 Cron 任务，可调用文字、摘要、统计、词云、新闻等；中断或未知发送结果不自动重发。")
-	case "auto_accept":
-		u.Steps = append(u.Steps, "仅系统类型 37 的合法好友申请参与处理；群邀请因当前 core 未接通接受接口，暂不执行。")
-	case "welcome":
-		u.Steps = append(u.Steps, "识别系统消息中的中文邀请入群、二维码入群通知；普通聊天文本不能触发。可在工作台模拟验证。")
-	case "news":
-		u.Steps = append(u.Steps, "配置 RSS 或 Atom 源；关键词仅过滤标题，不使用未经核验的硬编码新闻源。")
-	case "music", "video_parser", "meme":
-		u.Steps = append(u.Steps, "外部服务返回格式：{\"items\":[{\"title\":\"标题\",\"url\":\"公开链接\",\"artist\":\"可选作者\",\"media_url\":\"可选媒体链接\"}]}。", "音乐以文字及播放链接分享；视频可预览并作为文件发送，不伪造未验证的原生音乐卡片。")
-	case "moyu_daily":
-		u.Steps = append(u.Steps, "周末按周六、周日计算；节假日从配置读取，不推测调休安排。")
-	}
-	return u
 }
 
 // 旧版仅演示的欢迎/摘要配置升级到实际插件时，保留用户已经编辑的可兼容字段。
@@ -163,5 +162,34 @@ func migrateBusinessSettings(s *store, mock bool) {
 				s.state.Settings[full] = value
 			}
 		}
+	}
+}
+
+// 一次性升级旧的未配置空白名单；保留手动保存的配置及非空名单，重启不再次改变模式。
+func migratePluginScopeDefaults(st *State) {
+	if st.PluginScopeDefaultsVersion >= 1 {
+		return
+	}
+	changed := false
+	for _, d := range toolbox.Catalog {
+		key := d.ID + ".scope"
+		if settingText(*st, key) != "whitelist" || strings.TrimSpace(settingText(*st, d.ID+".targets")) != "" {
+			continue
+		}
+		manual := false
+		for _, h := range st.History {
+			if h.Group == d.ID {
+				manual = true
+				break
+			}
+		}
+		if !manual {
+			st.Settings[key] = "blacklist"
+			changed = true
+		}
+	}
+	st.PluginScopeDefaultsVersion = 1
+	if changed {
+		st.ConfigRevision++
 	}
 }

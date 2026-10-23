@@ -41,6 +41,59 @@ export function PluginUsage({
           <h3>插件介绍</h3>
           <p>{plugin.description || "插件暂未提供介绍。"}</p>
         </section>
+        <section className="plugin-examples">
+          <h3>触发词示例</h3>
+          <p className="plugin-trigger-caption">
+            点击标签复制；需要参数、真实 @ 或引用时，请按下方提示补全。
+          </p>
+          {commands.map((command, index) => (
+            <div className="plugin-command" key={`${command.name}-${index}`}>
+              <h4>{command.name}</h4>
+              {command.description && <p>{command.description}</p>}
+              {!!command.examples?.length ? (
+                <div
+                  className="plugin-trigger-list"
+                  aria-label={`${command.name}示例`}
+                >
+                  {[...new Set(command.examples)].map((example) => (
+                    <button
+                      type="button"
+                      className="plugin-trigger"
+                      key={example}
+                      onClick={() => void copy(example)}
+                      aria-label={`复制触发词：${example}`}
+                    >
+                      <code>{example}</code>
+                      {copied === example ? (
+                        <Check size={16} aria-hidden="true" />
+                      ) : (
+                        <Copy size={16} aria-hidden="true" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : command.syntax ? (
+                <code className="plugin-command-syntax">{command.syntax}</code>
+              ) : (
+                <p className="hint">
+                  此项通过页面或系统事件触发，无需聊天口令。
+                </p>
+              )}
+            </div>
+          ))}
+          {!commands.length && (
+            <p className="hint">
+              此插件通过页面或系统事件触发，无需聊天触发词；具体入口见使用说明。
+            </p>
+          )}
+          <div
+            className="plugin-copy-feedback"
+            role="status"
+            aria-live="polite"
+          >
+            {error || (copied !== null ? "触发词已复制" : "")}
+          </div>
+        </section>
         <section>
           <h3>使用说明</h3>
           <ol>
@@ -52,47 +105,6 @@ export function PluginUsage({
             ))}
           </ol>
         </section>
-        {/* 命令语法包含占位参数，单独展示；仅明确声明的示例提供复制操作。 */}
-        {commands.map((command, index) => (
-          <section className="plugin-command" key={`${command.name}-${index}`}>
-            <h3>{command.name}</h3>
-            {command.description && <p>{command.description}</p>}
-            {command.syntax && (
-              <pre className="plugin-command-syntax">{command.syntax}</pre>
-            )}
-            {!!command.examples?.length && (
-              <div className="plugin-trigger-list" aria-label="触发词示例">
-                <span className="plugin-trigger-caption">
-                  触发词示例 · 点击复制
-                </span>
-                {command.examples.map((example, i) => (
-                  <button
-                    type="button"
-                    className="plugin-trigger"
-                    key={i}
-                    onClick={() => void copy(example)}
-                    aria-label={`复制触发词：${example}`}
-                  >
-                    <code>{example}</code>
-                    {copied === example ? (
-                      <Check size={16} aria-hidden="true" />
-                    ) : (
-                      <Copy size={16} aria-hidden="true" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        ))}
-        {!!commands.length && !commands.some((c) => c.examples?.length) && (
-          <p className="hint">
-            插件未提供触发词示例，请按上述命令用法填写参数。
-          </p>
-        )}
-        <div className="plugin-copy-feedback" role="status" aria-live="polite">
-          {error || (copied !== null ? "触发词已复制" : "")}
-        </div>
       </div>
     </Modal>
   );

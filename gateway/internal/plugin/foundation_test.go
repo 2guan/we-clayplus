@@ -41,3 +41,29 @@ func TestFoundationCapabilities(t *testing.T) {
 		t.Fatal("插件调用不应隐式发送微信消息")
 	}
 }
+
+func TestFoundationNewsCapabilities(t *testing.T) {
+	withPluginState(t)
+	server, e := dashboard.Start(context.Background(), control.Config{Mock: true, Disabled: true, DataDir: t.TempDir()}, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer server.Close()
+	if e = RegisterFoundation(server, true, true); e != nil {
+		t.Fatal(e)
+	}
+	w := findPlugin("news")
+	if w == nil || len(w.capabilities) != 2 {
+		t.Fatal("未注册 Golem 新闻能力")
+	}
+	for _, cap := range []string{"news.today", "news.diagram"} {
+		response, e := (&gatewayService{}).CallPlugin(context.Background(), &sdk.CallPlugin_Request{Capability: cap, Args: []byte(`{"receiver":"mock-contact-0"}`)})
+		if e != nil || response.GetMessage() != "" || response.GetMime() != "none" {
+			t.Fatal("能力调用失败", cap, e, response.GetMessage())
+		}
+	}
+	response, e := (&gatewayService{}).CallPlugin(context.Background(), &sdk.CallPlugin_Request{Capability: "news.today", Args: []byte(`{}`)})
+	if e != nil || response.GetMessage() == "" {
+		t.Fatal("缺少接收人时没有返回错误说明", e)
+	}
+}

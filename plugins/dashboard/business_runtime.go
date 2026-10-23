@@ -59,12 +59,22 @@ func (s *Server) finishBusiness(id, status, detail string) {
 	s.notify()
 }
 func (s *Server) executeBusiness(ctx context.Context, q businessRequest, source string) (businessResult, error) {
-	account := s.store.snapshot().Account.ID
+	st := s.store.snapshot()
+	return s.executeBusinessFor(ctx, st.Account.ID, st.AccountEpoch, q, source)
+}
+
+// executeBusinessFor keeps the identity captured by the event or scheduler. A queued
+// request must never adopt whichever account happens to be active when it runs.
+func (s *Server) executeBusinessFor(ctx context.Context, account string, epoch uint64, q businessRequest, source string) (businessResult, error) {
 	empty := businessResult{}
+	st := s.store.snapshot()
+	if st.Account.ID != account || st.AccountEpoch != epoch {
+		return empty, fmt.Errorf("账号已切换，请重新执行")
+	}
 	if !isBusinessPlugin(q.Plugin) {
 		return empty, fmt.Errorf("插件不存在")
 	}
-	if q.Send && !businessAllowed(s.store.snapshot(), q.Plugin, q.Target) {
+	if q.Send && !businessAllowed(st, q.Plugin, q.Target) {
 		return empty, fmt.Errorf("插件未启用或目标不在生效范围，请先配置名单")
 	}
 	select {
@@ -81,8 +91,12 @@ func (s *Server) executeBusiness(ctx context.Context, q businessRequest, source 
 	stop := context.AfterFunc(s.ctx, cancel)
 	defer stop()
 	defer cancel()
-	r, e := s.buildBusiness(ctx, q)
-	if e == nil && s.store.snapshot().Account.ID != account {
+	if active := s.store.snapshot(); active.Account.ID != account || active.AccountEpoch != epoch {
+		s.finishBusiness(id, "skipped", source+" · 账号已切换")
+		return empty, fmt.Errorf("账号已切换，请重新执行")
+	}
+	r, e := s.buildBusinessFor(ctx, q, st)
+	if active := s.store.snapshot(); active.Account.ID != account || active.AccountEpoch != epoch {
 		e = fmt.Errorf("账号已切换，请重新预览")
 		r = businessResult{}
 	}
@@ -90,13 +104,16 @@ func (s *Server) executeBusiness(ctx context.Context, q businessRequest, source 
 	if e == nil && len(r.data) > 0 && r.Media == "" {
 		r.Media, e = s.saveMedia(r.data, r.MIME)
 	}
+	if e == nil && len(r.Images) > 0 {
+		e = s.saveBusinessImages(&r)
+	}
 	if e == nil && !q.Send {
 		r.Preview, e = s.saveBusinessPreview(account, q, r)
 	}
 	attempted := false
 	if e == nil && q.Send {
 		attempted = true
-		e = s.deliverBusiness(ctx, account, q, r)
+		e = s.deliverBusinessFor(ctx, account, epoch, q, r)
 		status = "sent"
 		detail = "发送请求已完成"
 	}
@@ -106,7 +123,21 @@ func (s *Server) executeBusiness(ctx context.Context, q businessRequest, source 
 		if attempted {
 			status = "unknown"
 			detail = "未确认发送成功，请检查运行状态；不自动重试"
+			if len(r.Images) > 0 {
+				detail += "：" + e.Error()
+			}
+		} else if q.Send && (q.Plugin == "music" || q.Plugin == "news") && ctx.Err() == nil {
+			// 搜索失败也回应原会话；已尝试发卡片时不再补发，避免未知结果重复发送。
+			label := map[string]string{"music": "点歌失败", "news": "新闻获取失败"}[q.Plugin]
+			feedback := businessResult{Text: label + "：" + e.Error() + "。稍后可以重试。"}
+			if notifyErr := s.deliverBusinessFor(ctx, account, epoch, q, feedback); notifyErr != nil {
+				status = "unknown"
+				detail += "；失败提示也未确认发送成功，不自动重发"
+			}
 		}
+	}
+	if r.MusicSource != "" {
+		detail += " · 音源：" + r.MusicSource
 	}
 	s.finishBusiness(id, status, source+" · "+detail)
 	return r, e
@@ -142,6 +173,17 @@ func (s *Server) businessCooldown(account, id, target string) bool {
 
 var joinPatterns = []*regexp.Regexp{regexp.MustCompile(`^["“]([^"”]+)["”].*邀请["“]([^"”]+)["”]加入了群聊`), regexp.MustCompile(`^["“]([^"”]+)["”]通过.*加入了群聊`)}
 
+var businessMentionText = regexp.MustCompile(`@[^@\r\n\x{2005}]+\x{2005}`)
+
+func businessCommandText(m Message) string {
+	text := m.Content
+	if len(m.Mentions) > 0 || m.MentionAll {
+		// 微信提醒可放在句首或句尾，昵称中也可能有空格；提醒授权仍单独核验 ID。
+		text = businessMentionText.ReplaceAllString(text, " ")
+	}
+	return toolbox.CommandText(text)
+}
+
 func joinName(text string) string {
 	for i, re := range joinPatterns {
 		m := re.FindStringSubmatch(text)
@@ -160,9 +202,22 @@ func (s *Server) dispatchBusiness(m Message) bool {
 	if m.Self || m.Source != "wechat" {
 		return false
 	}
+	st := s.store.snapshot()
+	// 海龟汤开局由专用路由判断真实 @；未满足条件的开局不落入通用插件或普通 AI。
+	if m.Kind == "text" || m.Kind == "quote" {
+		command, _ := soupCommand(soupText(st, m))
+		// 展示文字仅用于拦住普通 AI 兜底，不能作为真实 @ 的授权依据。
+		displayCommand, _ := soupCommand(toolbox.CommandText(m.Content))
+		if (command == "start" || displayCommand == "start") && businessAllowed(st, "turtlesoup", m.Target) {
+			if !soupStartAllowed(st, m) {
+				s.replyDecision(m, "跳过", "群内开启海龟汤要求真实 @ 本人，本条未满足；不由普通聊天兜底")
+			}
+			return true
+		}
+	}
 	id, arg := "", ""
-	if m.Kind == "text" {
-		id, arg = toolbox.Match(m.Content)
+	if m.Kind == "text" || m.Kind == "quote" {
+		id, arg = toolbox.Match(businessCommandText(m))
 	} else if m.Kind == "system" {
 		arg = joinName(m.Content)
 		if arg != "" {
@@ -172,24 +227,49 @@ func (s *Server) dispatchBusiness(m Message) bool {
 	if id == "" {
 		return false
 	}
-	st := s.store.snapshot()
 	if !businessAllowed(st, id, m.Target) {
 		return false
+	}
+	if (m.Kind == "text" || m.Kind == "quote") && memoryGroup(st, m.Target) && st.Settings[id+".group_mention_required"] != false && (st.Account.ID == "" || !slices.Contains(m.Mentions, st.Account.ID)) {
+		s.replyDecision(m, "跳过", "业务插件 "+id+" 群聊触发要求真实 @ 本人；本条未满足，不执行也不由普通聊天兜底")
+		return true
 	}
 	if id == "welcome" && !slices.ContainsFunc(st.Contacts, func(c Contact) bool { return c.ID == m.Target && c.Kind == "group" }) {
 		return false
 	}
 	s.businessMu.Lock()
 	defer s.businessMu.Unlock()
-	if !s.businessCooldown(st.Account.ID, id, m.Target) {
+	if id != "news" && !s.businessCooldown(st.Account.ID, id, m.Target) {
+		s.replyDecision(m, "跳过", "业务插件 "+id+" 处于冷却时间，本次不发送，也不转交普通聊天")
 		return true
 	}
 	claimed, e := s.claimBusiness(st.Account.ID, "message:"+id+":"+m.Target+":"+m.ID)
 	if e != nil || !claimed {
+		reason := "业务插件 " + id + " 已处理过此消息，跳过重复触发"
+		if e != nil {
+			reason = "业务插件 " + id + " 触发登记失败：" + e.Error()
+		}
+		s.replyDecision(m, "跳过", reason)
 		return true
 	}
 	q := businessCommand(id, m.Target, arg)
 	q.Send = true
+	if id == "news" {
+		q = normalizeNewsRequest(st, q)
+		allowed, err := s.claimNewsCooldown(st.Account.ID, q, time.Now())
+		if err != nil || !allowed {
+			marker, e := s.beginBusiness(st.Account.ID, q, "skipped")
+			if e == nil {
+				detail := fmt.Sprintf("微信触发 · 冷却中（%s）；同类请求间隔 %d 秒，新闻、图卦和 RSS 分别计时", map[string]string{"today": "今日新闻", "diagram": "今日图卦", "rss": "RSS 新闻"}[q.Mode], businessNumber(st, id, "cooldown"))
+				if err != nil {
+					s.finishBusiness(marker, "failed", "冷却状态检查失败，本次未发送")
+				} else {
+					s.finishBusiness(marker, "skipped", detail)
+				}
+			}
+			return true
+		}
+	}
 	// 先同步写占位记录用于冷却，再异步处理，避免短时间事件同时穿过限制。
 	marker, e := s.beginBusiness(st.Account.ID, q, "accepted")
 	if e != nil {
@@ -205,11 +285,11 @@ func (s *Server) dispatchBusiness(m Message) bool {
 			case <-timer.C:
 			}
 		}
-		if s.store.snapshot().Account.ID != st.Account.ID {
+		if active := s.store.snapshot(); active.Account.ID != st.Account.ID || active.AccountEpoch != st.AccountEpoch {
 			s.finishBusiness(marker, "skipped", "账号发生变化")
 			return
 		}
-		_, err := s.executeBusiness(s.ctx, q, "微信触发")
+		_, err := s.executeBusinessFor(s.ctx, st.Account.ID, st.AccountEpoch, q, "微信触发")
 		if err != nil {
 			s.finishBusiness(marker, "failed", "自动执行失败，请查看相邻记录")
 		} else {
@@ -224,6 +304,7 @@ func (s *Server) dispatchBusiness(m Message) bool {
 // FriendRequest 来自 gateway 对类型 37 消息的严格 XML 解码，凭据不能由网页提交。
 type FriendRequest struct {
 	ID, Applicant, Comment, V1, V2 string
+	Created                        string
 	Scene                          int
 }
 
@@ -232,6 +313,16 @@ func (s *Server) HandleFriend(q FriendRequest) error {
 		return fmt.Errorf("好友申请参数不完整")
 	}
 	st := s.store.snapshot()
+	if q.Created == "" {
+		q.Created = time.Now().Format(time.RFC3339)
+	}
+	raw, err := json.Marshal(q)
+	if err != nil {
+		return err
+	}
+	if err = s.store.putSecret("ai-friend:"+st.Account.ID+":"+fmt.Sprintf("%x", sha256.Sum256([]byte(q.V1+"\x00"+q.V2))), string(raw)); err != nil {
+		return err
+	}
 	id := "auto_accept"
 	if friendMatchReason(st, q) != "" {
 		return nil

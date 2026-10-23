@@ -14,6 +14,7 @@ import (
 
 // Message 保留真实身份和来源；它是资料，不会被转换成 system 指令。
 type Message struct {
+	Game        string       `json:"game,omitempty"` // 游戏过程只作会话参考，不能作为现实人物事实。
 	Status      string       `json:"status,omitempty"`
 	SenderID    string       `json:"sender_id,omitempty"`
 	ActorType   string       `json:"actor_type,omitempty"`
@@ -155,10 +156,46 @@ var unfinished = regexp.MustCompile(`(?is)<(?:think|thought|reasoning|reflection
 var closing = regexp.MustCompile(`(?is)^.*?</(?:think|thought|reasoning|reflection)>`)
 var stage = regexp.MustCompile(`[（(](笑|轻笑|叹气|停顿|思考|低声)[）)]`)
 
+var nonReplyDecision = regexp.MustCompile(`我(?:就|先|还是|这次|也)?不(?:凑热闹|插话|打扰|参与)(?:了|啦|哈|吧)?[。！？!?，,～~\s]*$`)
+
+// ReplyDecision 只识别直接写给读者的回复规划，不处理引用、代码或正常回答。
+func ReplyDecision(text string) bool {
+	first := strings.ToLower(strings.TrimSpace(strings.SplitN(strings.ReplaceAll(text, "\r\n", "\n"), "\n\n", 2)[0]))
+	for _, prefix := range []string{"i notice the current message", "i see the current message", "the current message is", "the user is asking", "i need to decide", "i should stay quiet", "当前消息", "这条消息", "我注意到当前", "用户正在询问", "用户是在询问"} {
+		if strings.HasPrefix(first, prefix) {
+			for _, intent := range []string{"i should", "i need to decide", "stay quiet", "not my turn", "我应该", "我需要判断", "我应当", "保持沉默"} {
+				if strings.Contains(first, intent) {
+					return true
+				}
+			}
+		}
+	}
+	if strings.HasPrefix(first, ">") || strings.HasPrefix(first, "```") || strings.HasPrefix(first, "~~~") || strings.ContainsAny(first, "\n“”\"「」") || !nonReplyDecision.MatchString(first) {
+		return false
+	}
+	for _, context := range []string{"没@我", "没 @ 我", "没叫我", "不是问我", "发给你看的", "你们聊", "你们之间", "不需要我", "不关我的事"} {
+		if strings.Contains(first, context) {
+			return true
+		}
+	}
+	return false
+}
+
 // Output 不根据“系统提示词”“抱歉”等普通词猜测泄露，也不会伪造一条替代回复。
 func Output(c Config, text string, chat bool) (string, bool) {
+	text, _, silent := OutputWithReason(c, text, chat)
+	return text, silent
+}
+
+// SilenceReasons 是可审计的短原因枚举，不记录模型推理或任意附加正文。
+const SilenceReasons = "非本人对话、重复附和、话题已结束、已有人回答、无需补充、信息不足"
+
+var silencePrefix = regexp.MustCompile(`(?is)^(NO_REPLY|\[NO_REPLY\]|\[SILENT\])(?:$|[\s:：])`)
+
+// OutputWithReason 保留 Output 的清理规则，附带沉默原因供宿主日志使用。
+func OutputWithReason(c Config, text string, chat bool) (string, string, bool) {
 	if !c.Enabled {
-		return text, false
+		return text, "", false
 	}
 	if c.Controls {
 		text = cleanControls(text)
@@ -182,8 +219,36 @@ func Output(c Config, text string, chat bool) (string, bool) {
 		text = strings.Join(parts, "```")
 	}
 	text = strings.TrimSpace(text)
-	if chat && c.Silence && (text == "NO_REPLY" || text == "[SILENT]") {
-		return "", true
+	if chat && c.Silence {
+		if match := silencePrefix.FindStringSubmatch(text); match != nil {
+			detail := strings.TrimSpace(text[len(match[1]):])
+			explicit := detail == "" || strings.HasPrefix(detail, ":") || strings.HasPrefix(detail, "：")
+			detail = strings.TrimSpace(strings.TrimLeft(detail, ":："))
+			for _, label := range []string{"沉默原因", "原因"} {
+				if tail, found := strings.CutPrefix(detail, label); found {
+					tail = strings.TrimSpace(tail)
+					if strings.HasPrefix(tail, ":") || strings.HasPrefix(tail, "：") {
+						explicit = true
+						detail = strings.TrimSpace(strings.TrimLeft(tail, ":："))
+					}
+				}
+			}
+			reason := "模型未提供具体原因"
+			var reasons []string
+			tokens := strings.FieldsFunc(detail, func(r rune) bool { return strings.ContainsRune("、，,；;\n", r) })
+			for _, value := range strings.Split(SilenceReasons, "、") {
+				if slices.ContainsFunc(tokens, func(token string) bool { return strings.TrimSpace(token) == value }) {
+					reasons = append(reasons, value)
+				}
+			}
+			if len(reasons) > 0 {
+				reason = "模型判断：" + strings.Join(reasons, "、")
+			}
+			if !explicit && len(reasons) == 0 {
+				return text, "", false // 如“NO_REPLY 是一个标记”，保留正常解释。
+			}
+			return "", reason, true
+		}
 	}
-	return text, false
+	return text, "", false
 }

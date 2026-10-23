@@ -143,13 +143,14 @@ func (s *Server) businessAPI(w http.ResponseWriter, r *http.Request, u User) {
 	}
 	var result any = map[string]bool{"ok": true}
 	var err error
-	account := s.store.snapshot().Account.ID
+	requestState := s.store.snapshot()
+	account := requestState.Account.ID
 	switch q.Operation {
 	case "run":
 		if q.Request.Send {
 			err = fmt.Errorf("请先预览，再发送确认后的结果")
 		} else {
-			result, err = s.executeBusiness(r.Context(), q.Request, "工作台")
+			result, err = s.executeBusinessFor(r.Context(), account, requestState.AccountEpoch, q.Request, "工作台")
 		}
 	case "send":
 		err = s.sendBusinessPreview(r.Context(), q.ID)
@@ -181,7 +182,7 @@ func (s *Server) businessAPI(w http.ResponseWriter, r *http.Request, u User) {
 			for _, j := range jobs {
 				if j.ID == q.ID {
 					found = true
-					err = s.runBusinessJob(r.Context(), account, j, "manual:"+randomID())
+					err = s.runBusinessJob(r.Context(), account, requestState.AccountEpoch, j, "manual:"+randomID())
 					break
 				}
 			}
@@ -221,6 +222,20 @@ func (s *Server) resetBusiness() error {
 			return e
 		}
 	}
+	s.playMu.Lock()
+	defer s.playMu.Unlock()
+	for _, table := range []string{"play_turns", "play_games", "play_memes", "play_daily"} {
+		if _, e := s.store.db.Exec("DELETE FROM " + table); e != nil {
+			return e
+		}
+	}
+	s.soupMu.Lock()
+	defer s.soupMu.Unlock()
+	for _, table := range []string{"soup_turns", "soup_games", "soup_puzzles", "soup_played"} {
+		if _, e := s.store.db.Exec("DELETE FROM " + table); e != nil {
+			return e
+		}
+	}
 	return nil
 }
 
@@ -245,7 +260,9 @@ func (s *Server) saveBusinessPreview(account string, q businessRequest, r busine
 	return id, e
 }
 func (s *Server) sendBusinessPreview(ctx context.Context, id string) error {
-	account := s.store.snapshot().Account.ID
+	st := s.store.snapshot()
+	account := st.Account.ID
+	epoch := st.AccountEpoch
 	var raw []byte
 	var q struct {
 		Request businessRequest
@@ -267,6 +284,9 @@ func (s *Server) sendBusinessPreview(ctx context.Context, id string) error {
 			return fmt.Errorf("预览媒体不可读取")
 		}
 	}
+	if e = s.loadBusinessImages(&q.Result); e != nil {
+		return e
+	}
 	res, e := s.store.db.Exec("UPDATE business_previews SET used=1 WHERE id=? AND account=? AND used=0", id, account)
 	if e != nil {
 		return e
@@ -279,9 +299,9 @@ func (s *Server) sendBusinessPreview(ctx context.Context, id string) error {
 	if e != nil {
 		return e
 	}
-	e = s.deliverBusiness(ctx, account, q.Request, q.Result)
+	e = s.deliverBusinessFor(ctx, account, epoch, q.Request, q.Result)
 	if e != nil {
-		s.finishBusiness(run, "unknown", "发送未确认，不自动重试")
+		s.finishBusiness(run, "unknown", "发送未确认，不自动重试："+e.Error())
 	} else {
 		s.finishBusiness(run, "sent", "已发送工作台预览结果")
 	}

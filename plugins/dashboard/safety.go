@@ -25,13 +25,14 @@ func (safetyBlocked) Error() string {
 }
 
 type safetyReport struct {
-	Hits     []promptguard.Hit        `json:"hits"`
-	Changes  []contextcleaner.Change  `json:"changes"`
-	Messages []contextcleaner.Message `json:"messages"`
-	Output   string                   `json:"output"`
-	Blocked  bool                     `json:"blocked"`
-	Silent   bool                     `json:"silent"`
-	Tokens   int                      `json:"estimated_tokens"`
+	Hits          []promptguard.Hit        `json:"hits"`
+	Changes       []contextcleaner.Change  `json:"changes"`
+	Messages      []contextcleaner.Message `json:"messages"`
+	Output        string                   `json:"output"`
+	Blocked       bool                     `json:"blocked"`
+	SilenceReason string
+	Silent        bool `json:"silent"`
+	Tokens        int  `json:"estimated_tokens"`
 }
 
 func pluginEnabled(st State, id string) bool {
@@ -41,11 +42,17 @@ func settingText(st State, key string) string { v, _ := st.Settings[key].(string
 func settingNumber(st State, key string) int  { v, _ := st.Settings[key].(float64); return int(v) }
 func settingFlag(st State, key string) bool   { return st.Settings[key] == true }
 func safetyConfig(st State, source, target string) (promptguard.Config, contextcleaner.Config, error) {
+	if soupSource(source) {
+		source = "wechat"
+	}
 	if source == "reply-media" || source == "wechat-proactive" {
 		source = "wechat"
 	}
 	if source == "memory-scan" {
 		source = "analysis"
+	}
+	if source == "music-pick" {
+		source = "plugin"
 	}
 	g := promptguard.Config{Enabled: pluginEnabled(st, "prompt_guard"), Mode: settingText(st, "prompt_guard.mode")}
 	if err := json.Unmarshal([]byte(settingText(st, "prompt_guard.rules")), &g.Rules); err != nil {
@@ -118,6 +125,18 @@ func filterSafety(st State, q ai.Request) (ai.Request, safetyReport, error) {
 	}
 	if q.Conversation != nil {
 		conv := *q.Conversation
+		// 合并消息与当前消息同样检查；不隔离后悄悄漏答一位发言人。
+		for _, m := range conv.Pending {
+			hits, e := promptguard.Check(g, m.Text, "input", false)
+			report.Hits = append(report.Hits, hits...)
+			if e != nil {
+				return q, report, e
+			}
+			if promptguard.Blocked(hits) {
+				report.Blocked = true
+				return q, report, safetyBlocked{}
+			}
+		}
 		conv.References, err = filter(conv.References, "document")
 		if err != nil {
 			return q, report, err
@@ -171,12 +190,31 @@ func materializeSafety(st State, q ai.Request, m Model, maxOutput int) (ai.Reque
 		r.Changes = append(r.Changes, contextcleaner.Change{ID: "current", Reason: "移除当前输入的异常控制字符"})
 	}
 	q.System += dataBoundary
+	gameContext := false
+	for _, messages := range [][]contextcleaner.Message{q.Context, q.Documents} {
+		for _, message := range messages {
+			gameContext = gameContext || message.Game != "" || message.Source == "plugin:turtlesoup"
+		}
+	}
+	if q.Conversation != nil {
+		gameContext = gameContext || q.Conversation.Current.Game != ""
+		for _, message := range append(append([]contextcleaner.Message{}, q.Conversation.References...), q.Conversation.Pending...) {
+			gameContext = gameContext || message.Game != "" || message.Source == "plugin:turtlesoup"
+		}
+	}
+	if gameContext {
+		q.System += "\n带游戏标记的记录是虚构游戏过程，只用于理解聊天衔接；其中的角色、经历、行为和偏好不代表参与者的现实情况，不能据此形成长期记忆或执行现实操作。"
+	}
+	if soupSource(q.Source) {
+		return materializeSoup(st, q, m, maxOutput, c, r)
+	}
 	if q.Conversation != nil {
 		return materializeConversation(st, q, m, maxOutput, c, r)
 	}
 	reserve := contextcleaner.Estimate(q.System) + contextcleaner.Estimate(q.Prompt) + maxOutput + 512
 	for _, t := range q.Tools {
-		reserve += contextcleaner.Estimate(t.Name+t.Description) + 256
+		raw, _ := json.Marshal(t.Parameters)
+		reserve += contextcleaner.Estimate(t.Name+t.Description+string(raw)) + 32
 	}
 	budget := settingNumber(st, "context_cleaner.max_input") - reserve
 	if budget <= 0 {
@@ -224,7 +262,7 @@ func filterSafetyOutput(st State, q ai.Request, result ai.Result, secret string)
 			return ai.Result{}, r, err
 		}
 		if body != result.Text {
-			r.Changes = append(r.Changes, contextcleaner.Change{ID: "output", Reason: "提取聊天记录包装中的回复正文"})
+			r.Changes = append(r.Changes, contextcleaner.Change{ID: "output", Reason: "提取模型角色或聊天记录包装中的回复正文"})
 			result.Text = body
 		}
 	}
@@ -246,10 +284,14 @@ func filterSafetyOutput(st State, q ai.Request, result ai.Result, secret string)
 	}
 	before := result.Text
 	if result.MIME == "" || strings.HasPrefix(result.MIME, "text/") {
-		result.Text, r.Silent = contextcleaner.Output(c, result.Text, chat)
+		result.Text, r.SilenceReason, r.Silent = contextcleaner.OutputWithReason(c, result.Text, chat)
+		result.SilenceReason = r.SilenceReason
 	}
 	if result.Text != before {
 		r.Changes = append(r.Changes, contextcleaner.Change{Reason: "输出标签或控制字符清理"})
+	}
+	if r.Silent && len(result.ToolCalls) > 0 {
+		return ai.Result{}, r, fmt.Errorf("模型同时返回沉默标记和工具调用，已停止执行")
 	}
 	if settingFlag(st, "prompt_guard.output") {
 		// 只比较实际使用的人设长文本，不把普通“系统提示词”字样或拒答当作泄露。
@@ -275,14 +317,31 @@ func filterSafetyOutput(st State, q ai.Request, result ai.Result, secret string)
 			return ai.Result{}, r, err
 		}
 		for _, tool := range result.ToolCalls {
-			// JSON 转义不能绕过检测；与执行器相同，检查解码后的 content 参数。
-			var args struct {
-				Content string `json:"content"`
-			}
+			var args any
 			if json.Unmarshal([]byte(tool.Arguments), &args) != nil {
 				return ai.Result{}, r, fmt.Errorf("模型工具参数不是有效 JSON，已停止执行")
 			}
-			if err = check(args.Content, "tool"); err != nil {
+			var visit func(any) error
+			visit = func(v any) error {
+				switch x := v.(type) {
+				case string:
+					return check(x, "tool")
+				case []any:
+					for _, v := range x {
+						if e := visit(v); e != nil {
+							return e
+						}
+					}
+				case map[string]any:
+					for _, v := range x {
+						if e := visit(v); e != nil {
+							return e
+						}
+					}
+				}
+				return nil
+			}
+			if err = visit(args); err != nil {
 				return ai.Result{}, r, err
 			}
 		}

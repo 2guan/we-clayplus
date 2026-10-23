@@ -67,7 +67,7 @@ func (s *Server) deliverProactive(ctx context.Context, q ai.Request, text string
 	}
 	var lines []string
 	for _, p := range parts {
-		if p.Kind != "text" {
+		if p.Kind != "text" || p.ReplyRef != "" {
 			return fmt.Errorf("主动说一句只支持文字，本次未发送")
 		}
 		lines = append(lines, p.Text)

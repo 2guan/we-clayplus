@@ -80,6 +80,9 @@ func memoryScanEligible(st State, m Message) bool {
 }
 
 func (s *Server) rememberExplicit(m Message) error {
+	if m.Game != "" {
+		return nil
+	}
 	st := s.store.snapshot()
 	if !settingFlag(st, "memory.direct_enabled") || st.Overrides[m.Target]["memory_enabled"] != true || m.Self || m.Kind != "text" || m.Rich != nil || m.Media != "" || m.Source == "guard" || m.Source == "ai" || memoryGroup(st, m.Target) {
 		return nil

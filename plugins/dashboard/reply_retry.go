@@ -53,7 +53,7 @@ func (s *Server) retryReply(id, target string) error {
 		if m.Self || !contextAvailable(m) || !slices.Contains([]string{"text", "quote", "image", "audio"}, m.Kind) {
 			return fmt.Errorf("原消息已撤回或不可用于回复")
 		}
-		_, err := s.queueTaskRetry(replyRequest(st, m), nil, id)
+		_, err := s.queueTaskRetry(batchReplyRequest(st, m, t.ReplyBatch), nil, id)
 		return err
 	}
 	return fmt.Errorf("原消息已删除，不能重新生成回复")

@@ -28,7 +28,7 @@ func safetyGroups() []Group {
 			flag("dedupe", "去除重复事件", "按消息 ID 去重，不按相同文本删除重复发言。", true),
 			flag("media", "历史媒体瘦身", "用媒体说明代替重复的大块数据；不改变本轮上传。", true),
 			flag("thinking", "清理推理标签", "移除明确推理标签，不把拒答或提及系统提示词视为泄露。", true),
-			flag("silence", "识别不回复标记", "仅聊天回复中的 NO_REPLY / [SILENT] 生效。", true),
+			flag("silence", "识别不回复标记", "仅聊天回复中的 NO_REPLY / [SILENT] 生效；支持简短原因，仅记日志，不发到微信。", true),
 			flag("stage", "清理聊天动作旁白", "仅清理少量明确舞台动作；报告、代码和编辑结果不应用。", false),
 			number("max_input", "请求容量上限（估算 Token）", "保守估算，另预留最大输出与系统提示；分析资料超限报错，不静默删减。", 128000, 4096, 2000000),
 		}},

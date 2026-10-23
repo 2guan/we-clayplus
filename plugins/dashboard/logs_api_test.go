@@ -68,3 +68,32 @@ func TestLogOriginalsAndCacheRequireCorrectRole(t *testing.T) {
 		t.Fatal("原文跨账号读取", w.Code)
 	}
 }
+
+func TestInactiveReplyNoiseIsHiddenButRealOutcomesRemain(t *testing.T) {
+	s := newServer(t, true)
+	replyRegressionCheck(t, s.store.change(func(st *State) error {
+		for _, prefix := range quietReplyLogPrefixes {
+			addLog(st, "INFO", "ai", prefix+"\nfixture-noise-id")
+		}
+		for _, text := range []string{"自动回复模型沉默；原因：模型判断：非本人对话", "自动回复取消；原因：等待合并期间停止：当前会话处于人工或暂停模式", "自动回复未完成；原因：模型超时"} {
+			addLog(st, "INFO", "ai", text)
+		}
+		return nil
+	}))
+	for _, url := range []string{"/api/logs", "/api/logs?full=1", "/api/state"} {
+		response := call(t, s, url, nil, nil, "")
+		if response.Code != 200 || strings.Contains(response.Body.String(), "fixture-noise-id") {
+			t.Fatal("旧例行日志仍显示", url, response.Code)
+		}
+		for _, text := range []string{"自动回复模型沉默", "自动回复取消", "自动回复未完成"} {
+			if !strings.Contains(response.Body.String(), text) {
+				t.Fatal("隐藏了有效处理结果", url, text)
+			}
+		}
+	}
+	var count int
+	replyRegressionCheck(t, s.store.db.QueryRow("SELECT count(*) FROM state_logs WHERE instr(message,'fixture-noise-id')>0").Scan(&count))
+	if count != len(quietReplyLogPrefixes) {
+		t.Fatal("展示过滤误删除原始日志")
+	}
+}

@@ -5,6 +5,7 @@
 package messageapi
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -410,16 +411,27 @@ func (w remote) DownloadFile(receiver, fileId, aesKey string, totalSize uint32) 
 }
 
 // SendFile preserves the original filename in the multipart upload.
+const MaxFileSendBytes = 32 << 20 // 与当前 core 普通附件接口保持一致。
+
 func (w remote) SendFile(receiver, filename string, reader io.Reader) (*SendAppMessageResponse, error) {
-	b, err := io.ReadAll(io.LimitReader(reader, (32<<20)+1))
+	return w.sendFile(nil, receiver, filename, reader)
+}
+
+// SendFileContext 供进程内文件上传使用；不在 JSON 中携带 Base64。
+func SendFileContext(ctx context.Context, receiver, filename string, reader io.Reader) (*SendAppMessageResponse, error) {
+	return (remote{}).sendFile(ctx, receiver, filename, reader)
+}
+
+func (w remote) sendFile(ctx context.Context, receiver, filename string, reader io.Reader) (*SendAppMessageResponse, error) {
+	b, err := io.ReadAll(io.LimitReader(reader, MaxFileSendBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) == 0 || len(b) > 32<<20 {
+	if len(b) == 0 || len(b) > MaxFileSendBytes {
 		return nil, errors.New("file must contain 1..32 MiB")
 	}
 	var resp SendAppMessageResponse
-	if err = w.core().Post("/api/message/file").MultipartFiles([]api.FilePart{{Name: "file", Filename: filename, Data: b}}, map[string]string{"receiver": receiver}).DoProto(&resp); err != nil {
+	if err = w.core().Post("/api/message/file").WithContext(ctx).MultipartFiles([]api.FilePart{{Name: "file", Filename: filename, Data: b}}, map[string]string{"receiver": receiver}).DoProto(&resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/we-clay/we-clay/plugins/ai"
 )
 
 func businessCall(t *testing.T, s *Server, q businessRequest) businessResult {
@@ -64,7 +66,11 @@ func TestBusinessPreviewAndOneShotDelivery(t *testing.T) {
 	if w.Code != 400 {
 		t.Fatal("绕过预览发送")
 	}
-	_ = s.store.change(func(v *State) error { v.Settings["what_to_eat.targets"] = ""; return nil })
+	_ = s.store.change(func(v *State) error {
+		v.Settings["what_to_eat.scope"] = "whitelist"
+		v.Settings["what_to_eat.targets"] = ""
+		return nil
+	})
 	r = businessCall(t, s, businessRequest{Plugin: "what_to_eat", Target: "mock-contact-0"})
 	w = call(t, s, "/api/business", map[string]any{"operation": "send", "id": r.Preview}, nil, "")
 	if w.Code != 400 {
@@ -175,5 +181,106 @@ func TestBusinessEventsAndTickets(t *testing.T) {
 	raw := call(t, s, "/api/business", nil, nil, "").Body.String() + call(t, s, "/api/state", nil, nil, "").Body.String()
 	if strings.Contains(raw, "fixture-ticket") || strings.Contains(raw, "fixture-v1") {
 		t.Fatal("申请票据泄露")
+	}
+}
+
+func TestBusinessExecutionRejectsCapturedAccountAfterSwitch(t *testing.T) {
+	s := newServer(t, true)
+	st := s.store.snapshot()
+	q := businessRequest{Plugin: "news", Target: "mock-contact-0", Mode: "today", Send: true}
+	if err := s.SetAccount(Account{ID: "fixture-other", Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	before := len(s.store.snapshot().Messages)
+	if _, err := s.executeBusinessFor(context.Background(), st.Account.ID, st.AccountEpoch, q, "微信触发"); err == nil || !strings.Contains(err.Error(), "账号已切换") {
+		t.Fatalf("旧账号任务未被拒绝：%v", err)
+	}
+	var runs int
+	if err := s.store.db.QueryRow("SELECT count(*) FROM business_runs WHERE account=? AND plugin='news'", st.Account.ID).Scan(&runs); err != nil || runs != 0 {
+		t.Fatalf("旧账号任务访问了业务源或产生了运行记录：runs=%d err=%v", runs, err)
+	}
+	if got := len(s.store.snapshot().Messages); got != before {
+		t.Fatalf("旧账号任务在新账号下发送：before=%d got=%d", before, got)
+	}
+}
+
+func TestBusinessExecutionRejectsOldEpochAfterAccountRoundTrip(t *testing.T) {
+	s := newServer(t, true)
+	st := s.store.snapshot()
+	if err := s.SetAccount(Account{ID: "fixture-other", Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAccount(Account{ID: st.Account.ID, Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	active := s.store.snapshot()
+	if active.Account.ID != st.Account.ID || active.AccountEpoch == st.AccountEpoch {
+		t.Fatal("测试未形成同账号的新会话代次")
+	}
+	q := businessRequest{Plugin: "news", Target: "mock-contact-0", Mode: "today", Send: true}
+	before := len(active.Messages)
+	if _, err := s.executeBusinessFor(context.Background(), st.Account.ID, st.AccountEpoch, q, "微信触发"); err == nil || !strings.Contains(err.Error(), "账号已切换") {
+		t.Fatalf("旧代次任务未被拒绝：%v", err)
+	}
+	if err := s.deliverBusinessFor(context.Background(), st.Account.ID, st.AccountEpoch, q, businessResult{Text: "旧代次消息"}); err == nil {
+		t.Fatal("旧代次任务可以直接发送")
+	}
+	if got := len(s.store.snapshot().Messages); got != before {
+		t.Fatalf("旧代次任务产生消息：before=%d got=%d", before, got)
+	}
+}
+
+func TestBusinessSendEntryRejectsOldAccountSession(t *testing.T) {
+	s := newServer(t, true)
+	st := s.store.snapshot()
+	if err := s.SetAccount(Account{ID: "fixture-other", Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAccount(Account{ID: st.Account.ID, Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	before := len(s.store.snapshot().Messages)
+	err := s.sendFor(context.Background(), actionRequest{Target: "mock-contact-0", Content: "旧任务不能发送"}, "plugin:news", st.Account.ID, st.AccountEpoch)
+	if err == nil || !strings.Contains(err.Error(), "账号已切换") {
+		t.Fatalf("最终发送入口接受了旧代次：%v", err)
+	}
+	if got := len(s.store.snapshot().Messages); got != before {
+		t.Fatalf("最终发送入口归档了旧任务：before=%d got=%d", before, got)
+	}
+}
+
+func TestBusinessDigestCannotSubmitOldSessionArchiveToNewSession(t *testing.T) {
+	s := newServer(t, true)
+	if err := s.store.change(func(v *State) error {
+		v.Messages = append(v.Messages, Message{ID: "digest-old-session", SenderID: "mock-contact-0", Sender: "测试好友", Target: "mock-contact-0", Kind: "text", Content: "仅属于旧会话的摘要内容", Source: "wechat", Time: time.Now().Format(time.RFC3339)})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	old := s.store.snapshot()
+	if old.AccountEpoch != 0 {
+		t.Fatalf("测试需要覆盖首次登录的零代次，当前为 %d", old.AccountEpoch)
+	}
+	if err := s.SetAccount(Account{ID: "fixture-other", Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAccount(Account{ID: old.Account.ID, Status: "online"}); err != nil {
+		t.Fatal(err)
+	}
+	before := len(s.store.snapshot().Tasks)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := s.buildBusinessFor(ctx, businessRequest{Plugin: "digest", Target: "mock-contact-0", Days: 7}, old)
+	if err == nil || !strings.Contains(err.Error(), "账号已切换") {
+		t.Fatalf("旧归档被提交给新代次摘要任务：%v", err)
+	}
+	if got := len(s.store.snapshot().Tasks); got != before {
+		t.Fatalf("旧归档产生了新代次 AI 任务：before=%d got=%d", before, got)
+	}
+	if _, err := s.Submit(ai.Request{Kind: "insight", Prompt: "旧代次请求", AccountID: old.Account.ID, AccountEpoch: old.AccountEpoch}); err == nil || !strings.Contains(err.Error(), "账号会话已更新") {
+		t.Fatalf("任务队列接受了零代次的旧账号请求：%v", err)
+	}
+	if got := len(s.store.snapshot().Tasks); got != before {
+		t.Fatalf("旧代次请求产生了 AI 任务：before=%d got=%d", before, got)
 	}
 }

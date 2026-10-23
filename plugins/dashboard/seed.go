@@ -9,7 +9,7 @@ import (
 )
 
 func initialState(mock bool) State {
-	s := State{ConfigRevision: 1, Revision: 1, Mock: mock, Scenario: "normal", Account: Account{Name: "等待连接", Status: "offline"}, Contacts: []Contact{}, Messages: []Message{}, Moments: []Moment{}, Logs: []Record{}, Tasks: []Task{}, Models: []Model{}, Prompts: []Prompt{}, Settings: defaults(), Overrides: map[string]map[string]any{}, History: []Change{}, Trend: []Point{}, Users: []User{}}
+	s := State{PluginScopeDefaultsVersion: 1, ConfigRevision: 1, Revision: 1, Mock: mock, Scenario: "normal", Account: Account{Name: "等待连接", Status: "offline"}, Contacts: []Contact{}, Messages: []Message{}, Moments: []Moment{}, Logs: []Record{}, Tasks: []Task{}, Models: []Model{}, Prompts: []Prompt{}, Settings: defaults(), Overrides: map[string]map[string]any{}, History: []Change{}, Trend: []Point{}, Users: []User{}}
 	s.Plugins = []Plugin{
 		{"dashboard", "控制台", "会话工作台、运行观测与配置管理。", "0.6.0", true, true, "running", []string{"消息", "联系人", "管理"}},
 		{"ai", "AI 助手", "对话、图片与音视频理解，以及内容生成。", "0.6.0", true, true, "unconfigured", []string{"对话", "多模态", "任务"}},
@@ -19,9 +19,6 @@ func initialState(mock bool) State {
 	s.Prompts = []Prompt{{"natural", "自然交流", "像一位细心的朋友，简洁、真诚，有边界。", "你是一位友好、可靠的交流伙伴。用自然简洁的中文回应。不编造事实，信息不足时明确说明。尊重会话隐私，不执行未授权的操作。"}, {"work", "工作助手", "整理讨论重点，把复杂问题讲清楚。", "用清晰的中文提供有依据的建议。区分事实与推测，必要时列出可执行的下一步。"}, {"community", "社区伙伴", "参与群聊，留意上下文，也懂得适时安静。", "适度参与群聊，优先回应明确的问题。避免重复消息，不打断正在进行的对话。"}}
 	if !mock {
 		return s
-	}
-	for _, p := range businessPlugins(true) {
-		s.Settings[p.ID+".targets"] = "mock-contact-0,mock-contact-1,mock-contact-2"
 	}
 	s.Account = Account{Name: "小禾", ID: "mock-account", Avatar: "禾", Owner: "演示管理员", Status: "online"}
 	s.Plugins[1].Status = "ready"

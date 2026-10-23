@@ -37,20 +37,27 @@ func TestProactiveReplyUsesContextAndSendsOneTextInManualMode(t *testing.T) {
 			w.WriteHeader(400)
 			return
 		}
-		if len(body.Messages) != 3 || len(body.Tools) != 0 {
+		if len(body.Messages) != 4 || len(body.Tools) != 0 {
 			t.Error("主动发言结构或工具范围错误", len(body.Messages), len(body.Tools))
 		}
-		if len(body.Messages) == 3 {
+		if len(body.Messages) == 4 {
 			if !strings.Contains(body.Messages[0].Content, "fixture-proactive-persona") || !strings.Contains(body.Messages[0].Content, "后台手动触发主动发言") {
 				t.Error("未使用配置人设与主动发言规则")
 			}
 			for _, text := range []string{"fixture-retry-input", "fixture-previous-self"} {
-				if strings.Count(body.Messages[1].Content, text) != 1 {
+				all := ""
+				for _, turn := range body.Messages[1:] {
+					all += turn.Content
+				}
+				if strings.Count(all, text) != 1 {
 					t.Error("历史消息缺失或重复", text)
 				}
 			}
-			if !strings.Contains(body.Messages[2].Content, "没有对方的新消息") || strings.Contains(body.Messages[2].Content, "当前发言人") {
+			if !strings.Contains(body.Messages[3].Content, "没有对方的新消息") || strings.Contains(body.Messages[3].Content, "当前发言人") {
 				t.Error("伪造了新的聊天输入")
+			}
+			if body.Messages[2].Role != "assistant" || body.Messages[2].Content != "fixture-previous-self" {
+				t.Error("本人历史未保留实际角色")
 			}
 		}
 		fmt.Fprint(w, `{"choices":[{"message":{"content":"fixture-proactive-first\n\nfixture-proactive-second"}}]}`)

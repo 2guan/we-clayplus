@@ -24,6 +24,7 @@ export type Contact = {
   time: string;
 };
 export type Message = {
+  music?: { app_id: string; title: string; artist?: string; url: string; audio_url: string; cover?: string; lyric?: string };
   rich?: {
     file_notice_id?: string;
     title?: string;
@@ -91,6 +92,9 @@ export type Vendor = {
   key?: string;
 };
 export type BehaviorPolicy = {
+  actors?: string[];
+  allow_cross?: boolean;
+  confirm?: boolean;
   operation: string;
   enabled: boolean;
   prompt: string;

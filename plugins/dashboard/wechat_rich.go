@@ -6,6 +6,7 @@ package dashboard
 import (
 	"encoding/xml"
 	"github.com/we-clay/we-clay/plugins/contextcleaner"
+	sdkmessage "github.com/we-clay/we-clay/sdk/message"
 	"math"
 	"net/url"
 	"regexp"
@@ -58,7 +59,12 @@ func parseRichMessage(m Message, raw string) (Message, bool) {
 			Text    string `xml:"attachedtext,attr"`
 		} `xml:"emoji"`
 		App struct {
-			Attach struct {
+			AppID    string `xml:"appid,attr"`
+			URL      string `xml:"url"`
+			AudioURL string `xml:"dataurl"`
+			Cover    string `xml:"songalbumurl"`
+			Lyric    string `xml:"songlyric"`
+			Attach   struct {
 				NoticeID string `xml:"overwrite_newmsgid"`
 			} `xml:"appattach"`
 			Type        int    `xml:"type"`
@@ -130,6 +136,17 @@ func parseRichMessage(m Message, raw string) (Message, bool) {
 		return m, true
 	case m.Kind == "file" || m.Kind == "link" || m.Kind == "app" || m.Kind == "transfer" || m.Kind == "redpacket" || m.Kind == "quote":
 		switch v.App.Type {
+		case 3, 76:
+			music := &sdkmessage.Music{AppID: v.App.AppID, Title: v.App.Title, Artist: v.App.Description, URL: v.App.URL, AudioURL: v.App.AudioURL, Cover: v.App.Cover, Lyric: v.App.Lyric}
+			if music.Validate() != nil {
+				return m, false
+			}
+			m.Kind = "music"
+			m.Articles = nil
+			m.Music = music
+			m.Rich = &RichMessage{Title: music.Title, Description: music.Artist, Image: music.Cover}
+			m.Content = "[音乐] " + music.Title + " - " + music.Artist
+			return m, true
 		case 6, 74:
 			m.Kind = "file"
 			m.Articles = nil

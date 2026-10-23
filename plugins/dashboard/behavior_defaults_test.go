@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/we-clay/we-clay/plugins/ai"
 	"github.com/we-clay/we-clay/sdk/control"
 )
 
@@ -110,22 +111,15 @@ func TestLegacyEnabledEmptyPolicyMigration(t *testing.T) {
 	}
 }
 
-func TestReplyBehaviorToolsRequireCurrentIntent(t *testing.T) {
+func TestReplyBehaviorToolsAreAvailableForModelIntentDecision(t *testing.T) {
 	s := newServer(t, true)
 	s.cfg.Capabilities = map[string]control.Capability{"chatroom": {Enabled: []string{"SetName", "SetAnnouncement"}}, "contact": {Enabled: []string{"SetRemark"}}}
 	if err := s.initBehaviors(); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"你好", "你歇会儿", "群名怎么改", "不要把群名改成测试", "他说把群名改为测试", "如果把群名改成测试", "请问群名改成什么好"} {
-		if len(s.replyBehaviorTools("fixture@chatroom", text)) > 0 {
-			t.Error("非操作意图获得工具", text)
-		}
-	}
-	for _, tc := range []struct{ target, text, name string }{{"fixture@chatroom", "@本人 请把群名改成离线测试群", "chatroom__SetName"}, {"fixture@chatroom", "请发布公告：离线示例", "chatroom__SetAnnouncement"}, {"mock-contact-1", "帮我把备注改成离线测试", "contact__SetRemark"}} {
-		tools := s.replyBehaviorTools(tc.target, tc.text)
-		if len(tools) != 1 || tools[0].Name != tc.name {
-			t.Errorf("明确操作未得到对应工具：%s %+v", tc.text, tools)
-		}
+	tools := s.behaviorTools("fixture@chatroom")
+	if len(tools) != 2 || !slices.ContainsFunc(tools, func(v ai.Tool) bool { return v.Name == "chatroom__SetName" }) {
+		t.Fatal("当前群已授权的工具未提供给模型", tools)
 	}
 	st := s.store.snapshot()
 	rules := replyInstructions(st, "你好", "")

@@ -100,6 +100,9 @@ func GetSelf() *sdk.SelfInfo {
 func Destroy() {
 	instance.cacheMu.RLock()
 	defer instance.cacheMu.RUnlock()
+	if cacheDir == "" {
+		return
+	}
 	destroyLocked()
 }
 
@@ -119,10 +122,32 @@ func destroyLocked() {
 		slog.Warn("[contact ability] 序列化联系人信息失败", "err", err)
 		return
 	}
-	if err := os.WriteFile(filepath.Join(cacheDir, "contact.json"), marshal, 0600); err != nil {
+	if err := writeContactCache(filepath.Join(cacheDir, "contact.json"), marshal, os.Rename); err != nil {
 		slog.Warn("[contact ability] 保存联系人信息失败", "err", err)
 		return
 	}
+}
+
+// 先写同目录私有临时文件，再替换旧缓存；写入失败时仍能读取原文件。
+func writeContactCache(path string, data []byte, replace func(string, string) error) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".contact-*.tmp")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
+	defer os.Remove(temporary)
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return replace(temporary, path)
 }
 
 // Refresh 刷新缓存

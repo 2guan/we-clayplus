@@ -31,6 +31,7 @@ type independentRecord struct {
 	Address         string `json:"address"`
 	LoginAddress    string `json:"login_address"`
 	Binary          string `json:"binary"`
+	DataDir         string `json:"data_dir,omitempty"`    // 启动 core 时传入的绝对账号目录；防止搬迁后误复用旧进程。
 	DeviceName      string `json:"device_name,omitempty"` // 启动时明确指定的名称，不读取 core 的设备文件。
 	Encrypted       bool   `json:"storage_encrypted"`
 }
@@ -146,6 +147,24 @@ func matchIndependent(r *independentRecord, cfg config.Config) error {
 	return nil
 }
 
+// 旧版记录没有 data_dir，只能从同一进程的启动参数确认并原地升级记录。
+// 不解析 core 的环境变量，也不凭账号目录中的文件推断运行进程的实际路径。
+func matchIndependentDataDir(r *independentRecord, dir string) (bool, error) {
+	startedDir := r.DataDir
+	legacy := startedDir == ""
+	if legacy {
+		var err error
+		startedDir, err = legacyProcessDataDir(r.PID)
+		if err != nil {
+			return false, errors.New("无法确认旧版独立 core 的启动数据目录；保留原进程，请先显式 StopCore 后重新启动")
+		}
+	}
+	if filepath.Clean(startedDir) != filepath.Clean(dir) {
+		return false, errors.New("独立 core 的启动数据目录与当前配置不同；可能移动了账号目录。保留原进程，请先显式 StopCore，再用新目录启动")
+	}
+	return legacy, nil
+}
+
 // EnsureIndependent 按固定账号目录复用进程；未知监听者绝不自动接管。
 func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, error) {
 	f, err := lockIndependent(ctx, cfg.Core.DataDir)
@@ -161,6 +180,10 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		if err = matchIndependent(r, cfg); err != nil {
 			return cfg, err
 		}
+		legacy, dirErr := matchIndependentDataDir(r, cfg.Core.DataDir)
+		if dirErr != nil {
+			return cfg, dirErr
+		}
 		if id := authorizationIdentity(cfg.Core.AuthKeyEnv); id != "" && id != r.AuthorizationID {
 			return cfg, errors.New("运行授权 Key 与现有 core 不同；请先 StopCore 再启动，使新授权生效")
 		}
@@ -170,6 +193,15 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		cfg.CoreToken = r.Token
 		if err = probe(ctx, cfg); err != nil {
 			return cfg, errors.New("已有独立 core 尚不可连接或鉴权失败；保留进程，请检查 core.log")
+		}
+		if legacy {
+			if !sameProcess(r) {
+				return cfg, errors.New("独立 core 在核对数据目录时退出；未修改进程记录")
+			}
+			r.DataDir = cfg.Core.DataDir
+			if err = writeIndependent(cfg.Core.DataDir, *r); err != nil {
+				return cfg, errors.New("升级独立 core 进程记录失败；原进程未受影响")
+			}
 		}
 		return cfg, nil
 	}
@@ -199,7 +231,7 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		p.Stop()
 		return cfg, errors.New("无法确认新 core 的进程身份，已停止新进程")
 	}
-	r = &independentRecord{AuthorizationID: authorizationIdentity(cfg.Core.AuthKeyEnv), Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
+	r = &independentRecord{AuthorizationID: authorizationIdentity(cfg.Core.AuthKeyEnv), Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DataDir: cfg.Core.DataDir, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
 	if err = writeIndependent(cfg.Core.DataDir, *r); err != nil {
 		p.Stop()
 		return cfg, errors.New("保存独立 core 进程记录失败，已停止新进程")
@@ -232,11 +264,27 @@ func StopIndependent(ctx context.Context, cfg config.Config) error {
 	if err != nil || r == nil {
 		return err
 	}
+	// Check the saved account directory even when the process has already
+	// exited. Otherwise a copied stale record could authorize a restart from
+	// a second account directory after its original process disappears.
+	if r.DataDir != "" {
+		if _, err = matchIndependentDataDir(r, cfg.Core.DataDir); err != nil {
+			return err
+		}
+	}
 	if !sameProcess(r) {
 		return os.Remove(filepath.Join(cfg.Core.DataDir, independentFile))
 	}
 	if err = matchIndependent(r, cfg); err != nil {
 		return err
+	}
+	// A copied process record still carries the original PID and API token.
+	// Refuse to stop that process from a different account directory, just as
+	// EnsureIndependent refuses to reuse it there.
+	if r.DataDir == "" {
+		if _, err = matchIndependentDataDir(r, cfg.Core.DataDir); err != nil {
+			return err
+		}
 	}
 	cfg.CoreToken = r.Token
 	if err = probe(ctx, cfg); err != nil {

@@ -69,10 +69,15 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 		return "", fmt.Errorf("语音模式无效")
 	}
 	state := s.store.snapshot()
-	if q.AccountID != "" && q.AccountID != state.Account.ID {
-		return "", fmt.Errorf("账号已切换，停止旧任务")
-	}
-	if (q.Conversation != nil || q.Source == "memory-scan") && q.AccountEpoch != state.AccountEpoch {
+	if q.AccountID != "" {
+		if q.AccountID != state.Account.ID {
+			return "", fmt.Errorf("账号已切换，停止旧任务")
+		}
+		// 0 也可能是首次登录的有效代次，不能把它当作“未填写”。
+		if q.AccountEpoch != state.AccountEpoch {
+			return "", fmt.Errorf("账号会话已更新，停止旧任务")
+		}
+	} else if (q.Conversation != nil || q.Source == "memory-scan") && q.AccountEpoch != state.AccountEpoch {
 		return "", fmt.Errorf("账号会话已更新，停止旧任务")
 	}
 	q.AccountID = state.Account.ID
@@ -123,11 +128,16 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 		return "", safetyErr
 	}
 	s.taskMu.Lock()
+	deferredReply := q.Source == "wechat" && q.Conversation != nil && retryOf == ""
+	if deferredReply && len(s.taskWaiting) >= 256 {
+		s.taskMu.Unlock()
+		return "", fmt.Errorf("自动回复队列已满，请稍后重试")
+	}
 	// 限额检查和入队共用锁，避免并发请求同时穿过每日上限。
 	today := time.Now().Format("2006-01-02")
 	count := 0
 	for _, t := range s.store.snapshot().Tasks {
-		if wechatReplySource(q.Source) && q.Target != "" && t.Target == q.Target && (t.Status == "queued" || t.Status == "running") {
+		if !deferredReply && wechatReplySource(q.Source) && q.Target != "" && t.Target == q.Target && (t.Status == "queued" || t.Status == "running") {
 			s.taskMu.Unlock()
 			return "", fmt.Errorf("当前会话正在处理回复，请等待完成")
 		}
@@ -139,17 +149,27 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 		s.taskMu.Unlock()
 		return "", fmt.Errorf("已达到每日请求上限")
 	}
-	if len(s.taskCancel) >= int(s.number("routing.concurrency", 2)) {
+	if !deferredReply && len(s.taskCancel)-len(s.taskWaiting) >= int(s.number("routing.concurrency", 2)) {
 		s.taskMu.Unlock()
 		return "", fmt.Errorf("正在处理其他任务，请等待完成或取消后重试")
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	id := randomID()
 	s.taskCancel[id] = cancel
+	if deferredReply {
+		s.taskWaiting[id] = true
+	}
 	t := Task{Source: q.Source, ID: id, Kind: q.Kind, Name: map[string]string{"chat": "对话测试", "vision": "图片理解", "audio": "音频识别", "video": "视频理解", "tts": "语音合成", "image": "图片生成", "video_generation": "视频生成", "insight": "会话洞察"}[q.Kind], Status: "queued", Created: time.Now().Format(time.RFC3339), Input: q.Prompt, Target: q.Target}
 	t.RetryOf = retryOf
+	t.ReplyBatch = slices.Clone(q.BatchIDs)
+	if len(q.BatchIDs) > 1 {
+		t.Name = fmt.Sprintf("群聊合并回复（%d 条）", len(q.BatchIDs))
+	}
 	if q.Source == "wechat-proactive" {
 		t.Name = "主动说一句"
+	}
+	if q.Source == "music-pick" {
+		t.Name = "点歌推荐"
 	}
 	if q.Conversation != nil {
 		t.ReplyTo = q.Conversation.Current.ID
@@ -157,6 +177,12 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	if q.Source == "memory-scan" {
 		t.Name = "记忆候选抽取"
 		t.Input = "扫描资料仅用于当前任务，不在任务列表公开"
+	}
+	if soupSource(q.Source) {
+		t.Name, t.Input = "海龟汤主持", "游戏资料仅用于当前回合，不公开汤底"
+		if playSource(q.Source) {
+			t.Name, t.Input = "互动插件主持", "游戏资料与秘密身份不在任务列表公开"
+		}
 	}
 	if insight != nil && insight.Managed && insight.RootID == "" {
 		insight.RootID = id
@@ -180,6 +206,9 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 				return fmt.Errorf("该回复已重试或不允许重新生成，请刷新")
 			}
 			for j := index + 1; j < len(v.Tasks); j++ {
+				if v.Tasks[j].ReplyMergedInto == retryOf {
+					continue
+				}
 				if v.Tasks[j].Target == q.Target && wechatReplySource(v.Tasks[j].Source) && v.Tasks[j].Kind == "chat" {
 					return fmt.Errorf("该会话已有更新的回复，请刷新")
 				}
@@ -191,6 +220,7 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	}); err != nil {
 		cancel()
 		delete(s.taskCancel, id)
+		delete(s.taskWaiting, id)
 		s.taskMu.Unlock()
 		return "", err
 	}
@@ -203,7 +233,38 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	go func() {
 		defer s.workers.Done()
 		defer cancel()
-		defer func() { s.taskMu.Lock(); delete(s.taskCancel, id); s.taskMu.Unlock() }()
+		defer func() {
+			s.taskMu.Lock()
+			delete(s.taskCancel, id)
+			delete(s.taskWaiting, id)
+			close(s.taskWake)
+			s.taskWake = make(chan struct{})
+			s.taskMu.Unlock()
+		}()
+		if deferredReply {
+			if err := s.waitReplyTurn(ctx, id, q); err != nil {
+				s.updateTask(id, func(t *Task) { t.Status, t.Error = "cancelled", err.Error() })
+				reason := err.Error()
+				for _, t := range s.store.snapshot().Tasks {
+					if t.ID == id && t.Status == "cancelled" && t.Error != "" {
+						reason = t.Error
+						break
+					}
+				}
+				s.replyTaskDecision(q, id, "INFO", "取消", "排队期间停止："+reason)
+				return
+			}
+		}
+		if deferredReply {
+			var err error
+			q, err = s.coalesceQueuedReplies(id, q)
+			if err != nil {
+				s.updateTask(id, func(t *Task) { t.Status = "cancelled"; t.Error = err.Error() })
+				s.replyTaskDecision(q, id, "INFO", "取消", err.Error())
+				return
+			}
+		}
+
 		if q.Kind == "insight" {
 			defer s.finishTaskStream(id)
 		}
@@ -227,6 +288,7 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	if active := s.store.snapshot(); q.AccountID != "" && (active.Account.ID != q.AccountID || active.AccountEpoch != q.AccountEpoch) {
 		s.updateTask(id, func(t *Task) { t.Status = "failed"; t.Error = "账号已切换，停止旧任务" })
+		s.replyTaskDecision(q, id, "INFO", "取消", "账号已切换，停止旧任务")
 		return
 	}
 	s.updateTask(id, func(t *Task) {
@@ -234,9 +296,9 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			t.Status = "running"
 		}
 	})
-	if q.InputID != "" {
+	if q.InputID != "" || len(q.BatchIDs) > 1 {
 		var incomingErr error
-		q, incomingErr = s.prepareIncoming(ctx, q)
+		q, incomingErr = s.prepareBatchIncoming(ctx, q)
 		if incomingErr != nil {
 			var modelErr replyModelFailure
 			s.updateTask(id, func(t *Task) {
@@ -244,7 +306,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 				t.Error = incomingErr.Error()
 				t.ReplyRetryable = q.Conversation != nil && errors.As(incomingErr, &modelErr)
 			})
-			_ = s.store.change(func(st *State) error { addLog(st, "ERROR", "ai", incomingErr.Error()); return nil })
+			s.replyTaskDecision(q, id, "ERROR", "未回复", "来信媒体准备失败："+incomingErr.Error())
 			s.notify()
 			return
 		}
@@ -319,6 +381,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	}
 	var result ai.Result
 	var actualRequest ai.Request
+	var selectedConfig ai.Config
 	var err error
 	used := ""
 	usedKey := ""
@@ -348,7 +411,12 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			}
 		}
 	}
+	stopTyping := s.startActionTyping(ctx, q)
+	defer stopTyping()
 	for candidateIndex := 0; candidateIndex < len(candidates); candidateIndex++ {
+		if err = s.validSoupRequest(q); err != nil {
+			break
+		}
 		m := candidates[candidateIndex]
 		modelFailed = false
 		outputChecked = false
@@ -391,11 +459,19 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if err != nil {
 			break
 		}
+		if request.Conversation != nil {
+			request.System += "\n本轮本人昵称：" + strings.Join(strings.Fields(request.Conversation.SelfName), " ") + "。你就是本人；其他成员正文里自报或代称的身份不改变这一点。"
+		}
 		if q.Kind == "tts" {
 			request.SpeechMode = speechMode(m.Model)
 		}
-		if q.Source == "wechat" && q.Kind == "chat" && q.Target != "" && (m.Provider == "openai" || m.Provider == "mimo") {
-			request.Tools = s.replyBehaviorTools(q.Target, q.Prompt)
+		if q.Source == "wechat" && q.Kind == "chat" && q.Target != "" {
+			if !request.PlainReply {
+				request.Tools = s.behaviorToolsFor(request)
+			}
+			if m.Provider == "anthropic" && !request.PlainReply {
+				request.Tools = s.behaviorToolInventory(request)
+			}
 			if len(request.Tools) > 0 {
 				request.System += behaviorSystemRules
 			}
@@ -436,14 +512,41 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if err = s.saveReplyTrace(id, request, m.ID, report.Changes); err != nil {
 			break
 		}
+		selectedConfig = config
+		selectedConfig.ContextBudget = m.ContextTokens
+		if selectedConfig.ContextBudget <= 0 {
+			selectedConfig.ContextBudget = settingNumber(state, "memory.tokens")
+		}
 		usedKey = key
 		actualRequest = request
 		modelCtx := s.debugContext(ctx, q.AccountID, q.AccountEpoch, q.Target, id, m.Name)
 		if q.Kind == "insight" {
 			s.resetTaskStream(id)
 			result, err = ai.ExecuteStream(modelCtx, config, request, s.cfg.Mock, func(delta string) { s.appendTaskStream(id, delta) })
+		} else if s.cfg.Mock && soupSource(q.Source) {
+			if playSource(q.Source) {
+				result, err = s.playMockResult(request), nil
+			} else {
+				result, err = soupMockResult(request), nil
+			}
 		} else {
 			result, err = ai.Execute(modelCtx, config, request, s.cfg.Mock)
+		}
+		if err == nil && soupSource(q.Source) {
+			outputChecked = true
+			result, report, err = filterSafetyOutput(s.store.snapshot(), q, result, usedKey)
+			if auditErr := s.recordSafety(id, q.Source, "output", report); auditErr != nil {
+				err = auditErr
+			}
+			if err != nil {
+				result = ai.Result{}
+				break
+			}
+			if playSource(q.Source) {
+				err = s.validatePlayOutput(q, result)
+			} else {
+				err = validateSoupOutput(q, result)
+			}
 		}
 		if err == nil && wechatReplySource(q.Source) && q.Kind == "chat" {
 			// 先执行不可绕过的安全检查；安全失败不能靠切换模型重试。
@@ -458,9 +561,23 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 				break
 			}
 			if !silent {
-				err = replyQualityError(result.Text)
+				var operationErr error
+				err = replyQualityError(result.Text, actualRequest.Conversation)
+				if err == nil {
+					operationErr = replyOperationError(actualRequest, result)
+					err = operationErr
+				}
+				if err == nil {
+					err = replyPlanError(s.store.snapshot(), actualRequest, result)
+				}
 				if err != nil {
 					result = ai.Result{}
+					if operationErr == nil {
+						q.PlainReply = true
+						q.System += "\n上一轮回复未通过检查：" + err.Error() + "。请重新理解本轮发言，只输出本人身份的自然文字或 NO_REPLY，不使用工具及媒体标签。"
+					} else {
+						q.System += "\n上一轮没有执行操作，不能声称操作成功；本轮确有授权时调用工具，以真实回执说明结果，否则正常回复或 NO_REPLY。"
+					}
 					_ = s.store.change(func(v *State) error {
 						addLog(v, "WARN", "ai", "模型回复异常，未发送；任务 "+id+"，模型 "+used+"："+err.Error())
 						v.Logs[len(v.Logs)-1].Target = q.Target
@@ -471,7 +588,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		}
 		modelFailed = err != nil && ctx.Err() == nil
 		// 完整流水线都失败后，才从首个模型重跑一次；总共最多两轮。
-		if modelFailed && !ai.Refused(err) && candidateIndex == len(candidates)-1 && autoRetries == 0 && (wechatReplySource(q.Source) && q.Kind == "chat" || q.Source == "reply-media" && (q.Kind == "vision" || q.Kind == "audio")) {
+		if modelFailed && (!ai.Refused(err) || soupSource(q.Source)) && candidateIndex == len(candidates)-1 && autoRetries == 0 && (soupSource(q.Source) || wechatReplySource(q.Source) && q.Kind == "chat" || q.Source == "reply-media" && (q.Kind == "vision" || q.Kind == "audio")) {
 			autoRetries++
 			s.updateTask(id, func(t *Task) { t.AutoRetries = autoRetries })
 			_ = s.store.change(func(v *State) error {
@@ -486,7 +603,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			continue
 		}
 		// 成功即停止；指定模型、取消和已受理但状态未知的视频任务不触发新生成。
-		if err == nil || ctx.Err() != nil || !fallback || ai.VideoJobPending(err) || ai.Refused(err) {
+		if err == nil || ctx.Err() != nil || !fallback || ai.VideoJobPending(err) || ai.Refused(err) && !soupSource(q.Source) {
 			break
 		}
 
@@ -524,21 +641,26 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		}
 		result.Text = "已生成候选资料"
 	}
-	// 模型选定后再执行动作；动作结果未知或失败时不重新生成、不切换供应商。
-	actionTaken := false
-	if err == nil && len(result.ToolCalls) > 0 {
-		actionTaken = true
-		if q.Source != "wechat" {
-			err = fmt.Errorf("当前入口不允许模型执行微信操作")
-		} else if len(result.ToolCalls) != 1 {
-			err = fmt.Errorf("单次只允许一个 AI 行为")
-		} else if !slices.ContainsFunc(actualRequest.Tools, func(v ai.Tool) bool { return v.Name == result.ToolCalls[0].Name }) {
-			err = fmt.Errorf("模型请求了本轮未提供的操作，已停止执行")
-		} else {
-			err = s.executeTool(ctx, q.Target, result.ToolCalls[0])
+	if soupSource(q.Source) {
+		if err == nil {
+			err = s.validSoupRequest(q)
 		}
 		if err == nil {
-			result.Text = "已执行授权操作：" + strings.ReplaceAll(result.ToolCalls[0].Name, "__", ".")
+			err = s.store.putSecret("soup-result:"+q.AccountID+":"+id, result.Text)
+		}
+		result.Text = "游戏回合资料已处理"
+		result.ToolCalls, result.Data = nil, nil
+	}
+	// 模型已选定，后续工具结果回传同一模型；失败不再进入模型流水线。
+	actionTaken := false
+	hadTools := len(result.ToolCalls) > 0
+	if err == nil && hadTools {
+		result, actionTaken, err = s.runActionLoop(ctx, id, actualRequest, selectedConfig, result, usedKey)
+		var modelErr replyModelFailure
+		modelFailed = errors.As(err, &modelErr)
+		// 工具回合末尾经输出校验得到的空正文只可能是合法沉默标记。
+		if err == nil && strings.TrimSpace(result.Text) == "" && len(result.Data) == 0 {
+			silent = true
 		}
 	}
 
@@ -547,14 +669,37 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	}
 	if ctx.Err() != nil {
 		s.updateTask(id, func(t *Task) { t.Status = "cancelled" })
+		s.replyTaskDecision(q, id, "INFO", "取消", "任务被取消或应用停止："+ctx.Err().Error())
 		return
+	}
+	if err == nil && !silent && !actionTaken && !hadTools {
+		if reason := s.duplicateReplyReason(actualRequest, result.Text); reason != "" {
+			silent = true
+			result.Text = ""
+			result.SilenceReason = reason
+		}
 	}
 	// 父任务在全部消息发送结束后才完成，防止同会话后续请求穿插发送。
 	if err == nil && !silent && !actionTaken && q.Source == "wechat" && q.Kind == "chat" {
-		err = s.deliverReplyEvidence(ctx, q.Target, result.Text, q.InputKind, func() error { return s.validateReplyEvidence(actualRequest) })
+		err = s.deliverReplyEvidence(ctx, q.Target, result.Text, q.InputKind, func() error { return s.validateReplyEvidence(actualRequest) }, &actualRequest)
 	}
 	if err == nil && !silent && !actionTaken && q.Source == "wechat-proactive" && q.Kind == "chat" {
 		err = s.deliverProactive(ctx, actualRequest, result.Text)
+	}
+
+	// 先记录不回复/失败原因，再发布任务最终状态，避免页面先见完成却查不到原因。
+	if err != nil {
+		s.replyTaskDecision(q, id, "ERROR", "未完成", "生成或发送未完成："+err.Error())
+	} else if silent {
+		reason := result.SilenceReason
+		if reason == "" {
+			reason = "模型未提供具体原因"
+		}
+		decision := "模型沉默"
+		if strings.HasPrefix(reason, "程序检查：") {
+			decision = "重复拦截"
+		}
+		s.replyTaskDecision(q, id, "INFO", decision, reason)
 	}
 
 	s.updateTask(id, func(t *Task) {
@@ -577,11 +722,17 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	_ = s.store.change(func(v *State) error {
 		level := "INFO"
 		message := "AI 任务完成"
+		if silent {
+			message = "模型判断本轮无需回复，未发送微信消息；任务 " + id
+		}
 		if err != nil {
 			level = "ERROR"
 			message = err.Error()
 		}
-		addLog(v, level, "ai", message)
+		if !(wechatReplySource(q.Source) && q.Kind == "chat" && (silent || err != nil)) {
+			addLog(v, level, "ai", message)
+			v.Logs[len(v.Logs)-1].Target = q.Target
+		}
 		if generated {
 			date := time.Now().Format("2006-01-02")
 			found := false
@@ -651,17 +802,21 @@ func (s *Server) updateTask(id string, fn func(*Task)) {
 	s.notify()
 }
 func (s *Server) autoReply(m Message) {
-	if m.Self || !slices.Contains([]string{"text", "image", "audio", "quote"}, m.Kind) {
+	if m.Self {
+		s.replyDecision(m, "跳过", "本人发送的消息不触发自动回复")
+		return
+	}
+	if !slices.Contains([]string{"text", "image", "audio", "quote"}, m.Kind) {
+		s.replyDecision(m, "跳过", "当前消息类型不参与普通自动回复："+m.Kind)
 		return
 	}
 	state := s.store.snapshot()
 	if m.Kind == "image" && !settingFlag(state, "vision.auto") || m.Kind == "audio" && !settingFlag(state, "audio.auto") {
+		s.replyDecision(m, "跳过", "当前图片或语音来信的自动识别已关闭")
 		return
 	}
-	if state.Settings["reply.enabled"] != true {
-		return
-	}
-	if !replyTargetAllowed(state, m.Target) {
+	if reason := s.replyBlockedReason(state, m.Target); reason != "" {
+		s.replyDecision(m, "跳过", reason)
 		return
 	}
 	var contact *Contact
@@ -673,15 +828,29 @@ func (s *Server) autoReply(m Message) {
 		}
 	}
 	if contact == nil || contact.Mode != "auto" {
+		s.replyDecision(m, "跳过", "当前会话处于人工或暂停模式")
 		return
 	}
-	// 名单规则通过后，群聊继续按独立概率判断，不推断未验证的 @ 或引用。
+	if m.Kind == "text" && strings.TrimSpace(m.Content) == (writeIntentMissing{}).Error() {
+		s.replyDecision(m, "跳过", "当前仅为操作参数校验提示，没有新的聊天问题或执行请求")
+		return
+	}
+	guaranteed := false
 	if contact.Kind == "group" {
-		// 未经协议验证的 @ / 引用不做推断；普通群消息只按显式概率参与。
-		if rand.Float64()*100 >= groupReplyProbability(state, m.Target) {
+		addressed := replyDirectedAtSelf(state, contextMessage(state, m)) != ""
+		if skipOtherGroupMention(state, m) {
+			s.replyDecision(m, "跳过", "消息仅 @ 其他成员，默认不插话（优先于 100% 回复概率）")
+			return
+		}
+		probability := groupReplyProbability(state, m.Target)
+		pending := s.hasGroupReplyBatch(state, m.Target)
+		guaranteed = addressed || probability == 100 || pending
+		if !addressed && !pending && rand.Float64()*100 >= probability {
+			s.replyDecision(m, "跳过", "未命中普通群消息回复概率")
 			return
 		}
 	} else if state.Settings["reply.private"] == "关闭" {
+		s.replyDecision(m, "跳过", "私聊自动回复触发已关闭")
 		return
 	}
 	if contact.Kind != "group" && state.Settings["reply.private"] == "关键词" {
@@ -693,6 +862,7 @@ func (s *Server) autoReply(m Message) {
 			}
 		}
 		if !match {
+			s.replyDecision(m, "跳过", "私聊关键词模式未匹配触发词")
 			return
 		}
 	}
@@ -701,24 +871,37 @@ func (s *Server) autoReply(m Message) {
 		if len(parts) == 2 {
 			now := time.Now().Format("15:04")
 			if parts[0] < parts[1] && now >= parts[0] && now < parts[1] || parts[0] >= parts[1] && (now >= parts[0] || now < parts[1]) {
+				s.replyDecision(m, "跳过", "当前处于静默时段")
 				return
 			}
 		}
 	}
-	for _, t := range state.Tasks {
-		if t.Target == m.Target {
-			stamp, _ := time.Parse(time.RFC3339, t.Created)
-			if t.Status == "queued" || t.Status == "running" || time.Since(stamp) < time.Duration(s.number("reply.cooldown", 15))*time.Second {
-				return
-			}
+	if !guaranteed {
+		if reason := replyCooldownReason(state, m.Target, "", time.Duration(s.number("reply.cooldown", 15))*time.Second); reason != "" {
+			s.replyDecision(m, "跳过", reason)
+			return
 		}
 	}
-	q := replyRequest(state, m)
-	_, err := s.queue(q)
+	if contact.Kind == "group" {
+		s.accumulateGroupReply(state, m, time.Now())
+		return
+	}
+	s.queueAutoReply(replyRequest(state, m), m)
+}
+
+func (s *Server) queueAutoReply(q ai.Request, m Message) {
+	id, err := s.queue(q)
 	if err != nil {
+		s.replyTaskDecision(q, "", "WARN", "未入队", err.Error())
 		s.safetyNotice(m.Target, err)
-		_ = s.store.change(func(v *State) error { addLog(v, "WARN", "ai", err.Error()); return nil })
+	} else {
+		s.replyDecision(m, "已排队", "任务 "+id)
 	}
+}
+
+func (s *Server) replyQueueError(m Message, err error) {
+	s.safetyNotice(m.Target, err)
+	s.replyDecision(m, "未入队", err.Error())
 }
 
 // groupReplyProbability 与其他群触发限制共同生效；零概率是有效覆写，不能当成未设置。

@@ -132,6 +132,114 @@ func TestIndependentCoreRejectsUnknownListener(t *testing.T) {
 		t.Fatal("adopted unknown listener")
 	}
 }
+
+func TestIndependentCoreRejectsCopiedRecordFromAnotherDataDir(t *testing.T) {
+	cfg := managedFixture(t, "normal")
+	cfg.Core.KeepAlive = true
+	cfg.Core.StartupTimeout = 15 * time.Second
+	cfg.Core.LoginTimeout = 15 * time.Second
+	cfg.CoreTokenEnv = "-"
+	cleanupIndependent(t, cfg)
+	independentRound(t, cfg)
+	pid, _ := independentRecord(t, cfg)
+
+	other := cfg
+	copyCore := *cfg.Core
+	other.Core = &copyCore
+	other.Core.DataDir = t.TempDir()
+	record, err := os.ReadFile(filepath.Join(cfg.Core.DataDir, "gateway-core.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(other.Core.DataDir, "gateway-core.json"), record, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = gateway.Run(ctx, other); err == nil || !strings.Contains(err.Error(), "数据目录") {
+		t.Fatalf("copied record reused running core: %v", err)
+	}
+	if err = gateway.StopCore(ctx, other); err == nil || !strings.Contains(err.Error(), "数据目录") {
+		t.Fatalf("copied record stopped running core: %v", err)
+	}
+	var stale map[string]any
+	if err = json.Unmarshal(record, &stale); err != nil {
+		t.Fatal(err)
+	}
+	stale["pid"] = 999999999
+	staleRecord, err := json.Marshal(stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(other.Core.DataDir, "gateway-core.json"), staleRecord, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = gateway.StopCore(ctx, other); err == nil || !strings.Contains(err.Error(), "数据目录") {
+		t.Fatalf("copied stale record authorized another account directory: %v", err)
+	}
+	if nextPID, _ := independentRecord(t, cfg); nextPID != pid {
+		t.Fatal("rejecting copied record stopped or replaced existing core")
+	}
+}
+
+func TestIndependentCoreMigratesLegacyRecordWithoutRestart(t *testing.T) {
+	cfg := managedFixture(t, "normal")
+	cfg.Core.KeepAlive = true
+	cfg.Core.DataDir = filepath.Join(t.TempDir(), "account with spaces")
+	cfg.Core.StartupTimeout = 15 * time.Second
+	cfg.Core.LoginTimeout = 15 * time.Second
+	cfg.CoreTokenEnv = "-"
+	cleanupIndependent(t, cfg)
+	independentRound(t, cfg)
+	pid, _ := independentRecord(t, cfg)
+	path := filepath.Join(cfg.Core.DataDir, "gateway-core.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err = json.Unmarshal(raw, &record); err != nil {
+		t.Fatal(err)
+	}
+	delete(record, "data_dir")
+	raw, err = json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	other := cfg
+	copyCore := *cfg.Core
+	other.Core = &copyCore
+	other.Core.DataDir = t.TempDir()
+	if err = os.WriteFile(filepath.Join(other.Core.DataDir, "gateway-core.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = gateway.Run(ctx, other); err == nil || !strings.Contains(err.Error(), "数据目录") {
+		t.Fatalf("copied legacy record reused running core: %v", err)
+	}
+	if err = gateway.StopCore(ctx, other); err == nil || !strings.Contains(err.Error(), "数据目录") {
+		t.Fatalf("copied legacy record stopped running core: %v", err)
+	}
+	independentRound(t, cfg)
+	nextPID, _ := independentRecord(t, cfg)
+	if nextPID != pid {
+		t.Fatal("legacy record restarted core")
+	}
+	raw, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var migrated struct {
+		DataDir string `json:"data_dir"`
+	}
+	if err = json.Unmarshal(raw, &migrated); err != nil || migrated.DataDir != cfg.Core.DataDir {
+		t.Fatalf("legacy record not migrated: err=%v", err)
+	}
+}
 func TestIndependentCoreSurvivesParentProcessExit(t *testing.T) {
 	cfg := managedFixture(t, "normal")
 	cfg.Core.KeepAlive = true

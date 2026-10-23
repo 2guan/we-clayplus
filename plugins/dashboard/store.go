@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -82,6 +81,7 @@ func openStore(dir string, mock bool) (*store, error) {
 		s.state.Pipeline = nil
 		s.state.Pipelines = nil
 		s.state.Policies = nil
+		s.state.PluginScopeDefaultsVersion = 0
 		if err = json.Unmarshal(raw, &s.state); err != nil {
 			return fail(fmt.Errorf("控制台数据损坏：%w", err))
 		}
@@ -121,6 +121,9 @@ func openStore(dir string, mock bool) (*store, error) {
 		s.state.Account.Status = "offline"
 	}
 	migrateBusinessSettings(s, mock)
+	migratePluginScopeDefaults(&s.state)
+	migrateMusicDefaults(&s.state, raw)
+	migrateNewsDefaults(&s.state, raw)
 	// 旧版 90 秒是系统默认超时；升级到 5 分钟，避免大量图片分析沿用过短的旧默认值。
 	if timeout, ok := s.state.Settings["routing.timeout"].(float64); ok && timeout == 90 {
 		s.state.Settings["routing.timeout"] = 300
@@ -129,9 +132,6 @@ func openStore(dir string, mock bool) (*store, error) {
 	for k, v := range defaults() {
 		if _, ok := s.state.Settings[k]; !ok {
 			s.state.Settings[k] = v
-			if mock && isBusinessPlugin(strings.SplitN(k, ".", 2)[0]) && strings.HasSuffix(k, ".targets") {
-				s.state.Settings[k] = "mock-contact-0,mock-contact-1,mock-contact-2"
-			}
 		}
 	}
 	if s.state.Overrides == nil {

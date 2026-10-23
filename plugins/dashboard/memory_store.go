@@ -94,6 +94,9 @@ func memorySource(m Message) MemorySource {
 	return MemorySource{Target: m.Target, MessageID: m.ID, SenderID: m.SenderID, Hash: hex.EncodeToString(hash[:])}
 }
 func memoryMessageAvailable(m Message) bool {
+	if m.Game != "" || m.Source == "plugin:turtlesoup" {
+		return false
+	}
 	return m.ID != "" && m.Target != "" && m.SenderID != "" && m.Content != "" && !strings.HasPrefix(m.Status, "revoked") && m.Kind != "revoke" && m.Kind != "system" && m.Status != "failed" && m.Status != "unknown" && m.Status != "deleted"
 }
 func memorySourceValid(st State, src MemorySource) bool {

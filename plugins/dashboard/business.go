@@ -10,6 +10,7 @@ import (
 	"github.com/we-clay/we-clay/plugins/ai"
 	"github.com/we-clay/we-clay/plugins/contextcleaner"
 	"github.com/we-clay/we-clay/plugins/toolbox"
+	sdkmessage "github.com/we-clay/we-clay/sdk/message"
 	"net/http"
 	"os"
 	"slices"
@@ -35,18 +36,21 @@ type businessRequest struct {
 	Send        bool   `json:"send"`
 }
 type businessResult struct {
-	Preview string          `json:"preview,omitempty"`
-	Text    string          `json:"text"`
-	Items   []toolbox.Item  `json:"items,omitempty"`
-	Words   []toolbox.Count `json:"words,omitempty"`
-	Ranking []toolbox.Count `json:"ranking,omitempty"`
-	Types   []toolbox.Count `json:"types,omitempty"`
-	Count   int             `json:"count,omitempty"`
-	Media   string          `json:"media,omitempty"`
-	MIME    string          `json:"mime,omitempty"`
-	Task    string          `json:"task,omitempty"`
-	Mock    bool            `json:"mock"`
-	data    []byte
+	Images      []businessImage   `json:"images,omitempty"`
+	MusicSource string            `json:"music_source,omitempty"`
+	Music       *sdkmessage.Music `json:"music,omitempty"`
+	Preview     string            `json:"preview,omitempty"`
+	Text        string            `json:"text"`
+	Items       []toolbox.Item    `json:"items,omitempty"`
+	Words       []toolbox.Count   `json:"words,omitempty"`
+	Ranking     []toolbox.Count   `json:"ranking,omitempty"`
+	Types       []toolbox.Count   `json:"types,omitempty"`
+	Count       int               `json:"count,omitempty"`
+	Media       string            `json:"media,omitempty"`
+	MIME        string            `json:"mime,omitempty"`
+	Task        string            `json:"task,omitempty"`
+	Mock        bool              `json:"mock"`
+	data        []byte
 }
 
 func businessText(st State, id, key string) string {
@@ -106,7 +110,7 @@ func (s *Server) businessMessages(st State, q businessRequest) ([]Message, error
 	out := []Message{}
 	for _, m := range st.Messages {
 		t, e := time.Parse(time.RFC3339, m.Time)
-		if e != nil || m.Target != q.Target || t.Before(start) || !t.Before(end) || m.Kind == "system" || m.Source == "guard" || m.Status == "unknown" || m.Status == "sending" {
+		if !contextAvailable(m) || e != nil || m.Target != q.Target || t.Before(start) || !t.Before(end) || m.Kind == "system" || m.Source == "guard" || m.Status == "unknown" || m.Status == "sending" {
 			continue
 		}
 		if q.Member != "" && m.SenderID != q.Member && m.Sender != q.Member {
@@ -118,12 +122,17 @@ func (s *Server) businessMessages(st State, q businessRequest) ([]Message, error
 	return out, nil
 }
 func (s *Server) buildBusiness(ctx context.Context, q businessRequest) (businessResult, error) {
-	st := s.store.snapshot()
+	return s.buildBusinessFor(ctx, q, s.store.snapshot())
+}
+
+func (s *Server) buildBusinessFor(ctx context.Context, q businessRequest, st State) (businessResult, error) {
 	r := businessResult{Mock: s.cfg.Mock}
 	if !isBusinessPlugin(q.Plugin) || len(q.Query) > 8000 || len(q.Member) > 300 {
 		return r, fmt.Errorf("插件或输入无效")
 	}
 	switch q.Plugin {
+	case "news":
+		return s.buildNewsFor(ctx, q, st)
 	case "statistics", "wordcloud", "digest":
 		messages, e := s.businessMessages(st, q)
 		if e != nil {
@@ -191,7 +200,10 @@ func (s *Server) buildBusiness(ctx context.Context, q businessRequest) (business
 		if q.Query != "" {
 			prompt += "\n补充要求：" + q.Query
 		}
-		task, e := s.Submit(ai.Request{Kind: "insight", Prompt: prompt, Documents: docs})
+		if active := s.store.snapshot(); active.Account.ID != st.Account.ID || active.AccountEpoch != st.AccountEpoch {
+			return r, fmt.Errorf("账号已切换，停止摘要任务")
+		}
+		task, e := s.Submit(ai.Request{Kind: "insight", Prompt: prompt, Documents: docs, AccountID: st.Account.ID, AccountEpoch: st.AccountEpoch})
 		if e != nil {
 			return r, e
 		}
@@ -257,6 +269,8 @@ func (s *Server) buildBusiness(ctx context.Context, q businessRequest) (business
 		return r, nil
 	case "cron":
 		return r, fmt.Errorf("请在计划任务页创建或执行任务")
+	case "music":
+		return s.buildMusicFor(ctx, q, st)
 	case "meme":
 		if q.Mode == "asset" && q.Asset == "" {
 			return r, fmt.Errorf("请选择素材")
@@ -307,10 +321,6 @@ func (s *Server) buildBusiness(ctx context.Context, q businessRequest) (business
 			r.Media = "/sample-video.mp4"
 			r.MIME = "video/mp4"
 		}
-		if q.Plugin == "music" {
-			r.Media = "/sample-audio.wav"
-			r.MIME = "audio/wav"
-		}
 		if q.Plugin == "meme" {
 			r.data, _ = toolbox.RenderCard("表情示例", title, businessText(st, q.Plugin, "font"), nil)
 			r.MIME = "image/png"
@@ -332,21 +342,10 @@ func (s *Server) buildBusiness(ctx context.Context, q businessRequest) (business
 		limit = 5
 	}
 	var e error
-	if q.Plugin == "news" {
-		if endpoint == "" {
-			return r, fmt.Errorf("尚未配置 RSS / Atom 新闻源")
-		}
-		raw, _, err := toolbox.ReadURL(ctx, client, endpoint, key, 2<<20)
-		if err != nil {
-			return r, err
-		}
-		r.Items, e = toolbox.Feed(raw, q.Query, limit)
-	} else {
-		if q.Plugin == "video_parser" && toolbox.PublicURL(q.Query) != nil {
-			return r, fmt.Errorf("请输入有效的视频分享链接")
-		}
-		r.Items, e = toolbox.Search(ctx, client, endpoint, key, q.Query, limit)
+	if q.Plugin == "video_parser" && toolbox.PublicURL(q.Query) != nil {
+		return r, fmt.Errorf("请输入有效的视频分享链接")
 	}
+	r.Items, e = toolbox.Search(ctx, client, endpoint, key, q.Query, limit)
 	if e != nil {
 		return r, e
 	}
@@ -377,7 +376,12 @@ func (s *Server) buildBusiness(ctx context.Context, q businessRequest) (business
 }
 func (s *Server) deliverBusiness(ctx context.Context, account string, q businessRequest, r businessResult) error {
 	st := s.store.snapshot()
-	if st.Account.ID != account || !businessAllowed(st, q.Plugin, q.Target) {
+	return s.deliverBusinessFor(ctx, account, st.AccountEpoch, q, r)
+}
+
+func (s *Server) deliverBusinessFor(ctx context.Context, account string, epoch uint64, q businessRequest, r businessResult) error {
+	st := s.store.snapshot()
+	if st.Account.ID != account || st.AccountEpoch != epoch || !businessAllowed(st, q.Plugin, q.Target) {
 		return fmt.Errorf("账号或生效范围已变化，本次不发送")
 	}
 	if q.jobID != "" {
@@ -401,7 +405,29 @@ func (s *Server) deliverBusiness(ctx context.Context, account string, q business
 	if q.Plugin == "auto_accept" {
 		return fmt.Errorf("好友验证只能由真实系统申请事件触发")
 	}
+	if len(r.Images) > 0 {
+		for i, x := range r.Images {
+			if i > 0 {
+				timer := time.NewTimer(time.Second)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return fmt.Errorf("已完成 %d 张，其余图片未发送：%w", i, ctx.Err())
+				case <-timer.C:
+				}
+			}
+			if e := s.deliverBusinessFor(ctx, account, epoch, q, businessResult{Text: x.Caption, MIME: x.MIME, data: x.data}); e != nil {
+				return fmt.Errorf("第 %d/%d 张图片发送未确认（此前 %d 张已完成）：%w", i+1, len(r.Images), i, e)
+			}
+		}
+		return nil
+	}
 	a := actionRequest{Target: q.Target, Content: r.Text}
+	if r.Music != nil {
+		a.Group = "music"
+		a.Music = r.Music
+		a.Content = "[音乐] " + r.Music.Title + " - " + r.Music.Artist
+	}
 	if len(r.data) > 0 {
 		a.Media = base64.StdEncoding.EncodeToString(r.data)
 		a.MIME = r.MIME
@@ -410,13 +436,19 @@ func (s *Server) deliverBusiness(ctx context.Context, account string, q business
 		if strings.HasPrefix(r.MIME, "image/") {
 			a.Group = "image"
 			a.Content = "插件图片.png"
+			if q.Plugin == "news" {
+				a.Content = r.Text
+			}
 		} else if strings.HasPrefix(r.MIME, "video/") {
 			a.Content = "解析视频.mp4"
 		} else if strings.HasPrefix(r.MIME, "audio/") {
 			a.Content = "音频文件"
 		}
 	}
-	return s.send(ctx, a, "plugin:"+q.Plugin)
+	if active := s.store.snapshot(); active.Account.ID != account || active.AccountEpoch != epoch {
+		return fmt.Errorf("账号已切换，本次不发送")
+	}
+	return s.sendFor(ctx, a, "plugin:"+q.Plugin, account, epoch)
 }
 
 // 命令中的纯数字作为范围天数，其余文本保留为查询词。

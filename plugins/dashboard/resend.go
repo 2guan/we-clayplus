@@ -33,6 +33,11 @@ func (s *Server) resend(ctx context.Context, q actionRequest) error {
 	// 不从浏览器接收正文、附件或引用内容，防止重发时替换原消息。
 	switch m.Kind {
 	case "text":
+	case "music":
+		if m.Music == nil {
+			return fmt.Errorf("音乐原始信息缺失，无法重发")
+		}
+		next.Music = m.Music
 	case "quote":
 		if m.Rich == nil || m.Rich.QuoteID == "" {
 			return fmt.Errorf("引用信息缺失，无法重发")
@@ -44,7 +49,13 @@ func (s *Server) resend(ctx context.Context, q actionRequest) error {
 			return fmt.Errorf("表情原始信息缺失，无法重发")
 		}
 		next.StickerID = m.Rich.StickerID
-	case "image", "audio", "video", "file":
+	case "file":
+		next.fileMedia = m.Media
+		next.fileAccount = s.store.snapshot().Account.ID
+		if next.fileMedia == "" {
+			return fmt.Errorf("原附件未保存，无法重发")
+		}
+	case "image", "audio", "video":
 		if m.Media == "" {
 			return fmt.Errorf("原附件未保存，无法重发")
 		}

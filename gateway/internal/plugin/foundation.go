@@ -27,12 +27,18 @@ func (p *foundationPlugin) GetMetadata() *sdk.Metadata {
 	return &sdk.Metadata{Name: p.name, Author: "2guan", Version: "builtin", Description: map[string]string{"dashboard": "Web 控制台", "ai": "多模态 AI 服务", "prompt_guard": "提示词防护", "context_cleaner": "上下文清洗"}[p.name]}
 }
 func (p *foundationPlugin) GetCapabilities() []string {
+	if p.name == "news" {
+		return []string{"news.today", "news.diagram"}
+	}
 	if p.name != "ai" {
 		return nil
 	}
 	return []string{"ai.chat", "ai.vision", "ai.audio", "ai.video", "ai.tts", "ai.image", "ai.task"}
 }
 func (p *foundationPlugin) OnCall(capability string, args map[string]string) (string, []byte, error) {
+	if p.name == "news" {
+		return "none", nil, p.server.CallNews(capability, args["receiver"])
+	}
 	if capability == "ai.task" {
 		t, err := p.server.Task(args["id"])
 		if err != nil {
@@ -72,7 +78,7 @@ func RegisterFoundation(server *dashboard.Server, dashboardEnabled, aiEnabled bo
 			enabled = aiEnabled
 		}
 		w := &wrapper{Metadata: p.GetMetadata(), Config: &Config{Enable: enabled, Mode: "blacklist"}, types: []string{"builtin"}, plugin: &base}
-		if name == "ai" {
+		if len(p.GetCapabilities()) > 0 {
 			called := sdk.CalledPlugin(p)
 			w.calledPlugin = &called
 			w.capabilities = p.GetCapabilities()

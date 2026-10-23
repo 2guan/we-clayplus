@@ -41,6 +41,8 @@ type Bridge struct {
 	profileSyncRunning bool
 	restartMu          sync.RWMutex
 	restartLogin       func(context.Context) error
+	coreControlMu      sync.RWMutex
+	coreControl        func(context.Context, string, json.RawMessage) (any, error)
 	Ready              atomic.Bool
 	Dashboard          *dashboard.Server
 }
@@ -52,11 +54,42 @@ func (b *Bridge) SetLoginRestarter(restart func(context.Context) error) {
 	b.restartLogin = restart
 }
 
+// SetCoreController installs the optional local core lifecycle controller.
+// Dashboard commands never contain process identifiers, paths or credentials.
+func (b *Bridge) SetCoreController(control func(context.Context, string, json.RawMessage) (any, error)) {
+	b.coreControlMu.Lock()
+	defer b.coreControlMu.Unlock()
+	b.coreControl = control
+}
+
+func (b *Bridge) executeCoreControl(ctx context.Context, operation string, params json.RawMessage) (any, bool, error) {
+	b.coreControlMu.RLock()
+	control := b.coreControl
+	b.coreControlMu.RUnlock()
+	if control == nil {
+		return nil, false, nil
+	}
+	result, err := control(ctx, operation, params)
+	return result, true, err
+}
+
 func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if c.Operation == "login-restart" {
+	switch c.Operation {
+	case "core-status", "core-start", "core-stop", "login-view", "login-retry", "login-verify-code", "login-device-confirm":
+		if result, ok, err := b.executeCoreControl(ctx, c.Operation, c.Params); ok {
+			return result, err
+		}
+		if c.Operation == "core-status" {
+			return map[string]any{"managed": false, "state": "unmanaged", "status": "当前运行方式不支持在控制台启停 core"}, nil
+		}
+		if c.Operation == "core-start" || c.Operation == "core-stop" {
+			return nil, fmt.Errorf("当前 core 不由控制台管理，无法在此启停")
+		}
+	}
+	if c.Operation == "login-restart" || c.Operation == "login-retry" {
 		b.restartMu.RLock()
 		restart := b.restartLogin
 		b.restartMu.RUnlock()
@@ -73,8 +106,13 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 		err := api.GetCore().Get("/api/login/view").WithContext(ctx).DoJson(&result)
 		return result, err
 	}
+	if c.Operation == "login-verify-code" || c.Operation == "login-device-confirm" {
+		return loginVerification(ctx, c.Operation, c.Params)
+	}
 	// 插件配置属于本地宿主管理，不要求微信在线，也不接收 core 路径。
 	switch c.Operation {
+	case "file-send-check":
+		return nil, checkFileInput(c.File)
 	case "plugin-list":
 		return pluginmanager.ConsolePlugins(), nil
 	case "plugin-config-read":
@@ -93,6 +131,14 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 		return nil, fmt.Errorf("微信尚未就绪，请完成登录")
 	}
 	switch c.Operation {
+	case "ai-typing":
+		if c.Content != "start" && c.Content != "stop" {
+			return nil, fmt.Errorf("输入状态参数无效")
+		}
+		_, err := api.GetCore().Post("/api/message/"+c.Content).WithContext(ctx).Query("receiver", c.Target).Do()
+		return nil, err
+	case "ai-action":
+		return b.executeAIAction(ctx, c)
 	case "message-thumbnail":
 		// 转发文章的 cdnthumburl 使用缩略图通道；高清图片通道会被 CDN 拒绝。
 		// 复用 core 既有封面下载接口，票据由控制台已归档消息提供。
@@ -121,14 +167,18 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 	case "payment-claim":
 		return claimPayment(c)
 	case "send":
+		if c.File != nil {
+			return b.sendFileInput(ctx, c)
+		}
 		m := &message.Message{Type: message.TypeText, Receiver: &contact.Contact{Username: c.Target}, Content: c.Content}
 		var p struct {
-			Mentions []string `json:"mentions"`
-			Media    string   `json:"media"`
-			MIME     string   `json:"mime"`
-			Kind     string   `json:"kind"`
-			QuoteXML string   `json:"quote_xml"`
-			EmojiMD5 string   `json:"emoji_md5"`
+			Mentions []string       `json:"mentions"`
+			Media    string         `json:"media"`
+			MIME     string         `json:"mime"`
+			Kind     string         `json:"kind"`
+			QuoteXML string         `json:"quote_xml"`
+			EmojiMD5 string         `json:"emoji_md5"`
+			Music    *message.Music `json:"music"`
 		}
 		if len(c.Params) > 0 {
 			if err := json.Unmarshal(c.Params, &p); err != nil {
@@ -146,6 +196,9 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 			}
 			m.Data = &message.Message_Text{Text: &message.TextData{Content: c.Content, Reminds: p.Mentions}}
 		}
+		if p.Music != nil && p.Kind != "music" {
+			return nil, fmt.Errorf("音乐参数不可混用其它消息类型")
+		}
 		if p.QuoteXML != "" {
 			m.Type = message.TypeAppQuote
 			extend := ""
@@ -159,6 +212,17 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 			m.Data = &message.Message_Emoji{Emoji: &message.EmojiData{Media: &message.Media{Md5: p.EmojiMD5}}}
 		}
 		var duration uint32
+		if p.Kind == "music" {
+			if p.Music == nil || p.Media != "" || p.QuoteXML != "" || len(p.Mentions) > 0 {
+				return nil, fmt.Errorf("音乐参数不可混用其它消息类型")
+			}
+			raw, e := p.Music.XML()
+			if e != nil {
+				return nil, e
+			}
+			m.Type = message.TypeAppMusic
+			m.Data = &message.Message_App{App: &message.AppData{SubType: 76, Title: p.Music.Title, Desc: p.Music.Artist, Xml: raw}}
+		}
 		if p.Media != "" {
 			data, err := base64.StdEncoding.DecodeString(p.Media)
 			if err != nil {
@@ -242,7 +306,13 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 	case "remark":
 		return nil, contact.Instance.SetRemark(c.Target, c.Content)
 	case "group-name":
-		return chatroom.Instance.SetName(c.Target, c.Content)
+		result, err := chatroom.Instance.SetName(c.Target, c.Content)
+		if err == nil && b.Dashboard != nil {
+			if syncErr := b.SyncContacts(); syncErr != nil {
+				slog.Warn("群名已修改，控制台资料同步失败，后续事件将重试")
+			}
+		}
+		return result, err
 	case "announcement":
 		return chatroom.Instance.SetAnnouncement(c.Target, c.Content)
 	case "room-info":
@@ -364,7 +434,14 @@ func (b *Bridge) Record(m *message.Message) error {
 		target = m.GetReceiver().GetUsername()
 	}
 	// 先完成消息归档，再异步补齐新群资料，避免阻塞接收或覆盖会话预览。
-	defer func() { b.startProfileSync(target) }()
+	defer func() {
+		code := m.GetType().GetCode()
+		if isChatroomID(target) && (code == 9999 || code == 10000 || code == 10002) {
+			b.startGroupNoticeProfileSync(target, m.GetContent())
+		} else {
+			b.startProfileSync(target)
+		}
+	}()
 	senderID := m.GetSender().GetUsername()
 	sender := m.GetSender().GetNickname()
 	if m.GetMember() != nil {
@@ -387,6 +464,8 @@ func (b *Bridge) Record(m *message.Message) error {
 		kind = "location"
 	case 43:
 		kind = "video"
+	case 50, 52, 53:
+		kind = "call"
 	case 4906, 6:
 		kind = "file"
 	case 9999, 10000, 10002:
@@ -467,12 +546,14 @@ func (b *Bridge) Record(m *message.Message) error {
 	if err := b.Dashboard.RememberQuoteSource(record, raw); err != nil {
 		return err
 	}
-	if kind == "image" || kind == "audio" || (record.Kind == "file" && m.GetType().GetCode() == message.TypeAppFileAttach.Code) {
+	if record.Kind != "system" {
 		descriptor, err := protojson.Marshal(m)
 		if err != nil {
 			return err
 		}
-		return b.Dashboard.RecordMedia(record, descriptor)
+		if len(descriptor) <= 256<<10 {
+			return b.Dashboard.RecordMedia(record, descriptor)
+		}
 	}
 	return b.Dashboard.Record(record)
 }
@@ -515,4 +596,13 @@ func (b *Bridge) WaitContactSync() {
 	b.closing = true
 	b.contactSyncMu.Unlock()
 	b.contactSyncWG.Wait()
+}
+
+// BeginContactSync 在上一轮同步完全退出后，为新的 core 会话开放同步。
+func (b *Bridge) BeginContactSync() {
+	b.contactSyncMu.Lock()
+	b.profileSyncPending = nil
+	b.profileSyncAttempt = nil
+	b.closing = false
+	b.contactSyncMu.Unlock()
 }

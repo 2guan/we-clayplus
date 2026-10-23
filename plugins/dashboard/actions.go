@@ -17,33 +17,37 @@ import (
 	"time"
 
 	"github.com/we-clay/we-clay/sdk/control"
+	sdkmessage "github.com/we-clay/we-clay/sdk/message"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type actionRequest struct {
-	Mentions  []string        `json:"mentions,omitempty"`
-	RetryID   string          `json:"-"` // 仅内部重发链路赋值，不接受浏览器指定删除记录。
-	StickerID string          `json:"sticker_id,omitempty"`
-	QuoteID   string          `json:"quote_id,omitempty"`
-	Vendor    *Vendor         `json:"vendor,omitempty"`
-	Models    []Model         `json:"models,omitempty"`
-	Pipeline  []string        `json:"pipeline,omitempty"`
-	Policy    *BehaviorPolicy `json:"policy,omitempty"`
-	Kind      string          `json:"kind"`
-	ID        string          `json:"id,omitempty"`
-	Target    string          `json:"target,omitempty"`
-	Content   string          `json:"content,omitempty"`
-	Group     string          `json:"group,omitempty"`
-	Values    map[string]any  `json:"values,omitempty"`
-	Revision  int64           `json:"revision,omitempty"`
-	Enabled   bool            `json:"enabled,omitempty"`
-	Model     *Model          `json:"model,omitempty"`
-	Prompt    *Prompt         `json:"prompt,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Role      string          `json:"role,omitempty"`
-	Password  string          `json:"password,omitempty"`
-	Media     string          `json:"media,omitempty"`
-	MIME      string          `json:"mime,omitempty"`
+	fileMedia   string // 仅服务端上传或可信归档重发使用。
+	fileAccount string
+	Music       *sdkmessage.Music `json:"-"` // 仅可信插件预览或归档重发可以提供音乐卡片。
+	Mentions    []string          `json:"mentions,omitempty"`
+	RetryID     string            `json:"-"` // 仅内部重发链路赋值，不接受浏览器指定删除记录。
+	StickerID   string            `json:"sticker_id,omitempty"`
+	QuoteID     string            `json:"quote_id,omitempty"`
+	Vendor      *Vendor           `json:"vendor,omitempty"`
+	Models      []Model           `json:"models,omitempty"`
+	Pipeline    []string          `json:"pipeline,omitempty"`
+	Policy      *BehaviorPolicy   `json:"policy,omitempty"`
+	Kind        string            `json:"kind"`
+	ID          string            `json:"id,omitempty"`
+	Target      string            `json:"target,omitempty"`
+	Content     string            `json:"content,omitempty"`
+	Group       string            `json:"group,omitempty"`
+	Values      map[string]any    `json:"values,omitempty"`
+	Revision    int64             `json:"revision,omitempty"`
+	Enabled     bool              `json:"enabled,omitempty"`
+	Model       *Model            `json:"model,omitempty"`
+	Prompt      *Prompt           `json:"prompt,omitempty"`
+	Name        string            `json:"name,omitempty"`
+	Role        string            `json:"role,omitempty"`
+	Password    string            `json:"password,omitempty"`
+	Media       string            `json:"media,omitempty"`
+	MIME        string            `json:"mime,omitempty"`
 }
 
 func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
@@ -618,7 +622,6 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 		if cancel := s.taskCancel[q.ID]; cancel != nil {
 			cancel()
 		}
-		s.taskMu.Unlock()
 		err = s.store.change(func(v *State) error {
 			for i := range v.Tasks {
 				if v.Tasks[i].ID == q.ID && (v.Tasks[i].Status == "queued" || v.Tasks[i].Status == "running") {
@@ -627,6 +630,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 			}
 			return nil
 		})
+		s.taskMu.Unlock()
 	case "mock-scenario", "mock-reset":
 		if !s.cfg.Mock {
 			err = fmt.Errorf("真实模式不能调用演示接口")
@@ -757,8 +761,24 @@ func (s *Server) editUser(q actionRequest, actor User) error {
 	return err
 }
 func (s *Server) send(ctx context.Context, q actionRequest, source string) error {
+	return s.sendChecked(ctx, q, source, "", 0, false)
+}
+
+// sendFor binds an asynchronous send to the account session that created it.
+// Existing manual callers keep using send, which resolves the active account.
+func (s *Server) sendFor(ctx context.Context, q actionRequest, source, account string, epoch uint64) error {
+	return s.sendChecked(ctx, q, source, account, epoch, true)
+}
+
+func (s *Server) sendChecked(ctx context.Context, q actionRequest, source, account string, epoch uint64, fenced bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if fenced {
+		active := s.store.snapshot()
+		if active.Account.ID != account || active.AccountEpoch != epoch {
+			return fmt.Errorf("账号已切换，本次不发送")
+		}
 	}
 	// @ 成员必须显式携带 ID，不能从同名显示文本反推，也不允许注入全体提醒。
 	if len(q.Mentions) > 50 {
@@ -815,6 +835,9 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 		return fmt.Errorf("消息内容过长")
 	}
 	state := s.store.snapshot()
+	if fenced && (state.Account.ID != account || state.AccountEpoch != epoch) {
+		return fmt.Errorf("账号已切换，本次不发送")
+	}
 	if state.Account.Status != "online" {
 		return fmt.Errorf("微信当前离线")
 	}
@@ -827,6 +850,15 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 	}
 	var quoteXML string
 	var rich *RichMessage
+	if kind == "music" {
+		if q.Music == nil || q.Media != "" || q.QuoteID != "" || q.StickerID != "" {
+			return fmt.Errorf("音乐卡片参数缺失或混用了其它附件")
+		}
+		if e := q.Music.Validate(); e != nil {
+			return e
+		}
+		rich = &RichMessage{Title: q.Music.Title, Description: q.Music.Artist, Image: q.Music.Cover}
+	}
 	if sticker != nil {
 		rich = &RichMessage{StickerID: sticker.ID, Sticker: sticker.Kind, Title: sticker.Name, Image: sticker.Image}
 	}
@@ -842,10 +874,35 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 		kind = "quote"
 	}
 	media := ""
+	var fileInput *control.FileInput
+	if q.fileMedia != "" {
+		if kind != "file" || q.Media != "" || q.fileAccount != state.Account.ID {
+			return fmt.Errorf("文件输入或账号无效")
+		}
+		f, size, e := s.openAttachment(q.fileMedia)
+		if e != nil {
+			return e
+		}
+		defer f.Close()
+		fileInput = &control.FileInput{Reader: f, Size: size}
+		if !s.cfg.Mock {
+			if s.host == nil {
+				return fmt.Errorf("微信尚未就绪")
+			}
+			if _, e = s.host.Execute(ctx, control.Command{Operation: "file-send-check", File: fileInput}); e != nil {
+				return e
+			}
+		}
+		media = q.fileMedia
+		rich = &RichMessage{Title: q.Content, Description: fmt.Sprintf("%.1f MB", float64(size)/(1<<20))}
+	}
 	if q.Media != "" {
 		data, e := base64.StdEncoding.DecodeString(q.Media)
 		if e != nil || len(data) > 16<<20 {
 			return fmt.Errorf("附件无效或超过 16 MB")
+		}
+		if kind == "file" && int64(len(data)) > attachmentLimit(state) {
+			return fmt.Errorf("文件超过当前配置的 %d MB 上限", attachmentLimit(state)>>20)
 		}
 		media, e = s.saveMedia(data, q.MIME)
 		if e != nil {
@@ -853,6 +910,25 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 		}
 	}
 	m := Message{Mentions: q.Mentions, ID: randomID(), Target: q.Target, Sender: state.Account.Name, Content: q.Content, Kind: kind, Rich: rich, Self: true, Source: source, Status: "sending", Time: time.Now().Format(time.RFC3339), Media: media}
+	m.Music = q.Music
+	if s.cfg.Mock && kind == "music" {
+		m.Media = "/sample-audio.wav"
+	}
+	if source == "plugin:turtlesoup" {
+		m.Game = "turtlesoup"
+	}
+	if strings.HasPrefix(source, "plugin:playroom:") {
+		m.Game = "playroom:" + strings.TrimPrefix(source, "plugin:playroom:")
+	}
+	if strings.HasPrefix(source, "plugin:playroom-private:") {
+		m.Game = "private:playroom:" + strings.TrimPrefix(source, "plugin:playroom-private:")
+	}
+	if fenced {
+		active := s.store.snapshot()
+		if active.Account.ID != account || active.AccountEpoch != epoch {
+			return fmt.Errorf("账号已切换，本次不发送")
+		}
+	}
 	if err := s.Record(m); err != nil {
 		return err
 	}
@@ -860,12 +936,18 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 	serverID := ""
 	var revokeReceipt *control.RevokeReceipt
 	var duration float64
-	if !s.cfg.Mock {
+	if fenced {
+		active := s.store.snapshot()
+		if active.Account.ID != account || active.AccountEpoch != epoch {
+			sendErr = fmt.Errorf("账号已切换，本次不发送")
+		}
+	}
+	if sendErr == nil && !s.cfg.Mock {
 		if s.host == nil {
 			sendErr = fmt.Errorf("微信尚未就绪")
 		} else {
-			params, _ := json.Marshal(map[string]any{"media": q.Media, "mime": q.MIME, "kind": kind, "quote_xml": quoteXML, "emoji_md5": q.StickerID, "mentions": q.Mentions})
-			result, e := s.host.Execute(ctx, control.Command{Operation: "send", Target: q.Target, Content: q.Content, Params: params})
+			params, _ := json.Marshal(map[string]any{"media": q.Media, "mime": q.MIME, "kind": kind, "quote_xml": quoteXML, "emoji_md5": q.StickerID, "mentions": q.Mentions, "music": q.Music})
+			result, e := s.host.Execute(ctx, control.Command{Operation: "send", Target: q.Target, Content: q.Content, Params: params, File: fileInput})
 			sendErr = e
 			if result != nil {
 				if receipt, ok := result.(map[string]string); ok {
@@ -877,7 +959,7 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 				}
 			}
 		}
-	} else if state.Scenario == "error" {
+	} else if sendErr == nil && s.cfg.Mock && state.Scenario == "error" {
 		sendErr = fmt.Errorf("模拟发送失败：网络连接中断")
 	}
 	// 真实发送没有服务端消息 ID 时不能视为成功，也不能删除重发前的记录。
@@ -885,6 +967,9 @@ func (s *Server) send(ctx context.Context, q actionRequest, source string) error
 		sendErr = fmt.Errorf("未收到有效发送回执，请核对微信")
 	}
 	err := s.store.change(func(v *State) error {
+		if fenced && (v.Account.ID != account || s.store.accountEpoch != epoch) {
+			return fmt.Errorf("账号已切换，发送结果未确认")
+		}
 		if q.RetryID != "" && sendErr == nil {
 			v.Messages = slices.DeleteFunc(v.Messages, func(item Message) bool {
 				return item.Target == q.Target && item.ID == q.RetryID && item.Self && (item.Status == "unknown" || item.Status == "failed")

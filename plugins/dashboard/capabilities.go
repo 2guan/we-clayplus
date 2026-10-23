@@ -16,11 +16,13 @@ func (s *Server) Submit(q ai.Request) (string, error) {
 	}
 	q.Target = ""
 	q.Source = "plugin"
+	q.GameTurnID, q.GamePuzzle = "", nil
 	if q.System != "" {
 		q.Prompt += "\n插件提供的任务要求：\n" + q.System
 		q.System = ""
 	}
 	q.Tools = nil
+	q.ToolHistory = nil
 	q.Context = nil
 	return s.queue(q)
 }

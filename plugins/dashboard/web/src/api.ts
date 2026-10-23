@@ -27,6 +27,20 @@ export function readFile(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+// 大文件直接交给浏览器流式上传，不用 FileReader 或 Base64。
+export async function sendAttachment(file: File, target: string): Promise<void> {
+  const query = new URLSearchParams({ target, name: file.name });
+  const response = await fetch(`/api/attachments/send?${query}`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+  }).catch(() => { throw new Error("附件传输连接中断，请先核对微信和发送记录，避免重复发送"); });
+  const result = await response.json();
+  if (response.status === 401) window.dispatchEvent(new Event("weclay-session-expired"));
+  if (!response.ok) throw new Error(result.error || "附件发送失败");
+}
 export function download(name: string, text: string, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement("a");

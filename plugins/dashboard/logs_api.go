@@ -22,6 +22,10 @@ func (s *Server) logsAPI(w http.ResponseWriter, r *http.Request, user User) {
 	}
 	query := "SELECT id,time,level,component," + field + ",target FROM state_logs WHERE account=?"
 	args := []any{account}
+	for _, prefix := range quietReplyLogPrefixes {
+		query += " AND NOT (component='ai' AND instr(message,?)=1)"
+		args = append(args, prefix)
+	}
 	if user.Role != "admin" {
 		query += " AND component<>'debug'"
 	}

@@ -111,8 +111,9 @@ test("第三阶段插件可完整脱机预览，错误不会误报成功", async
       .getByRole("button", { name: `工作台 ${name}`, exact: true })
       .click();
     const dialog = page.getByRole("dialog");
+    if (name === "音乐") await dialog.getByLabel("关键词 / 内容").fill("晴天");
     await dialog.getByRole("button", { name: "生成预览", exact: true }).click();
-    await expect(dialog.locator(".business-result pre")).not.toBeEmpty({
+    await expect(dialog.locator(".business-result > pre")).not.toBeEmpty({
       timeout: 15000,
     });
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();

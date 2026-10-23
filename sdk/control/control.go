@@ -6,6 +6,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"io"
 )
 
 // Config 只包含启动配置；业务配置通过控制台保存，不包含明文凭据。
@@ -20,11 +21,17 @@ type Config struct {
 
 // Command 使用有限操作名，不允许浏览器提交任意 core 路径。
 type Command struct {
+	File      *FileInput      `json:"-"` // 仅进程内可信文件输入，不接受 HTTP/模型参数。
 	Operation string          `json:"operation"`
 	Target    string          `json:"target"`
 	Content   string          `json:"content"`
 	ID        string          `json:"id"`
 	Params    json.RawMessage `json:"params,omitempty"`
+}
+
+type FileInput struct {
+	Reader io.ReadSeeker
+	Size   int64
 }
 
 // Host 由 gateway 注入；Mock 模式根本不调用此接口。
@@ -42,9 +49,19 @@ type Capability struct {
 }
 
 // AIOperations 只列出已具备有限参数适配的行为，禁止模型自行提交 core 路径。
-var AIOperations = map[string]string{
-	"message.Send": "send", "contact.SetRemark": "remark", "chatroom.SetName": "group-name", "chatroom.SetAnnouncement": "announcement", "moments.Like": "moment-like", "moments.Unlike": "moment-unlike", "moments.Comment": "moment-comment",
-}
+var AIOperations = func() map[string]string {
+	out := map[string]string{}
+	for op := range AIActions {
+		out[op] = "ai-action"
+	}
+	out["moments.Like"] = "moment-like"
+	out["moments.Unlike"] = "moment-unlike"
+	out["moments.Comment"] = "moment-comment"
+	out["contact.SetRemark"] = "remark"
+	out["chatroom.SetName"] = "group-name"
+	out["chatroom.SetAnnouncement"] = "announcement"
+	return out
+}()
 
 // RevokeReceipt 采用字符串保存原始大整数，避免浏览器或 JSON 数字精度损失。
 type RevokeReceipt struct {

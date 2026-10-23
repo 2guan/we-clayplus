@@ -11,6 +11,8 @@ for(const width of [1440,390]) test(`群专属概率 ${width}`,async({page,reque
  await page.getByRole('button',{name:'会话资料与专属策略',exact:true}).click();
  const dialog=page.getByRole('dialog');
  await expect(dialog.getByText('地区未提供')).toHaveCount(0);
+ await expect(dialog.getByText('群聊停顿 7 秒后合并', {exact:false})).toBeVisible();
+ await expect(dialog.getByText('模型可选择不回复', {exact:false})).toBeVisible();
  const mode=dialog.getByRole('combobox',{name:'群回复概率来源'});
  const input=dialog.getByRole('spinbutton',{name:'群回复概率',exact:true});
  await expect(mode).toHaveValue('default');

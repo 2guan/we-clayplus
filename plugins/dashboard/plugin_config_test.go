@@ -28,17 +28,20 @@ func TestPluginCatalogUsage(t *testing.T) {
 	s := newServer(t, true)
 	w := call(t, s, "/api/plugins", nil, nil, "")
 	var items []pluginCatalogItem
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &items) != nil || len(items) != 16 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &items) != nil || len(items) != 30 {
 		t.Fatal("目录读取失败", w.Body.String())
 	}
 	for _, item := range items {
 		if item.Usage == nil || len(item.Usage.Steps) == 0 {
 			t.Fatalf("插件缺少使用说明：%s", item.ID)
 		}
-		if !isBusinessPlugin(item.ID) && len(item.Usage.Commands) != 0 {
+		if !isBusinessPlugin(item.ID) && item.ID != "ai" && len(item.Usage.Commands) != 0 {
 			t.Fatal("内置插件不应伪造触发词")
 		}
-		if item.ID == "welcome" && !strings.Contains(strings.Join(item.Usage.Steps, ""), "脱机模式不访问") {
+		if item.ID == "ai" && !strings.Contains(strings.Join(item.Usage.Steps, ""), "没有统一固定聊天口令") {
+			t.Fatal("AI 自然语言示例被误写成固定口令")
+		}
+		if item.ID == "welcome" && !strings.Contains(strings.Join(item.Usage.Steps, ""), "脱机演示不会操作真实微信") {
 			t.Fatal("演示边界缺失")
 		}
 	}

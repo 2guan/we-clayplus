@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/we-clay/we-clay/plugins/contextcleaner"
+	"github.com/we-clay/we-clay/plugins/turtlesoup"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -28,8 +29,10 @@ const maxStreamResponseBytes int64 = 128 << 20
 type Tool struct {
 	Name        string
 	Description string
+	Parameters  map[string]any
 }
 type ToolCall struct {
+	ID        string
 	Name      string
 	Arguments string
 }
@@ -41,19 +44,24 @@ type InputImage struct {
 	Data  string `json:"data"`
 }
 type Request struct {
-	AccountEpoch   uint64            `json:"-"`
-	EvidenceHashes map[string]string `json:"-"`
-	AccountID      string            `json:"-"`
-	Conversation   *Conversation     `json:"-"`
-	Images         []InputImage      `json:"images,omitempty"`
+	PlainReply     bool               `json:"-"` // 纠正生成仅允许文字或沉默，不重新请求操作。
+	GameTurnID     string             `json:"-"`
+	GamePuzzle     *turtlesoup.Puzzle `json:"-"`
+	AccountEpoch   uint64             `json:"-"`
+	EvidenceHashes map[string]string  `json:"-"`
+	AccountID      string             `json:"-"`
+	Conversation   *Conversation      `json:"-"`
+	Images         []InputImage       `json:"images,omitempty"`
 	// 来源、上下文身份与检查状态仅由服务端构造，HTTP 客户端不能伪造。
+	BatchIDs  []string                 `json:"-"` // 服务端合并的同群原始消息，最后一条仍为当前授权来源。
 	InputID   string                   `json:"-"` // 当前入站媒体的归档标识，仅服务端赋值。
 	InputKind string                   `json:"-"`
 	Source    string                   `json:"-"`
 	Context   []contextcleaner.Message `json:"-"`
 	// Documents 是待分析资料，永远作为低信任数据处理，不成为系统指令。
-	Documents []contextcleaner.Message `json:"documents,omitempty"`
-	Tools     []Tool                   `json:"-"`
+	Documents   []contextcleaner.Message `json:"documents,omitempty"`
+	ToolHistory []ToolExchange           `json:"-"`
+	Tools       []Tool                   `json:"-"`
 
 	SpeechMode string   `json:"speech_mode,omitempty"`
 	Seconds    string   `json:"seconds,omitempty"`
@@ -72,6 +80,7 @@ type Request struct {
 	Target     string   `json:"target,omitempty"`
 }
 type Config struct {
+	ContextBudget                               int
 	Endpoint, Key, Model, Provider, Voice, Size string
 	Temperature                                 *float64
 	Thinking                                    string
@@ -82,7 +91,10 @@ type Config struct {
 	MaxOutput                                   int
 }
 type Result struct {
-	ToolCalls []ToolCall
+	SilenceReason string `json:"-"` // 输出控制标记的简短原因，仅供宿主审计。
+	Native        json.RawMessage
+	Reasoning     string
+	ToolCalls     []ToolCall
 
 	Text         string
 	Data         []byte
@@ -224,14 +236,11 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 			}
 			messages = append(messages, map[string]any{"role": turn.Role, "content": part})
 		}
+		messages = append(messages, openAIToolHistory(r.ToolHistory)...)
 		body = map[string]any{"model": c.Model, "messages": messages, "max_tokens": c.MaxOutput}
 		parameters := body.(map[string]any)
 		if len(r.Tools) > 0 {
-			tools := []any{}
-			for _, tool := range r.Tools {
-				tools = append(tools, map[string]any{"type": "function", "function": map[string]any{"name": tool.Name, "description": tool.Description, "parameters": map[string]any{"type": "object", "properties": map[string]any{"content": map[string]string{"type": "string", "description": "操作内容"}}, "required": []string{"content"}, "additionalProperties": false}}})
-			}
-			parameters["tools"] = tools
+			parameters["tools"] = nativeTools(c.Provider, r.Tools)
 			parameters["parallel_tool_calls"] = false
 		}
 		if c.Temperature != nil && !(c.Provider == "mimo" && c.Thinking != "off") {
@@ -334,9 +343,11 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
-				Refusal string `json:"refusal"`
-				Content string `json:"content"`
-				Calls   []struct {
+				Refusal   string `json:"refusal"`
+				Reasoning string `json:"reasoning_content"`
+				Content   string `json:"content"`
+				Calls     []struct {
+					ID       string `json:"id"`
 					Function struct {
 						Name      string `json:"name"`
 						Arguments string `json:"arguments"`
@@ -364,7 +375,11 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 			}
 		}
 		for _, call := range v.Choices[0].Message.Calls {
-			result.ToolCalls = append(result.ToolCalls, ToolCall{Name: call.Function.Name, Arguments: call.Function.Arguments})
+			if call.ID == "" {
+				call.ID = fmt.Sprintf("call_%d", len(result.ToolCalls))
+			}
+			result.Reasoning = v.Choices[0].Message.Reasoning
+			result.ToolCalls = append(result.ToolCalls, ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: call.Function.Arguments})
 		}
 	}
 	if r.Kind == "image" {
@@ -589,7 +604,11 @@ func gemini(ctx context.Context, c Config, r Request, onText func(string)) (Resu
 		}
 		contents = append(contents, map[string]any{"role": role, "parts": p})
 	}
+	contents = append(contents, geminiToolHistory(r.ToolHistory)...)
 	body := map[string]any{"contents": contents, "system_instruction": map[string]any{"parts": []any{map[string]string{"text": r.System}}}, "generationConfig": map[string]any{"maxOutputTokens": c.MaxOutput}}
+	if len(r.Tools) > 0 {
+		body["tools"] = []any{map[string]any{"functionDeclarations": nativeTools("gemini", r.Tools)}}
+	}
 	generation := body["generationConfig"].(map[string]any)
 	if c.Temperature != nil {
 		generation["temperature"] = *c.Temperature
@@ -640,30 +659,7 @@ func gemini(ctx context.Context, c Config, r Request, onText func(string)) (Resu
 	if err != nil {
 		return Result{}, err
 	}
-	var v struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-		Usage struct {
-			Input  int `json:"promptTokenCount"`
-			Output int `json:"candidatesTokenCount"`
-		} `json:"usageMetadata"`
-	}
-	if json.Unmarshal(response, &v) != nil || len(v.Candidates) == 0 {
-		return Result{}, fmt.Errorf("模型没有返回可用内容")
-	}
-	var text strings.Builder
-	for _, p := range v.Candidates[0].Content.Parts {
-		text.WriteString(p.Text)
-	}
-	if text.Len() == 0 {
-		return Result{}, fmt.Errorf("模型返回空内容")
-	}
-	return Result{Text: text.String(), InputTokens: v.Usage.Input, OutputTokens: v.Usage.Output}, nil
+	return parseNativeResult("gemini", response)
 }
 func anthropic(ctx context.Context, c Config, r Request, onText func(string)) (Result, error) {
 	if r.Kind != "chat" && r.Kind != "vision" && r.Kind != "insight" {
@@ -694,7 +690,11 @@ func anthropic(ctx context.Context, c Config, r Request, onText func(string)) (R
 		}
 		messages = append(messages, map[string]any{"role": turn.Role, "content": p})
 	}
+	messages = append(messages, anthropicToolHistory(r.ToolHistory)...)
 	body := map[string]any{"model": c.Model, "max_tokens": c.MaxOutput, "system": r.System, "messages": messages}
+	if len(r.Tools) > 0 {
+		body["tools"] = nativeTools("anthropic", r.Tools)
+	}
 	if c.Thinking == "on" {
 		if c.MaxOutput <= 1024 {
 			return Result{}, fmt.Errorf("Anthropic 思考模式需要最大输出大于 1024")
@@ -748,24 +748,5 @@ func anthropic(ctx context.Context, c Config, r Request, onText func(string)) (R
 	if err != nil {
 		return Result{}, err
 	}
-	var v struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-		Usage struct {
-			Input  int `json:"input_tokens"`
-			Output int `json:"output_tokens"`
-		} `json:"usage"`
-	}
-	if json.Unmarshal(response, &v) != nil {
-		return Result{}, fmt.Errorf("模型响应格式无效")
-	}
-	var text strings.Builder
-	for _, p := range v.Content {
-		text.WriteString(p.Text)
-	}
-	if text.Len() == 0 {
-		return Result{}, fmt.Errorf("模型返回空内容")
-	}
-	return Result{Text: text.String(), InputTokens: v.Usage.Input, OutputTokens: v.Usage.Output}, nil
+	return parseNativeResult("anthropic", response)
 }

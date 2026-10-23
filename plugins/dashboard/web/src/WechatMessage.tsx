@@ -2,6 +2,7 @@
 // 主要功能：展示微信支付通知、位置、引用、表情及可重试加载的原生媒体。
 // 作者：2guan
 import { useRef, useState } from "react";
+import { PhoneDisconnect } from "@phosphor-icons/react";
 import type { Message } from "./types";
 import { wechatEmojiPaths } from "./wechatEmoji";
 
@@ -164,7 +165,53 @@ export function WechatMessage({
   const src =
     m.media ||
     `/api/message-media?target=${encodeURIComponent(m.target)}&id=${encodeURIComponent(m.id)}`;
+  if (m.kind === "call")
+    return (
+      <div className="wechat-call" role="group" aria-label={r?.title || "通话"}>
+        <PhoneDisconnect size={26} weight="regular" aria-hidden="true" />
+        <span>{r?.status || m.content}</span>
+      </div>
+    );
   // 点击收到的支付卡片进入人工确认；展示原通知，不根据金额猜测到账状态。
+  if (m.kind === "music" && m.music)
+    return (
+      <div className="wechat-music">
+        <div className="wechat-music-heading">
+          {m.music.cover && (
+            <img
+              src={`/api/music-media?id=${encodeURIComponent(m.id)}&part=cover`}
+              alt="专辑封面"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          <div>
+            <strong>{m.music.title}</strong>
+            <p>{m.music.artist}</p>
+          </div>
+        </div>
+        <audio
+          controls
+          preload="none"
+          src={
+            m.media ||
+            `/api/music-media?id=${encodeURIComponent(m.id)}&part=audio`
+          }
+          aria-label={`试听 ${m.music.title}`}
+        />
+        {m.music.url && (
+          <a href={m.music.url} target="_blank" rel="noopener noreferrer">
+            打开音乐链接
+          </a>
+        )}
+        {m.music.lyric && (
+          <details>
+            <summary>歌词</summary>
+            <pre>{m.music.lyric}</pre>
+          </details>
+        )}
+      </div>
+    );
   if (m.kind === "transfer" || m.kind === "redpacket")
     return (
       <div

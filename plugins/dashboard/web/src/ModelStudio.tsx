@@ -1,3 +1,4 @@
+import { BehaviorRecords } from "./BehaviorRecords";
 // 文件名：ModelStudio.tsx
 // 主要功能：提供对话测活、语音试听、图片预览、人设全文编辑和逐项行为权限设置。
 // 作者：2guan
@@ -901,6 +902,16 @@ const operationLabels: Record<string, string> = {
   Search: "搜索联系人",
   GetOwner: "查询管理者",
   Create: "创建群聊",
+  Quit: "退出群聊",
+  RemoveMember: "移除群成员",
+  AddMember: "直接添加成员",
+  RemoveAdmin: "取消管理员",
+  TransferOwner: "转让群主",
+  BlacklistAdd: "加入黑名单",
+  BlacklistRemove: "移出黑名单",
+  FacingCreate: "面对面建群",
+  DeleteComment: "删除评论",
+  SetPrivacy: "修改隐私设置",
   GetInfo: "查询详情",
   GetQRCode: "获取二维码",
   InviteMember: "邀请成员",
@@ -938,12 +949,20 @@ const operationLabels: Record<string, string> = {
   GetBoundHardDevices: "绑定设备",
   UploadAvatar: "上传头像",
 };
-const conversationOperations = [
-  "message.Send",
-  "contact.SetRemark",
-  "chatroom.SetName",
-  "chatroom.SetAnnouncement",
-];
+type ActionMeta = {
+  operation: string;
+  write: boolean;
+  scope: string;
+  legacy?: boolean;
+  parameters: {
+    properties?: Record<string, { description?: string; type?: string }>;
+    required?: string[];
+  };
+};
+type ActionCatalog = {
+  actions: Record<string, ActionMeta>;
+  backend: Record<string, boolean>;
+};
 type Capability = {
   label: string;
   enabled: string[];
@@ -952,15 +971,23 @@ type Capability = {
 };
 export function BehaviorEditor(props: PageProps) {
   const [catalog, setCatalog] = useState<Record<string, Capability>>({});
+  const [actions, setActions] = useState<ActionCatalog>({
+    actions: {},
+    backend: {},
+  });
   const [selected, setSelected] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   useEffect(() => {
+    request<ActionCatalog>("/api/ai-action-catalog")
+      .then(setActions)
+      .catch((e) => setError(e.message));
     request<Record<string, Capability>>("/api/behaviors")
       .then((v) => {
         setCatalog(v || {});
         const first = Object.entries(v || {}).find(([, g]) => g.enabled.length);
-        if (first) setSelected(`${first[0]}.${first[1].enabled[0]}`);
+        if (v?.message?.enabled.includes("Send")) setSelected("message.Send");
+        else if (first) setSelected(`${first[0]}.${first[1].enabled[0]}`);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -969,7 +996,9 @@ export function BehaviorEditor(props: PageProps) {
     <>
       <div className="section-caption">
         <span>操作权限</span>
-        <span className="muted">常用能力默认开启 · 空黑名单不限制目标 · 已保存配置优先</span>
+        <span className="muted">
+          按能力配置发起人与目标权限 · 已保存配置保留
+        </span>
       </div>
       {error && <p role="alert">{error}</p>}
       <div className="behavior-workspace">
@@ -981,11 +1010,17 @@ export function BehaviorEditor(props: PageProps) {
             onChange={(e) => setSearch(e.target.value)}
           />
           {Object.entries(catalog)
-            .filter(([, g]) => g.enabled.length)
+            .filter(([domain, g]) =>
+              [...g.enabled, ...g.placeholder].some((op) =>
+                `${g.label} ${operationLabels[op] || op} ${domain}.${op}`
+                  .toLowerCase()
+                  .includes(search.toLowerCase()),
+              ),
+            )
             .map(([domain, g]) => (
               <div key={domain}>
                 <h4>{g.label}</h4>
-                {g.enabled
+                {[...g.enabled, ...g.placeholder]
                   .filter((op) =>
                     `${g.label} ${operationLabels[op] || op} ${domain}.${op}`
                       .toLowerCase()
@@ -1001,7 +1036,16 @@ export function BehaviorEditor(props: PageProps) {
                       >
                         <span>
                           {operationLabels[op] || op}
-                          <small>{op}</small>
+                          <small>
+                            {op}
+                            {g.placeholder.includes(op)
+                              ? " · 暂不支持"
+                              : actions.backend[id]
+                                ? " · 后台配套"
+                                : !actions.actions[id]
+                                  ? " · 人工操作"
+                                  : ""}
+                          </small>
                         </span>
                         <span
                           className={`policy-dot ${props.state.policies?.some((p) => p.operation === id && p.enabled) ? "enabled" : ""}`}
@@ -1017,6 +1061,13 @@ export function BehaviorEditor(props: PageProps) {
             key={selected}
             {...props}
             evidence={catalog[selected.split(".")[0]]?.evidence || ""}
+            meta={actions.actions[selected]}
+            backend={!!actions.backend[selected]}
+            supported={
+              !!catalog[selected.split(".")[0]]?.enabled.includes(
+                selected.split(".")[1],
+              )
+            }
             initial={
               saved || {
                 operation: selected,
@@ -1035,23 +1086,41 @@ export function BehaviorEditor(props: PageProps) {
           />
         )}
       </div>
+      <BehaviorRecords {...props} names={operationLabels} domains={catalog} />
     </>
   );
 }
 function BehaviorDetail({
   initial,
   evidence,
+  meta,
+  backend,
+  supported,
   ...props
-}: PageProps & { initial: BehaviorPolicy; evidence: string }) {
+}: PageProps & {
+  initial: BehaviorPolicy;
+  evidence: string;
+  meta?: ActionMeta;
+  backend: boolean;
+  supported: boolean;
+}) {
   const [p, set] = useState(initial);
   const [targets, setTargets] = useState(initial.targets.join(", "));
+  const [actors, setActors] = useState((initial.actors || []).join(", "));
+  const normalizedActors = actors
+    .split(/[,，\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   const normalizedTargets = targets
     .split(/[,，\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
   useUnsavedDraft(
-    JSON.stringify({ ...p, targets: normalizedTargets }) !==
-      JSON.stringify(initial),
+    JSON.stringify({
+      ...p,
+      actors: normalizedActors,
+      targets: normalizedTargets,
+    }) !== JSON.stringify({ ...initial, actors: initial.actors || [] }),
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1067,6 +1136,7 @@ function BehaviorDetail({
             kind: "behavior-policy",
             policy: {
               ...p,
+              actors: normalizedActors,
               targets: targets
                 .split(/[,，\n]/)
                 .map((s) => s.trim())
@@ -1084,24 +1154,99 @@ function BehaviorDetail({
       <div className="section-heading">
         <h3>{p.operation}</h3>
         <Badge>
-          {conversationOperations.includes(p.operation)
-            ? p.operation === "message.Send" ? "回复协议已接通" : "对话工具已接通"
-            : "执行器待接入"}
+          {!supported
+            ? "底层暂不支持"
+            : backend
+              ? "后台配套能力"
+              : meta
+                ? "对话工具已接通"
+                : "仅限人工操作"}
         </Badge>
       </div>
       <p className="muted">{evidence}</p>
-      <p className="muted">{conversationOperations.includes(p.operation)
-        ? p.operation === "message.Send" ? "控制自动回复的发送授权和系统要求，手动发送不受影响。" : "当前通过 OpenAI 兼容 / MiMo 对话工具调用生效；仅向范围和名单允许的当前会话提供工具。"
-        : "当前只保存授权策略和提示词，尚不会提供给模型调用；开启不代表已经可以执行。"}</p>
+      <p className="muted">
+        {!supported
+          ? "现有接口尚未实现，此项不会提供给模型。"
+          : backend
+            ? "由对应消息、媒体或任务流程调用，不作为模型独立工具。"
+            : !meta
+              ? "此能力不向聊天模型开放。"
+              : "支持 OpenAI 兼容、MiMo、Anthropic 和 Gemini 的工具调用。服务端逐步校验权限并保存真实操作回执。"}
+      </p>
       <div className="field-row">
         <span>允许大模型操作</span>
         <Toggle
           label="允许大模型操作"
           checked={p.enabled}
-          disabled={props.user.role !== "admin"}
+          disabled={
+            props.user.role !== "admin" || (!meta && !backend) || !supported
+          }
           onChange={(enabled) => set({ ...p, enabled })}
         />
       </div>
+      {meta && (
+        <>
+          <label>
+            允许发起操作的成员 ID
+            <textarea
+              rows={2}
+              value={actors}
+              onChange={(e) => setActors(e.target.value)}
+              placeholder="填写实际发言成员的微信 ID，以逗号分隔…"
+            />
+          </label>
+          <p className="muted">
+            {meta.legacy
+              ? "留空沿用现有当前会话授权；跨会话操作仍需明确填写发起人。"
+              : "新增能力需填写允许发起人的微信 ID；留空不会自动授权群内成员或私聊联系人。"}
+          </p>
+          {meta.scope === "target" && (
+            <div className="field-row">
+              <span>允许操作当前会话以外的目标</span>
+              <Toggle
+                label="允许跨会话操作"
+                checked={!!p.allow_cross}
+                disabled={props.user.role !== "admin"}
+                onChange={(allow_cross) => set({ ...p, allow_cross })}
+              />
+            </div>
+          )}
+          {meta.write && (
+            <div className="field-row">
+              <span>执行前由后台确认</span>
+              <Toggle
+                label="执行前由后台确认"
+                checked={!!p.confirm}
+                disabled={props.user.role !== "admin"}
+                onChange={(confirm) => set({ ...p, confirm })}
+              />
+            </div>
+          )}
+          {meta.scope === "self" && (
+            <p className="muted">
+              此能力作用于本人账号，影响范围请选择“当前账号”或“全部范围”。
+            </p>
+          )}
+          <details>
+            <summary>调用参数说明</summary>
+            <dl className="behavior-preview">
+              {Object.entries(meta.parameters.properties || {}).map(
+                ([key, def]) => (
+                  <div key={key}>
+                    <dt>
+                      {key}
+                      {meta.parameters.required?.includes(key)
+                        ? "（必填）"
+                        : ""}
+                    </dt>
+                    <dd>{def.description || def.type}</dd>
+                  </div>
+                ),
+              )}
+            </dl>
+          </details>
+        </>
+      )}
       <label>
         此操作的系统提示词
         <textarea
@@ -1151,8 +1296,7 @@ function BehaviorDetail({
         />
       </label>
       <p className="muted">
-        授权不会绕过 core 参数校验。未接入 AI
-        执行器的操作只保存策略，不会自动执行。
+        发起人、目标范围和名单必须同时通过。发起人名单用于工具操作；普通自动回复仍由会话回复设置决定。跨会话发送不会改变收件会话的自动回复设置。
       </p>
       {error && (
         <p role="alert" className="form-error">
@@ -1161,7 +1305,12 @@ function BehaviorDetail({
       )}
       <button
         className="button primary"
-        disabled={busy || props.user.role !== "admin"}
+        disabled={
+          busy ||
+          props.user.role !== "admin" ||
+          !supported ||
+          (!meta && !backend)
+        }
       >
         {busy ? "保存中…" : "保存行为配置"}
       </button>

@@ -264,7 +264,7 @@ func TestAutoReplyRecordEnvelopeBoundary(t *testing.T) {
 			http.Error(w, "bad fixture", 400)
 			return
 		}
-		if len(body.Messages) != 3 || !strings.Contains(body.Messages[1].Content, "〔本人〕：正常回复正文") || strings.Contains(body.Messages[1].Content, "fixture-model-invented-id") {
+		if len(body.Messages) != 4 || body.Messages[2].Role != "assistant" || body.Messages[2].Content != "正常回复正文" || strings.Contains(body.Messages[2].Content, "fixture-model-invented-id") {
 			t.Error("历史未合并为纯文本，或包装元数据仍在模型请求中")
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": wrapped}}}, "usage": map[string]int{"prompt_tokens": 8, "completion_tokens": 6}})
@@ -315,10 +315,10 @@ func TestAutoReplyRejectsUnprovidedTool(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]json.RawMessage
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if _, ok := body["tools"]; ok {
-			t.Error("普通闲聊仍有工具定义")
+		if _, ok := body["tools"]; !ok {
+			t.Error("已授权工具未提供给模型进行语义判断")
 		}
-		fmt.Fprint(w, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"contact__SetRemark","arguments":"{\"content\":\"synthetic\"}"}}]}}]}`)
+		fmt.Fprint(w, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"chatroom__SetName","arguments":"{\"content\":\"synthetic\"}"}}]}}]}`)
 	}))
 	defer remote.Close()
 	if err := s.store.putSecret("fixture-intent-vendor", "fixture-key"); err != nil {

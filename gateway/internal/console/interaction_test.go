@@ -78,6 +78,26 @@ func interactionRevoke(id string) string {
 	return `<sysmsg type="revokemsg"><revokemsg><newmsgid>` + id + `</newmsgid><replacemsg>同名成员撤回了一条消息</replacemsg></revokemsg></sysmsg>`
 }
 
+func TestBridgeVoiceCallUsesTrustedSDKType(t *testing.T) {
+	b, read := interactionBridge(t)
+	const raw = `<voipmsg type="VoIPBubbleMsg"><VoIPBubbleMsg><msg>对方已取消</msg><room_type>1</room_type><roomkey>fixture-call-secret</roomkey></VoIPBubbleMsg></voipmsg>`
+	if err := b.Record(interactionSDK(801, "fixture-call-peer", raw, message.TypeVOIP)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Record(interactionSDK(802, "fixture-call-peer", raw, message.TypeText)); err != nil {
+		t.Fatal(err)
+	}
+	st := read()
+	call := interactionFind(t, st, "fixture-call-peer", "801")
+	if call.Kind != "call" || call.Content != "[语音通话] 对方已取消" || call.Rich == nil || call.Rich.Status != "对方已取消" {
+		t.Fatal("真实通话类型未传递", call)
+	}
+	text := interactionFind(t, st, "fixture-call-peer", "802")
+	if text.Kind != "text" || text.Content != raw {
+		t.Fatal("用户普通文字被当成通话")
+	}
+}
+
 func TestBridgeIncomingMentionsPatAndQuote(t *testing.T) {
 	b, read := interactionBridge(t)
 	target := "fixture-interactions@chatroom"

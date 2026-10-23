@@ -204,6 +204,9 @@ func (s *Server) prepareReport(ctx context.Context, id string, q *ai.Request, in
 			err = s.collectReportMoments(ctx, id, &snap, info.Refresh, info)
 		} else {
 			for _, m := range st.Messages {
+				if strings.HasPrefix(m.Game, "private:") || strings.HasPrefix(m.Source, "plugin:playroom-private:") {
+					continue
+				}
 				if m.Target == q.Target && contextAvailable(m) {
 					if info.Range.Mode == "time" {
 						mt, e := time.Parse(time.RFC3339, m.Time)

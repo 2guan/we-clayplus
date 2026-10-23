@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	contactability "github.com/we-clay/we-clay/gateway/internal/ability/contact"
 	"github.com/we-clay/we-clay/gateway/internal/api"
 	chatroomapi "github.com/we-clay/we-clay/gateway/internal/api/chatroom"
 	"github.com/we-clay/we-clay/gateway/internal/coretest"
@@ -91,6 +92,7 @@ func TestGroupAdaptersAndCache(t *testing.T) {
 	api.GetCore = func() *api.Client { return conn }
 	contact.Instance = cachedRoom{}
 	defer func() { api.GetCore = oldCore; contact.Instance = oldContact }()
+	contactability.LoadCache(t.TempDir())
 	a := &ability{api: chatroomapi.Get(), cache: map[string]map[string]*sdk.Member{}}
 	const room = "test-room@chatroom"
 	created, err := a.Create([]string{"test-a", "test-b"})

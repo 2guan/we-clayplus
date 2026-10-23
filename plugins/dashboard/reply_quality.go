@@ -3,12 +3,37 @@ package dashboard
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/we-clay/we-clay/plugins/ai"
+	"github.com/we-clay/we-clay/plugins/contextcleaner"
 )
 
-func replyQualityError(text string) error {
+var replyRecordLine = regexp.MustCompile(`^(?:〔m[0-9a-f]{8}〕)?(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T])?\[?(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\]?\s+(.{1,80}?)[：:]`)
+var replyRoleLine = regexp.MustCompile(`(?i)^\[(?:assistant|user|system|developer)\]`)
+
+func replyQualityError(text string, conversation *ai.Conversation) error {
+	if strings.TrimSpace(text) == (writeIntentMissing{}).Error() {
+		return fmt.Errorf("模型复读内部操作拒绝提示，已停止发送")
+	}
+	names := map[string]bool{"本人": true, "assistant": true}
+	var selfAddress *regexp.Regexp
+	if conversation != nil {
+		c := conversation
+		if self := strings.TrimSpace(c.SelfName); self != "" {
+			selfAddress = regexp.MustCompile(`(?:^|[。！？!?；;\n])\s*@?` + regexp.QuoteMeta(self) + `[，,、\s]*(?:你|您)`)
+		}
+		names[strings.TrimSpace(c.SelfName)] = true
+		for _, name := range c.Names {
+			names[strings.TrimSpace(name)] = true
+		}
+	}
+	if contextcleaner.ReplyDecision(text) {
+		return fmt.Errorf("模型把回复判断或规划写入正文，已停止发送")
+	}
 	var lines []string
 	short, most := 0, 0
 	counts := map[string]int{}
@@ -29,6 +54,19 @@ func replyQualityError(text string) error {
 		}
 		if line == "" {
 			continue
+		}
+		if replyRoleLine.MatchString(line) {
+			return fmt.Errorf("模型把角色记录标签写入正文，已停止发送")
+		}
+		if selfAddress != nil && !strings.HasPrefix(line, ">") && selfAddress.MatchString(line) {
+			return fmt.Errorf("模型把本人当成其他成员称呼，已停止发送；请只用本人第一人称回复")
+		}
+		// 只检查已知发言人的记录前缀，不拦普通时间表达、引用和代码中的日志。
+		if match := replyRecordLine.FindStringSubmatch(line); len(match) == 2 {
+			name := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(match[1]), "〔本人〕"))
+			if names[name] {
+				return fmt.Errorf("模型把时间和发言人记录标签写入正文，已停止发送")
+			}
 		}
 		lines = append(lines, line)
 		if utf8.RuneCountInString(line) <= 4 {

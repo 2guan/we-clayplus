@@ -69,6 +69,12 @@ function Fields({
           return order(a) - order(b);
         })
         .map(([key, value]) => {
+          if (
+            path[0] === "music" &&
+            values.source !== "custom" &&
+            ["endpoint", "api_format", "key_env"].includes(key)
+          )
+            return null;
           const field = fields.find((f) => f.key === key);
           const parts = [...path, key];
           const id = `plugin-field-${JSON.stringify(parts)}`;
@@ -149,19 +155,38 @@ function Fields({
                 >
                   {field.options?.map((option) => (
                     <option key={option} value={option}>
-                      {option === "blacklist"
-                        ? "黑名单（排除名单内对象）"
-                        : option === "whitelist"
-                          ? "白名单（仅名单内对象）"
-                          : (
+                      {field.key === "default_mode" &&
+                      field.options?.includes("diagram")
+                        ? (
+                            {
+                              today: "今日新闻 · 当天单图",
+                              diagram: "今日图卦 · 昨日双图",
+                              rss: "RSS 新闻 · 标题与链接",
+                            } as Record<string, string>
+                          )[option] || option
+                        : field.key === "source" &&
+                            field.options?.includes("kuwo")
+                          ? (
                               {
-                                observe: "仅观察",
-                                standard: "标准防护",
-                                strict: "严格防护",
-                                silent: "静默跳过",
-                                notice: "发送固定说明",
+                                auto: "自动 · 酷我优先，抖音备用",
+                                kuwo: "酷我音乐",
+                                douyin: "抖音音乐",
+                                custom: "自定义服务",
                               } as Record<string, string>
-                            )[option] || option}
+                            )[option] || option
+                          : option === "blacklist"
+                            ? "黑名单（排除名单内对象）"
+                            : option === "whitelist"
+                              ? "白名单（仅名单内对象）"
+                              : (
+                                  {
+                                    observe: "仅观察",
+                                    standard: "标准防护",
+                                    strict: "严格防护",
+                                    silent: "静默跳过",
+                                    notice: "发送固定说明",
+                                  } as Record<string, string>
+                                )[option] || option}
                     </option>
                   ))}
                 </select>

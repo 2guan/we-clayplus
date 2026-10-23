@@ -46,6 +46,13 @@ type OSSConfig = config.OSSConfig
 // ConnectionState 只反映 core 的登录状态；不代表 gateway 缓存与插件已就绪。
 type ConnectionState = coreprocess.ConnectionState
 
+type coreSessionObserver struct {
+	clientReady  func(*api.Client, Config)
+	clientClosed func()
+	connection   func(ConnectionState)
+	ready        func()
+}
+
 // ErrAlreadyRunning 表示本进程已有一个 Run 正在启动、运行或退出。
 var ErrAlreadyRunning = errors.New("本进程已有 gateway 正在运行")
 
@@ -95,6 +102,29 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	if err != nil {
 		return err
 	}
+	if opts.coreConsoleControl && (cfg.Core == nil || !cfg.Core.KeepAlive || opts.withoutPlugins || opts.withoutDashboard || (cfg.Console != nil && cfg.Console.Disabled)) {
+		return errors.New("控制台 core 管理仅支持启用 Dashboard 的本机 KeepAlive core")
+	}
+	var consoleController *coreConsoleController
+	if opts.coreConsoleControl {
+		consoleController = newCoreConsoleController(runCtx, cfg, opts)
+		// Accessors remain unchanged until Dashboard.Close has drained HTTP handlers.
+		// This defer is registered before the Dashboard's Close defer below.
+		oldCore, oldConfig := api.GetCore, config.Get
+		api.GetCore = func() *api.Client {
+			if client := consoleController.client.Load(); client != nil {
+				return client
+			}
+			return &api.Client{}
+		}
+		config.Get = func() *config.Config {
+			if active := consoleController.config.Load(); active != nil {
+				return active
+			}
+			return &consoleController.cfg
+		}
+		defer func() { api.GetCore, config.Get = oldCore, oldConfig }()
+	}
 	// 基础插件早于 core 登录启动；显式 Mock 在下载和建连之前进入独立路径。
 	var bridge *consolebridge.Bridge
 	keepConsole := false
@@ -125,6 +155,20 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 	if cfg.Console != nil && cfg.Console.Mock {
 		return errors.New("Mock 模式需要启用基础插件，不能与 WithoutPlugins 同时使用")
 	}
+	if opts.coreConsoleControl {
+		return runCoreConsoleControl(consoleController, bridge)
+	}
+	return runCoreSession(runCtx, cancelCause, cfg, opts, bridge, keepConsole, nil)
+}
+
+// runCoreSession 只拥有本轮 core 连接和业务资源。控制台可跨轮次继续运行。
+func runCoreSession(runCtx context.Context, cancelCause context.CancelCauseFunc, cfg Config, opts runOptions, bridge *consolebridge.Bridge, keepConsole bool, observer *coreSessionObserver) (err error) {
+	cancel := func() { cancelCause(nil) }
+	defer cancel()
+	if bridge != nil {
+		// 管理模式复用控制台 Bridge；上一轮 WaitContactSync 已排空后台任务。
+		bridge.BeginContactSync()
+	}
 	var managed *coreprocess.Managed
 	if cfg.Core != nil {
 		if cfg.Core.KeepAlive {
@@ -149,17 +193,24 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 			defer func() { cancel(); managed.Close() }()
 		}
 	}
-	oldConfig := config.Get
-	config.Get = func() *config.Config { return &cfg }
-	defer func() { config.Get = oldConfig }()
+	if observer == nil {
+		oldConfig := config.Get
+		config.Get = func() *config.Config { return &cfg }
+		defer func() { config.Get = oldConfig }()
+	}
 	client, err := api.NewConfiguredClient(runCtx, &cfg)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	oldClient := api.GetCore
-	api.GetCore = func() *api.Client { return client }
-	defer func() { api.GetCore = oldClient }()
+	if observer == nil {
+		oldClient := api.GetCore
+		api.GetCore = func() *api.Client { return client }
+		defer func() { api.GetCore = oldClient }()
+	} else {
+		observer.clientReady(client, cfg)
+		defer observer.clientClosed()
+	}
 	if bridge != nil && managed != nil {
 		// 只有本次 Run 管理的 core 才开放重启；在线账号不能被此入口中断。
 		bridge.SetLoginRestarter(func(ctx context.Context) error {
@@ -199,6 +250,9 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 			return nil
 		}
 		lastConnection = &s
+		if observer != nil && observer.connection != nil {
+			observer.connection(s)
+		}
 		if h := opts.handlers.OnConnectionChanged; h != nil {
 			return invokeHandler("OnConnectionChanged", func() error { return h(runCtx, s) })
 		}
@@ -281,7 +335,12 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 				return err
 			}
 			if ready != nil {
-				return ready()
+				if err := ready(); err != nil {
+					return err
+				}
+			}
+			if observer != nil && observer.ready != nil {
+				observer.ready()
 			}
 			return nil
 		}

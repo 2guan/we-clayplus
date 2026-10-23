@@ -31,7 +31,7 @@ func (s *Server) buildQuote(st State, target, id, text string) (string, *RichMes
 			break
 		}
 	}
-	if original == nil || original.Status == "revoked" || original.Status == "unknown" || original.Status == "sending" {
+	if original == nil || !contextAvailable(*original) {
 		return "", nil, fmt.Errorf("引用原消息不存在、已撤回或尚未确认发送")
 	}
 	if _, err := strconv.ParseUint(id, 10, 64); !st.Mock && (err != nil || id == "0") {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -258,4 +259,39 @@ func (s *store) persistState(tx *sql.Tx, next, old State) error {
 	}
 	_, err = tx.Exec("INSERT INTO documents(id,body) VALUES('state',?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", raw)
 	return err
+}
+
+// appendLog 只复制、提交日志与主配置版本，不为每次回复判定遍历整个聊天归档。
+func (s *store) appendLog(account string, epoch uint64, level, component, target, message string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state.Account.ID != account || s.accountEpoch != epoch {
+		return false, nil
+	}
+	next := s.state
+	next.Logs = slices.Clone(s.state.Logs)
+	addLog(&next, level, component, message)
+	next.Logs[len(next.Logs)-1].Target = target
+	next.Revision++
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if err = saveLogs(tx, account, next.Logs, s.state.Logs); err != nil {
+		return false, err
+	}
+	raw, err := stateDocument(next)
+	if err != nil {
+		return false, err
+	}
+	if _, err = tx.Exec("INSERT INTO documents(id,body) VALUES('state',?) ON CONFLICT(id) DO UPDATE SET body=excluded.body", raw); err != nil {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	compactLogs(&next)
+	s.state = next
+	return true, nil
 }

@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/we-clay/we-clay/plugins/ai"
+	"github.com/we-clay/we-clay/plugins/toolbox"
 	"github.com/we-clay/we-clay/sdk/control"
 )
 
@@ -28,12 +30,19 @@ import (
 var assets embed.FS
 
 type Server struct {
+	attachmentMu    sync.Mutex // 大文件逐个落盘；普通文字与媒体发送不持有此锁。
+	newsCache       toolbox.NewsCache
 	cacheMu         sync.Mutex
 	reportMu        sync.Mutex
 	reportCacheMu   sync.Mutex // ponytail: 单实例串行补取缓存；并发量增加时改为按联系人加锁。
 	resendMu        sync.Mutex // 重发互斥，避免重复点击产生多次发送。
 	momentPublishMu sync.Mutex // 合并人工重复点击，避免并行发布。
 	businessMu      sync.Mutex
+	gameStartMu     sync.Mutex // 海龟汤与互动插件只在预留新局时共用短锁。
+	playMu          sync.Mutex
+	playWorkers     map[string]bool
+	soupMu          sync.Mutex
+	soupWorkers     map[string]bool
 	businessSlots   chan struct{}
 	businessPending chan struct{}
 	startedAt       time.Time // 仅记录本次服务启动，使用单调时钟计算，不写入持久化快照。
@@ -50,8 +59,12 @@ type Server struct {
 	attempts        map[string]attempt
 	eventMu         sync.Mutex
 	subscribers     map[chan struct{}]struct{}
+	replyBatchMu    sync.Mutex
+	replyBatches    map[string]*groupReplyBatch
 	taskMu          sync.Mutex
 	taskCancel      map[string]context.CancelFunc
+	taskWaiting     map[string]bool
+	taskWake        chan struct{}
 	streamMu        sync.Mutex
 	taskStreams     map[string]*taskStream
 	workers         sync.WaitGroup
@@ -77,10 +90,16 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 	}
 	ctx, cancel := context.WithCancel(parent)
 	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), startedAt: time.Now(), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
+	s.taskWaiting, s.taskWake = map[string]bool{}, make(chan struct{})
 	if host != nil {
 		s.host = debugHost{Host: host, s: s}
 	}
 	if err = s.restoreReportRefusals(); err != nil {
+		cancel()
+		st.db.Close()
+		return nil, err
+	}
+	if err = s.initAIActions(); err != nil {
 		cancel()
 		st.db.Close()
 		return nil, err
@@ -91,10 +110,19 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 		return nil, err
 	}
 	if err = s.restoreFileArchive(); err == nil {
+		err = s.restoreNoticeArchive()
+	}
+	if err == nil {
 		err = s.initBehaviors()
 	}
 	if err == nil {
 		err = s.initBusiness()
+	}
+	if err == nil {
+		err = s.initSoup()
+	}
+	if err == nil {
+		err = s.initPlayroom()
 	}
 	if err == nil {
 		err = s.initStickers()
@@ -174,6 +202,8 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		switch r.URL.Path {
+		case "/api/attachments/send":
+			s.sendAttachment(w, r)
 		case "/api/cache":
 			s.cacheAPI(w, r, u)
 		case "/api/logs":
@@ -206,8 +236,14 @@ func (s *Server) Handler() http.Handler {
 			s.messageThumbnail(w, r)
 		case "/api/wechat-image":
 			s.wechatImage(w, r)
+		case "/api/music-media":
+			s.musicMedia(w, r, u)
 		case "/api/wechat-login":
 			s.wechatLogin(w, r, u)
+		case "/api/wechat-login/verify-code", "/api/wechat-login/device-confirm":
+			s.wechatVerification(w, r, u)
+		case "/api/core":
+			s.coreControl(w, r, u)
 		case "/api/business":
 			s.businessAPI(w, r, u)
 		case "/api/safety", "/api/safety/test":
@@ -224,6 +260,18 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 			s.discoverModels(w, r, u)
+		case "/api/ai-actions":
+			s.aiActionsAPI(w, r, u)
+		case "/api/playroom":
+			s.playAPI(w, r, u)
+		case "/api/turtlesoup":
+			s.soupAPI(w, r, u)
+		case "/api/ai-action-catalog":
+			if r.Method != http.MethodGet {
+				writeError(w, 405, "请求方法不支持")
+				return
+			}
+			writeJSON(w, 200, map[string]any{"actions": control.AIActions, "backend": control.AIBackendOperations})
 		case "/api/behaviors":
 			if r.Method != http.MethodGet {
 				writeError(w, 405, "请求方法不支持")
@@ -237,6 +285,7 @@ func (s *Server) Handler() http.Handler {
 			}
 			state := s.store.snapshot()
 			// 全局刷新只携带近期摘要；日志页面独立查询，详情才读取原文。
+			state.Logs = slices.DeleteFunc(state.Logs, quietReplyLog)
 			if len(state.Logs) > 100 {
 				state.Logs = state.Logs[len(state.Logs)-100:]
 			}
@@ -539,7 +588,25 @@ func addLog(v *State, level, component, text string) {
 	}
 }
 func (s *Server) SetAccount(a Account) error {
-	if previous := s.store.snapshot().Account.ID; previous != "" && a.ID != "" && previous != a.ID {
+	if previous := s.store.snapshot(); previous.Account.ID != "" && a.ID != "" && previous.Account.ID != a.ID {
+		s.replyBatchMu.Lock()
+		batches := []*groupReplyBatch{}
+		for _, b := range s.replyBatches {
+			batches = append(batches, b)
+		}
+		s.replyBatchMu.Unlock()
+		for _, b := range batches {
+			s.cancelGroupReplyBatch(b, "账号切换，停止原账号的合并等待")
+		}
+		for _, t := range previous.Tasks {
+			if wechatReplySource(t.Source) && t.Kind == "chat" && (t.Status == "queued" || t.Status == "running") {
+				ids := t.ReplyBatch
+				if len(ids) == 0 {
+					ids = []string{t.ReplyTo}
+				}
+				s.recordReplyDecision(ai.Request{AccountID: previous.Account.ID, AccountEpoch: previous.AccountEpoch, Target: t.Target, BatchIDs: ids}, t.ID, "INFO", "取消", "账号切换，停止原账号的排队或生成任务")
+			}
+		}
 		// 切回同一账号也不能复活旧任务；取消令牌比账号ID比较更强。
 		s.taskMu.Lock()
 		for _, cancel := range s.taskCancel {
@@ -550,6 +617,9 @@ func (s *Server) SetAccount(a Account) error {
 	err := s.store.switchAccount(a)
 	if err == nil {
 		err = s.restoreFileArchive()
+	}
+	if err == nil {
+		err = s.restoreNoticeArchive()
 	}
 	s.notify()
 	return err
@@ -645,6 +715,16 @@ func (s *Server) Record(m Message) error {
 		return nil
 	}
 	m = resolveNotice(s.store.snapshot(), m)
+	route, isPlay := s.routePlay(m)
+	if isPlay {
+		m.Game = "playroom:" + route.Plugin
+		if route.Private {
+			m.Game = "private:playroom:" + route.Plugin
+		}
+	}
+	if !isPlay && s.soupCandidate(m) {
+		m.Game = "turtlesoup"
+	}
 	if err := s.prepareArticleThumbnails(&m); err != nil {
 		return err
 	}
@@ -718,6 +798,16 @@ func (s *Server) Record(m Message) error {
 		}
 	}
 	if added {
+		if isPlay {
+			s.replyDecision(m, "转交插件", "消息属于互动游戏流程，不触发普通聊天回复；发送结果见插件记录")
+			s.notify()
+			return s.enqueuePlay(m, route)
+		}
+		if m.Game == "turtlesoup" && !m.Self && m.Source == "wechat" {
+			s.replyDecision(m, "转交插件", "消息属于海龟汤游戏流程，不触发普通聊天回复；发送结果见插件记录")
+			s.notify()
+			return s.enqueueSoup(m)
+		}
 		if err = s.rememberExplicit(m); err != nil {
 			_ = s.store.change(func(v *State) error {
 				addLog(v, "WARN", "memory", "明确记忆请求未生效，请在AI记忆页核对")
@@ -727,7 +817,15 @@ func (s *Server) Record(m Message) error {
 		s.notify()
 		if !s.dispatchBusiness(m) {
 			s.autoReply(m)
+		} else {
+			s.replyDecision(m, "转交插件", "匹配业务插件触发规则，普通聊天 AI 不重复响应；具体处理结果见插件记录")
 		}
+	}
+	if !added && isPlay {
+		return s.enqueuePlay(m, route)
+	}
+	if !added && m.Game == "turtlesoup" && !m.Self && m.Source == "wechat" {
+		return s.enqueueSoup(m)
 	}
 	return nil
 }

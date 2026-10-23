@@ -60,11 +60,27 @@ type debugHost struct {
 
 func (h debugHost) Execute(ctx context.Context, command control.Command) (any, error) {
 	operations := map[string]string{"send": "发送消息", "revoke": "撤回消息", "forward": "转发消息", "remark": "修改备注", "group-name": "修改群名", "announcement": "修改群公告", "moment-like": "朋友圈点赞", "moment-unlike": "取消朋友圈点赞", "moment-comment": "朋友圈评论", "moment-post": "发布朋友圈", "moments-like": "朋友圈点赞", "moments-comment": "朋友圈评论", "moments-publish": "发布朋友圈", "moments-cover": "修改朋友圈封面", "friend-verify": "好友验证", "payment-claim": "收款"}
+	if command.Operation == "ai-typing" {
+		operations["ai-typing"] = "输入状态"
+	}
+	if command.Operation == "ai-action" {
+		operations["ai-action"] = command.ID
+	}
 	st := h.s.store.snapshot()
 	if settingText(st, "logging.level") != "DEBUG" || operations[command.Operation] == "" {
 		return h.Host.Execute(ctx, command)
 	}
 	fields := map[string]any{"operation_id": randomID(), "operation": command.Operation, "name": operations[command.Operation], "target": command.Target, "id": command.ID, "content": command.Content}
+	if command.Operation == "send" {
+		var params struct {
+			Mentions []string `json:"mentions"`
+			QuoteXML string   `json:"quote_xml"`
+		}
+		if json.Unmarshal(command.Params, &params) == nil {
+			fields["mentions"] = params.Mentions
+			fields["native_quote"] = params.QuoteXML != ""
+		}
+	}
 	h.s.debugRecord(st.Account.ID, st.AccountEpoch, command.Target, "系统操作开始", fields)
 	result, err := h.Host.Execute(ctx, command)
 	fields["status"] = "succeeded"

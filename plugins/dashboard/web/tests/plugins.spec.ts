@@ -11,7 +11,7 @@ test("插件卡片紧凑无标签，名称与图标同排", async ({ page }) => 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/#plugins");
   const card = page.locator(".plugin-card").first();
-  await expect(page.locator(".plugin-card")).toHaveCount(16);
+  await expect(page.locator(".plugin-card")).toHaveCount(30);
   await expect(card.locator(".badge, .capabilities")).toHaveCount(0);
   const bounds = await card.boundingBox();
   const name = await card.locator("h3").boundingBox();
@@ -140,7 +140,8 @@ test("使用入口在配置左侧，内置插件展示说明且可用键盘关�
     dialog.getByRole("heading", { name: "使用说明", exact: true }),
   ).toBeVisible();
   await expect(dialog).toContainText("在模型中心添加模型厂商");
-  await expect(dialog.locator(".plugin-trigger")).toHaveCount(0);
+  await expect(dialog.locator(".plugin-trigger")).toHaveCount(6);
+  await expect(dialog).toContainText("普通消息示例，不是固定命令");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 });

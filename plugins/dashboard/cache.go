@@ -77,6 +77,7 @@ func (s *Server) cacheFiles(kind string, days int, st State) ([]cacheFile, error
 			{"SELECT body FROM documents WHERE id LIKE 'account:%'", nil},
 			{"SELECT local FROM stickers WHERE local<>''", nil},
 			{"SELECT media FROM business_assets WHERE media<>''", nil},
+			{"SELECT body FROM business_previews WHERE used=0 AND time>=?", []any{time.Now().Add(-time.Hour).Format(time.RFC3339)}},
 		} {
 			rows, e := s.store.db.Query(q.sql, q.args...)
 			if e != nil {
@@ -245,6 +246,9 @@ func (s *Server) cacheAPI(w http.ResponseWriter, r *http.Request, user User) {
 			count, err = result.RowsAffected()
 		}
 	case "media", "temporary":
+		if q.Kind == "media" {
+			s.newsCache.Clear()
+		}
 		var files []cacheFile
 		files, err = s.cacheFiles(q.Kind, q.Days, st)
 		if err != nil {

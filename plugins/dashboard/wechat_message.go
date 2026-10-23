@@ -99,8 +99,13 @@ func ParseWechatMessage(m Message, raw string) (Message, bool) {
 	if len(raw) > 4<<20 {
 		if m.Kind == "system" {
 			m.Content = "[微信系统通知，请在微信中查看]"
+		} else if m.Kind == "call" {
+			m.Content = "[通话通知]"
 		}
 		return m, true
+	}
+	if m.Kind == "call" && strings.HasPrefix(strings.TrimSpace(raw), "<") {
+		return parseCallNotice(m, raw), true
 	}
 	var root struct {
 		XMLName xml.Name
@@ -124,11 +129,14 @@ func ParseWechatMessage(m Message, raw string) (Message, bool) {
 			Plain    string `xml:"sysmsgtemplate>content_template>plain"`
 		}
 		_ = xml.Unmarshal([]byte(raw), &notice)
+		template := systemTemplateContent(raw)
 		switch {
 		case notice.Replaced != "":
 			m.Content = notice.Replaced
-		case notice.Plain != "":
+		case strings.TrimSpace(notice.Plain) != "":
 			m.Content = notice.Plain
+		case template != "":
+			m.Content = template
 		case notice.Content != "":
 			m.Content = notice.Content
 		default:

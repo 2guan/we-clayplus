@@ -42,7 +42,7 @@ import {
 } from "@phosphor-icons/react";
 import type { Contact, Message, PageProps } from "./types";
 import { Avatar, Empty, Modal, Toggle } from "./ui";
-import { clock, dateTime, readFile } from "./api";
+import { clock, dateTime, readFile, sendAttachment } from "./api";
 import { EmojiPicker, AttachmentPreview, VoiceComposer } from "./ChatTools";
 import { mergeFileMessages } from "./fileMessages";
 import { compareContacts, matchesContact } from "./contactSearch";
@@ -82,7 +82,7 @@ function savePreference(key: string, value: string) {
 
 // 桌面保留三栏，手机以 mobileOpen 切换列表与聊天；会话草稿按目标 ID 隔离。
 export default function Chat(props: PageProps) {
-  const { state, act, notify } = props;
+  const { state, act, notify, refresh } = props;
   const [focused, setFocused] = useState(false);
   const messageScroll = useScrollActivity();
   const chatMessages = useMemo(() => mergeFileMessages(state.messages), [state.messages]);
@@ -384,8 +384,9 @@ export default function Chat(props: PageProps) {
   };
   // 文件选择与粘贴统一进入待发送队列，不在粘贴时自动发送。
   const addAttachments = (files: File[]) => {
-    if (files.some((file) => file.size > 16 * 1024 * 1024 || file.size === 0)) {
-      notify("附件不能为空，且每个文件不超过 16 MB");
+    const maxFileMB = Number(state.settings["attachments.max_file_mb"] || 500);
+    if (files.some((file) => file.size === 0 || file.size > (file.type.startsWith("image/") && !file.type.includes("svg") ? 16 : maxFileMB) * 1024 * 1024)) {
+      notify(`附件不能为空；普通文件每个不超过 ${maxFileMB} MB，图片不超过 16 MB`);
       return;
     }
     if (attachments.length + files.length > 8) {
@@ -431,7 +432,16 @@ export default function Chat(props: PageProps) {
       textarea.current?.focus();
     });
     // 各条独立等待回执；上一条未知或失败都不能阻止后续手动发送。
+    let largeFiles = Promise.resolve();
     const jobs = files.map(async (file) => {
+      if (file.size > 16 * 1024 * 1024) {
+        const job = largeFiles.then(async () => {
+          await sendAttachment(file, target);
+          void refresh().catch(() => {});
+        });
+        largeFiles = job.catch(() => {});
+        return job;
+      }
       let media: string;
       try {
         media = await readFile(file);
@@ -1579,7 +1589,7 @@ export function TargetForm({
               />
             </label>
             <small>
-              普通群消息的回复概率，仍受自动模式和全局生效规则限制。
+              群聊停顿 7 秒后合并，首条最多等待 15 秒。真实 @ 本人及 100% 均交给模型判断，模型可选择不回复；仍需自动模式并通过名单规则。
             </small>
           </div>
         )}

@@ -1,7 +1,7 @@
 // 文件名：BusinessWorkbench.tsx
 // 主要功能：提供业务插件预览、确认发送、计划编排、素材管理和执行记录，复用控制台主题与表单样式。
 // 作者：2guan
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowClockwise,
   Play,
@@ -11,7 +11,45 @@ import {
 } from "@phosphor-icons/react";
 import { Modal, Tabs, Empty, Toggle } from "./ui";
 import { dateTime, readFile, request } from "./api";
-import type { PageProps, Plugin } from "./types";
+import type { Contact, PageProps, Plugin } from "./types";
+
+const targetName = (contact: Contact) =>
+  contact.remark || contact.name || contact.id;
+const targetOption = (contact: Contact) =>
+  `${targetName(contact)} · ${contact.id}`;
+
+function TargetInput({
+  label,
+  contacts,
+  value,
+  onChange,
+}: {
+  label: string;
+  contacts: Contact[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const descriptionID = useId();
+  const selected = contacts.find((contact) => contact.id === value);
+  return (
+    <label>
+      {label}
+      <input
+        aria-label={label}
+        aria-describedby={selected ? descriptionID : undefined}
+        list="business-targets"
+        value={selected ? targetName(selected) : value}
+        onChange={(event) => {
+          const text = event.target.value;
+          const contact = contacts.find((item) => targetOption(item) === text);
+          onChange(contact?.id || text);
+        }}
+        placeholder="搜索群名、昵称或输入会话 ID…"
+      />
+      {selected && <small id={descriptionID}>ID：{selected.id}</small>}
+    </label>
+  );
+}
 
 export const businessIDs = [
   "cron",
@@ -41,6 +79,8 @@ type Input = {
   index: number;
 };
 type Result = {
+  images?: { media: string; mime: string; caption: string }[];
+  music_source?: string;
   preview?: string;
   text: string;
   mock: boolean;
@@ -48,7 +88,21 @@ type Result = {
   mime?: string;
   task?: string;
   count?: number;
-  items?: { title: string; url: string; artist?: string; media_url?: string }[];
+  music?: {
+    title: string;
+    artist?: string;
+    cover?: string;
+    lyric?: string;
+    audio_url: string;
+  };
+  items?: {
+    title: string;
+    url: string;
+    artist?: string;
+    media_url?: string;
+    cover?: string;
+    lyric?: string;
+  }[];
   ranking?: { name: string; count: number }[];
   words?: { name: string; count: number }[];
 };
@@ -235,9 +289,7 @@ export function BusinessWorkbench({
   const targetOptions = (
     <datalist id="business-targets">
       {state.contacts.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.remark || c.name}
-        </option>
+        <option key={c.id} value={targetOption(c)} />
       ))}
     </datalist>
   );
@@ -287,16 +339,12 @@ export function BusinessWorkbench({
                 void preview();
               }}
             >
-              <label>
-                目标会话
-                <input
-                  aria-label="目标会话"
-                  list="business-targets"
-                  value={input.target}
-                  onChange={(e) => change({ target: e.target.value })}
-                  placeholder="选择或输入会话 ID…"
-                />
-              </label>
+              <TargetInput
+                label="目标会话"
+                contacts={state.contacts}
+                value={input.target}
+                onChange={(target) => change({ target })}
+              />
               {archive && (
                 <>
                   <div className="business-pair">
@@ -364,6 +412,41 @@ export function BusinessWorkbench({
                   </select>
                 </label>
               )}
+              {plugin.id === "news" && (
+                <label>
+                  新闻类型
+                  <select
+                    aria-label="新闻类型"
+                    value={input.mode}
+                    onChange={(e) =>
+                      change({ mode: e.target.value, query: "" })
+                    }
+                  >
+                    <option value="">跟随插件配置</option>
+                    <option value="today">今日新闻 · 当天单图</option>
+                    <option value="diagram">今日图卦 · 昨日双图</option>
+                    <option value="rss">RSS 新闻 · 标题与链接</option>
+                  </select>
+                  <small>
+                    图片新闻可点击查看原图；图卦使用昨日内容，两张按顺序发送。
+                  </small>
+                </label>
+              )}
+              {plugin.id === "music" && (
+                <label>
+                  分享形式
+                  <select
+                    aria-label="分享形式"
+                    value={input.mode}
+                    onChange={(e) => change({ mode: e.target.value })}
+                  >
+                    <option value="">跟随插件配置</option>
+                    <option value="card">音乐卡片</option>
+                    <option value="link">文字链接</option>
+                    <option value="media">试听 / 音频文件</option>
+                  </select>
+                </label>
+              )}
               {input.mode === "asset" ? (
                 <label>
                   选择素材
@@ -382,7 +465,11 @@ export function BusinessWorkbench({
               ) : (
                 !["statistics", "wordcloud", "moyu_daily"].includes(
                   plugin.id,
-                ) && (
+                ) &&
+                (plugin.id !== "news" ||
+                  (input.mode ||
+                    String(state.settings["news.default_mode"] || "today")) ===
+                    "rss") && (
                   <label>
                     {(
                       {
@@ -520,6 +607,26 @@ export function BusinessWorkbench({
                       </button>
                     )}
                   </div>
+                  {result.music_source && (
+                    <p className="hint">音源：{result.music_source}</p>
+                  )}
+                  {result.images && (
+                    <div className="business-image-gallery">
+                      {result.images.map((x) => (
+                        <figure key={x.media}>
+                          <a
+                            href={x.media}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`查看原图：${x.caption}`}
+                          >
+                            <img src={x.media} alt={x.caption} loading="lazy" />
+                          </a>
+                          <figcaption>{x.caption}</figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  )}
                   {result.media &&
                     (result.mime?.startsWith("video/") ? (
                       <video controls src={result.media} />
@@ -529,6 +636,39 @@ export function BusinessWorkbench({
                       <img src={result.media} alt={`${plugin.name}生成结果`} />
                     ))}
                   <pre>{result.text}</pre>
+                  {result.music && (
+                    <div className="wechat-music">
+                      <div className="wechat-music-heading">
+                        {result.music.cover && (
+                          <img
+                            src={`/api/music-media?preview=1&id=${encodeURIComponent(result.preview || "")}&part=cover`}
+                            alt="专辑封面"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
+                        <div>
+                          <strong>{result.music.title}</strong>
+                          <p>{result.music.artist}</p>
+                        </div>
+                      </div>
+                      <audio
+                        controls
+                        preload="none"
+                        src={
+                          state.mock
+                            ? "/sample-audio.wav"
+                            : `/api/music-media?preview=1&id=${encodeURIComponent(result.preview || "")}&part=audio`
+                        }
+                        aria-label="歌曲试听"
+                      />
+                      {result.music.lyric && (
+                        <details>
+                          <summary>查看歌词</summary>
+                          <pre>{result.music.lyric}</pre>
+                        </details>
+                      )}
+                    </div>
+                  )}
                   {result.items?.map((item, i) => (
                     <div className="business-item" key={`${item.url}-${i}`}>
                       <div>
@@ -551,6 +691,30 @@ export function BusinessWorkbench({
                         >
                           预览媒体
                         </button>
+                      )}
+                      {plugin.id === "music" && (
+                        <div className="actions">
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void preview({ mode: "card", index: i })
+                            }
+                          >
+                            预览卡片
+                          </button>
+                          <button
+                            type="button"
+                            className="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void preview({ mode: "link", index: i })
+                            }
+                          >
+                            文字分享
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -740,7 +904,13 @@ export function BusinessWorkbench({
                     调用插件
                     <select
                       value={job.request.plugin}
-                      onChange={(e) => inputJob({ plugin: e.target.value })}
+                      onChange={(e) =>
+                        inputJob({
+                          plugin: e.target.value,
+                          mode: "",
+                          query: "",
+                        })
+                      }
                     >
                       <option value="text">发送文字</option>
                       {state.plugins
@@ -756,22 +926,43 @@ export function BusinessWorkbench({
                         ))}
                     </select>
                   </label>
-                  <label>
-                    任务目标
-                    <input
-                      list="business-targets"
-                      value={job.request.target}
-                      onChange={(e) => inputJob({ target: e.target.value })}
-                    />
-                  </label>
-                  <label>
-                    任务内容 / 查询参数
-                    <textarea
-                      value={job.request.query}
-                      rows={3}
-                      onChange={(e) => inputJob({ query: e.target.value })}
-                    />
-                  </label>
+                  <TargetInput
+                    label="任务目标"
+                    contacts={state.contacts}
+                    value={job.request.target}
+                    onChange={(target) => inputJob({ target })}
+                  />
+                  {job.request.plugin === "news" && (
+                    <label>
+                      计划新闻类型
+                      <select
+                        aria-label="计划新闻类型"
+                        value={job.request.mode}
+                        onChange={(e) =>
+                          inputJob({ mode: e.target.value, query: "" })
+                        }
+                      >
+                        <option value="">跟随插件配置</option>
+                        <option value="today">今日新闻 · 当天单图</option>
+                        <option value="diagram">今日图卦 · 昨日双图</option>
+                        <option value="rss">RSS 新闻 · 标题与链接</option>
+                      </select>
+                    </label>
+                  )}
+                  {(job.request.plugin !== "news" ||
+                    (job.request.mode ||
+                      String(
+                        state.settings["news.default_mode"] || "today",
+                      )) === "rss") && (
+                    <label>
+                      任务内容 / 查询参数
+                      <textarea
+                        value={job.request.query}
+                        rows={3}
+                        onChange={(e) => inputJob({ query: e.target.value })}
+                      />
+                    </label>
+                  )}
                   {["statistics", "wordcloud", "digest"].includes(
                     job.request.plugin,
                   ) && (

@@ -54,3 +54,36 @@ func TestOutputPreservesRefusalAndCode(t *testing.T) {
 		t.Fatal("泄露了未闭合推理")
 	}
 }
+
+func TestOutputSilenceReasonAndBoundaries(t *testing.T) {
+	c := Config{Enabled: true, Thinking: true, Silence: true}
+	for _, text := range []string{"NO_REPLY: 非本人对话", "No_reply：非本人对话", "[NO_REPLY] 原因：非本人对话", "NO_REPLY\n沉默原因：非本人对话", "<think>hidden reasoning</think>NO_REPLY: 非本人对话"} {
+		body, reason, silent := OutputWithReason(c, text, true)
+		if body != "" || reason != "模型判断：非本人对话" || !silent {
+			t.Fatal(body, reason, silent)
+		}
+	}
+	if body, reason, silent := OutputWithReason(c, "[NO_REPLY] 沉默原因：重复告别、话题已结束", true); body != "" || reason != "模型判断：话题已结束" || !silent {
+		t.Fatal("带说明文字的沉默协议外泄", body, reason, silent)
+	}
+	for _, text := range []string{"NO_REPLY", "[silent]", "NO_REPLY: arbitrary private details\nnot for logs"} {
+		body, reason, silent := OutputWithReason(c, text, true)
+		if body != "" || reason != "模型未提供具体原因" || !silent {
+			t.Fatal(body, reason, silent)
+		}
+	}
+	for _, text := range []string{"NO_REPLY 是一个标记。", "NO_REPLY是一个标记。", "示例：NO_REPLY: 非本人对话", "```text\nNO_REPLY: 非本人对话\n```"} {
+		body, reason, silent := OutputWithReason(c, text, true)
+		if body != text || reason != "" || silent {
+			t.Fatal(body, reason, silent)
+		}
+	}
+	text := "NO_REPLY: 非本人对话"
+	for _, chat := range []bool{false, true} {
+		c.Enabled = !chat
+		body, reason, silent := OutputWithReason(c, text, chat)
+		if body != text || reason != "" || silent {
+			t.Fatal("非聊天或关闭清洗时误处理", body, reason, silent)
+		}
+	}
+}

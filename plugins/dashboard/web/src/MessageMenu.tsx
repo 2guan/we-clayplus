@@ -28,7 +28,7 @@ export function MessageMenu({
   const root = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
   const sentAt = Date.parse(target.message.time);
-  const canRevoke = target.message.self && target.message.status === "sent" &&
+  const canRevoke = target.message.kind !== "call" && target.message.self && target.message.status === "sent" &&
     Number.isFinite(sentAt) && now >= sentAt && now - sentAt <= 120000;
   // 菜单保持打开时也在两分钟边界隐藏撤回，避免一直显示过期入口。
   useEffect(() => {
@@ -78,7 +78,7 @@ export function MessageMenu({
       id: "quote",
       label: "引用",
       icon: ChatCircleDots,
-      disabled: ["sending", "unknown", "revoked"].includes(
+      disabled: target.message.kind === "call" || ["sending", "unknown", "revoked"].includes(
         target.message.status,
       ),
     },

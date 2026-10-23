@@ -237,8 +237,35 @@ func (a *ability) Send(msg *sdk.Message) (*sdk.Send_Response, error) {
 			result.CreateTime = item.GetCreateTime()
 			clientID = item.GetClientId()
 		}
-	case sdk.TypeApplication.Code, sdk.TypeAppChatRecord.Code, sdk.TypeAppMusic.Code:
-		return nil, sdkroot.NotImplemented("message.Send: 通用应用/聊天记录/音乐")
+	case sdk.TypeApplication.Code, sdk.TypeAppChatRecord.Code:
+		return nil, sdkroot.NotImplemented("message.Send: 通用应用/聊天记录")
+	case sdk.TypeAppMusic.Code:
+		data := msg.GetApp()
+		if data == nil || data.GetSubType() != 76 {
+			return nil, errors.New("缺少音乐卡片参数")
+		}
+		music, e := sdk.ParseMusicXML(data.GetXml())
+		if e != nil {
+			return nil, e
+		}
+		raw, e := music.XML()
+		if e != nil {
+			return nil, e
+		}
+		resp, e := a.api.SendApp(receiver, raw, "", 76)
+		if e != nil {
+			return nil, e
+		}
+		if resp == nil || resp.GetBaseResponse() == nil {
+			return nil, errors.New("音乐消息回执缺失，结果未确认")
+		}
+		if resp.GetBaseResponse().GetCode() != 0 {
+			return nil, fmt.Errorf("音乐发送失败，返回码 %d", resp.GetBaseResponse().GetCode())
+		}
+		result.NewId = resp.GetNewId()
+		result.CreateTime = uint32(resp.GetCreateTime())
+		stringClientID = resp.GetClientId()
+		clientID = numericClientID(stringClientID)
 	case sdk.TypeAppQuote.Code:
 		data := msg.GetApp()
 		if data == nil || data.GetSubType() != 57 {

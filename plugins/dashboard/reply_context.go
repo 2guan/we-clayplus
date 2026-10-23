@@ -23,7 +23,8 @@ func replyEvidenceHash(m Message) string {
 		MentionAll     bool
 		Interaction    *contextcleaner.Interaction
 		Rich           *RichMessage
-	}{memorySource(m), m.Source, m.Sender, m.Mentions, m.MentionAll, m.Interaction, m.Rich})
+		Game           string
+	}{memorySource(m), m.Source, m.Sender, m.Mentions, m.MentionAll, m.Interaction, m.Rich, messageGame(m)})
 	return fmt.Sprintf("%x", sha256.Sum256(raw))
 }
 
@@ -36,6 +37,9 @@ func replyLocation(st State) *time.Location {
 }
 
 func contextAvailable(m Message) bool {
+	if strings.HasPrefix(m.Game, "private:") || strings.HasPrefix(m.Source, "plugin:playroom-private:") {
+		return false
+	}
 	if strings.HasPrefix(m.Status, "revoked") || slices.Contains([]string{"unknown", "sending", "failed", "deleted"}, m.Status) || m.Source == "guard" {
 		return false
 	}
@@ -43,6 +47,16 @@ func contextAvailable(m Message) bool {
 		return false
 	}
 	return m.Kind != "system" || m.Interaction != nil && m.Interaction.Kind == "pat"
+}
+
+func messageGame(m Message) string {
+	if m.Game != "" {
+		return m.Game
+	}
+	if m.Source == "plugin:turtlesoup" {
+		return "turtlesoup"
+	}
+	return ""
 }
 
 func contextMessage(st State, m Message) contextcleaner.Message {
@@ -68,11 +82,12 @@ func contextMessage(st State, m Message) contextcleaner.Message {
 	if id == "" {
 		name = "未知发言人"
 	}
-	out := contextcleaner.Message{ID: m.ID, Session: m.Target, Role: role, SenderID: id, Sender: name, ActorType: actor, Source: m.Source, Kind: m.Kind, Text: m.Content, Time: m.Time, Status: m.Status, Mentions: append([]string(nil), m.Mentions...), MentionAll: m.MentionAll, Interaction: m.Interaction}
+	out := contextcleaner.Message{Game: messageGame(m), ID: m.ID, Session: m.Target, Role: role, SenderID: id, Sender: name, ActorType: actor, Source: m.Source, Kind: m.Kind, Text: m.Content, Time: m.Time, Status: m.Status, Mentions: append([]string(nil), m.Mentions...), MentionAll: m.MentionAll, Interaction: m.Interaction}
 	if m.Rich != nil && m.Rich.QuoteID != "" {
 		out.Quote = &contextcleaner.Reference{ID: m.Rich.QuoteID, Sender: m.Rich.Author, Text: m.Rich.Quote}
 		if m.Rich.QuoteUnavailable {
 			out.Quote.Text = "[引用原消息已撤回或删除]"
+			return out
 		}
 		for _, original := range st.Messages {
 			if original.ID == m.Rich.QuoteID && original.Target == m.Target && !contextAvailable(original) {
@@ -82,6 +97,10 @@ func contextMessage(st State, m Message) contextcleaner.Message {
 			if original.ID == m.Rich.QuoteID && original.Target == m.Target && contextAvailable(original) {
 				out.Quote.SenderID = original.SenderID
 				out.Quote.Sender = original.Sender
+				if original.Self {
+					out.Quote.SenderID = st.Account.ID
+					out.Quote.Sender = st.Account.Name
+				}
 				out.Quote.Text = "" // 已核实正文只在References中提供一次。
 				out.Quote.Verified = true
 				break
@@ -89,6 +108,24 @@ func contextMessage(st State, m Message) contextcleaner.Message {
 		}
 	}
 	return out
+}
+
+// 只使用协议 @ 与同会话已核实的本人原消息，不按昵称或引用展示文字猜测指向。
+func replyDirectedAtSelf(st State, m contextcleaner.Message) string {
+	if st.Account.ID == "" {
+		return ""
+	}
+	if slices.Contains(m.Mentions, st.Account.ID) {
+		return "@ 本人"
+	}
+	if m.Quote != nil && m.Quote.Verified && m.Quote.SenderID == st.Account.ID {
+		for _, original := range st.Messages {
+			if original.ID == m.Quote.ID && original.Target == m.Session && original.Self && contextAvailable(original) {
+				return "引用本人消息"
+			}
+		}
+	}
+	return ""
 }
 
 func buildReplyContext(st State, current Message, now time.Time) (ai.Conversation, []contextcleaner.Message) {
@@ -192,6 +229,14 @@ func settingOverride(st State, target, key string) string {
 	return v
 }
 
+// 只判断微信真实 @ 元数据；同时 @ 本人、@所有人或手写昵称不属于仅 @ 他人。
+func skipOtherGroupMention(st State, m Message) bool {
+	if st.Settings["reply.skip_other_mentions"] == false || st.Account.ID == "" || m.MentionAll || !memoryGroup(st, m.Target) || slices.Contains(m.Mentions, st.Account.ID) {
+		return false
+	}
+	return slices.ContainsFunc(m.Mentions, func(id string) bool { return id != "" && id != "notify@all" && id != "@all" })
+}
+
 // 在每次候选模型调用前复验来源与权限，故障切换也不使用旧账号或已撤回资料。
 func (s *Server) refreshReplyContext(q ai.Request) (ai.Request, error) {
 	if q.Conversation == nil {
@@ -214,7 +259,17 @@ func (s *Server) refreshReplyContext(q ai.Request) (ai.Request, error) {
 	if !found || !contextAvailable(m) {
 		return q, fmt.Errorf("当前消息已撤回或不可用")
 	}
+	if q.Source == "wechat" && skipOtherGroupMention(st, m) {
+		return q, fmt.Errorf("消息仅 @ 其他成员，已停止自动回复")
+	}
 	conv, history := buildReplyContext(st, m, time.Now())
+	if len(q.BatchIDs) > 1 {
+		pending, err := pendingBatchMessages(st, q, m.ID)
+		if err != nil {
+			return q, err
+		}
+		conv.Pending = pending
+	}
 	if q.Source == "wechat-proactive" {
 		conv, history = buildReplyContext(st, Message{Target: q.Target}, time.Now())
 		conv.Current = contextMessage(st, m)
@@ -224,6 +279,7 @@ func (s *Server) refreshReplyContext(q ai.Request) (ai.Request, error) {
 	}
 	q.Conversation = &conv
 	q.Context = history
+	trimBatchContext(st, &q)
 	if q.Source != "wechat-proactive" && memoryExplicitPrefix(m.Content) {
 		conv.MemoryWrite = "not_saved"
 		items, err := s.memoryList(st.Account.ID, MemoryFilter{Target: m.Target})
@@ -274,7 +330,16 @@ func (s *Server) validateReplyEvidence(q ai.Request) error {
 	if st.Account.ID != q.AccountID || q.AccountEpoch != st.AccountEpoch {
 		return fmt.Errorf("账号已切换，回复结果已丢弃")
 	}
+	if q.Source == "wechat" && skipOtherGroupMention(st, Message{Target: q.Target, Mentions: q.Conversation.Current.Mentions, MentionAll: q.Conversation.Current.MentionAll}) {
+		return fmt.Errorf("消息仅 @ 其他成员，回复结果已丢弃")
+	}
 	ids := []string{q.Conversation.Current.ID}
+	for _, v := range q.Conversation.Pending {
+		if q.Source == "wechat" && skipOtherGroupMention(st, Message{Target: q.Target, Mentions: v.Mentions, MentionAll: v.MentionAll}) {
+			return fmt.Errorf("合并消息仅 @ 其他成员，回复结果已丢弃")
+		}
+		ids = append(ids, v.ID)
+	}
 	for _, v := range q.Context {
 		ids = append(ids, v.ID)
 	}
@@ -316,6 +381,7 @@ func (s *Server) validateReplyEvidence(q ai.Request) error {
 }
 
 type replyTrace struct {
+	BatchIDs       []string                `json:"batch_ids,omitempty"`
 	CurrentID      string                  `json:"current_id"`
 	HistoryIDs     []string                `json:"history_ids"`
 	ReferenceIDs   []string                `json:"reference_ids"`
@@ -329,7 +395,7 @@ func (s *Server) saveReplyTrace(id string, q ai.Request, model string, changes [
 	if q.Conversation == nil {
 		return nil
 	}
-	v := replyTrace{CurrentID: q.Conversation.Current.ID, Model: model, Changes: changes, HistoryIDs: []string{}, ReferenceIDs: []string{}, MemoryIDs: []string{}, MemoryVersions: []int{}}
+	v := replyTrace{BatchIDs: slices.Clone(q.BatchIDs), CurrentID: q.Conversation.Current.ID, Model: model, Changes: changes, HistoryIDs: []string{}, ReferenceIDs: []string{}, MemoryIDs: []string{}, MemoryVersions: []int{}}
 	for _, m := range q.Context {
 		v.HistoryIDs = append(v.HistoryIDs, m.ID)
 	}

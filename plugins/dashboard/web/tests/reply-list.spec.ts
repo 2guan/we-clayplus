@@ -23,3 +23,16 @@ test('回复策略默认空黑名单，按模式显示名单',async({page,reques
  await expect(page.getByRole('textbox',{name:'白名单',exact:true})).toBeVisible();
  await expect(page.getByRole('textbox',{name:'黑名单',exact:true})).toHaveCount(0);
 });
+
+test('仅@他人时不插话默认开启，可保存关闭', async ({ page, request }) => {
+ await request.post('/api/action', { data: { kind: 'mock-reset' } });
+ await page.goto('/#models?tab=global');
+ const toggle = page.getByRole('switch', { name: '群聊 @ 他人时不插话', exact: true });
+ await expect(toggle).toBeChecked();
+ await toggle.click();
+ const card = page.locator('.settings-card').filter({ has: page.getByRole('heading', { name: '自动回复规则', exact: true }) });
+ await card.getByRole('button', { name: '保存设置', exact: true }).click();
+ await expect.poll(async () => (await (await request.get('/api/state')).json()).settings['reply.skip_other_mentions']).toBe(false);
+ await page.reload();
+ await expect(toggle).not.toBeChecked();
+});

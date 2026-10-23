@@ -48,6 +48,23 @@ type managedService struct {
 	corewire.UnimplementedCoreServiceServer
 	data, mode string
 	views      atomic.Int32
+	retried    atomic.Bool
+}
+
+const fixtureVerificationURL = "https://fixture.invalid/device-confirm?ticket=offline-test-only"
+
+func (s *managedService) recordLoginRequest(r *corewire.CallRequest) {
+	record, err := json.Marshal(struct {
+		Method string          `json:"method"`
+		Path   string          `json:"path"`
+		Body   json.RawMessage `json:"body"`
+	}{r.GetMethod(), r.GetPath(), r.GetBody()})
+	if err != nil {
+		return
+	}
+	name := strings.TrimPrefix(r.GetPath(), "/api/login/")
+	name = strings.ReplaceAll(name, "/", "-")
+	_ = os.WriteFile(filepath.Join(s.data, "fixture-"+name+".json"), record, 0600)
 }
 
 func (s *managedService) Invoke(ctx context.Context, r *corewire.CallRequest) (*corewire.CallResponse, error) {
@@ -58,12 +75,58 @@ func (s *managedService) Invoke(ctx context.Context, r *corewire.CallRequest) (*
 	body := `{"code":0,"data":[]}`
 	switch r.GetPath() {
 	case "/api/login/view":
-		body = fmt.Sprintf(`{"code":0,"data":{"online":%t}}`, s.views.Add(1) > 1 && s.mode != "wait")
+		reads := s.views.Add(1)
+		switch s.mode {
+		case "paused":
+			if s.retried.Load() {
+				body = `{"code":0,"data":{"online":true,"phase":"online","status":"已登录"}}`
+			} else {
+				body = `{"code":0,"data":{"online":false,"phase":"login_failed","status":"登录流程已暂停：离线测试","qr":"data:image/png;base64,Zml4dHVyZQ=="}}`
+			}
+		case "offline":
+			body = fmt.Sprintf(`{"code":0,"data":{"online":%t,"phase":"online"}}`, reads == 2)
+		case "verification-pin":
+			body = `{"code":0,"data":{"online":false,"phase":"verification_required","status":"请输入验证码","pin_required":true,"verify_url":"` + fixtureVerificationURL + `"}}`
+		case "verification-device":
+			body = `{"code":0,"data":{"online":false,"phase":"verification_required","status":"请确认设备","pin_required":false,"verify_url":"` + fixtureVerificationURL + `"}}`
+		default:
+			body = fmt.Sprintf(`{"code":0,"data":{"online":%t}}`, reads > 1 && s.mode != "wait")
+		}
+	case "/api/login/retry":
+		s.retried.Store(true)
+		body = `{"code":0,"data":"accepted"}`
+	case "/api/login/verification-code":
+		if s.mode != "verification-pin" {
+			return nil, status.Error(codes.FailedPrecondition, "unexpected verification code")
+		}
+		s.recordLoginRequest(r)
+		body = `{"code":0,"data":{"accepted":true}}`
+	case "/api/login/device-confirm/get", "/api/login/device-confirm/ok":
+		if s.mode != "verification-device" {
+			return nil, status.Error(codes.FailedPrecondition, "unexpected device confirmation")
+		}
+		if r.GetPath() == "/api/login/device-confirm/ok" {
+			if _, err := os.Stat(filepath.Join(s.data, "fixture-device-confirm-get.json")); err != nil {
+				return nil, status.Error(codes.FailedPrecondition, "device confirmation order is wrong")
+			}
+		}
+		s.recordLoginRequest(r)
+		body = `{"code":0,"data":{"accepted":true}}`
 	case "/api/user/profile":
 		if s.views.Load() < 2 {
 			return nil, status.Error(codes.FailedPrecondition, "login not ready")
 		}
 		body = `{"code":0,"data":{"baseResponse":{"code":0},"userInfo":{"userName":"synthetic-managed-account"}}}`
+	case "/api/contacts":
+		file, err := os.OpenFile(filepath.Join(s.data, "fixture-contact-sync-count"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "record contact sync")
+		}
+		_, err = file.WriteString("x\n")
+		_ = file.Close()
+		if err != nil {
+			return nil, status.Error(codes.Internal, "record contact sync")
+		}
 	}
 	return &corewire.CallResponse{Status: 200, ContentType: "application/json", Body: []byte(body)}, nil
 }

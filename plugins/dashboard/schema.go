@@ -52,14 +52,15 @@ func Schema() []Group {
 		{"reply", "自动回复规则", "控制自动回复的全局边界。手动发送不会切换会话模式；单个群的回复概率可在会话设置中覆盖。", "models", false, "下次请求", []Field{
 			choice("default_friend", "好友默认模式", "未单独设置的好友跟随此项；自动仍受总开关和生效目标限制。", "人工", "人工", "自动"),
 			choice("default_group", "群聊默认模式", "未单独设置的群聊跟随此项；自动仍受总开关、目标及触发规则限制。", "人工", "人工", "自动"),
-			flag("enabled", "自动回复", "启用后还需会话处于自动模式、通过名单规则且有可用模型。", false),
+			flag("enabled", "自动回复", "默认开启；启用后还需会话处于自动模式、通过名单规则且有可用模型。", true),
 			choice("list_mode", "名单模式", "好友和群聊共用；黑名单模式下，未被排除且开启自动的会话可回复。", "黑名单", "黑名单", "白名单"),
 			entry("blacklist", "黑名单", "填写不允许自动回复的会话 ID，以逗号分隔；留空不排除任何会话。", ""),
 			entry("targets", "白名单", "仅白名单模式使用；填写允许自动回复的会话 ID，以逗号分隔。", ""),
 			choice("private", "私聊触发", "仅对通过名单规则的会话生效。", "全部消息", "全部消息", "关键词", "关闭"),
 			entry("keywords", "触发关键词", "多个关键词使用逗号分隔。", ""),
-			number("probability", "普通群消息回复概率 (%)", "仅对通过名单规则的自动群聊生效。", 0, 0, 100),
-			number("cooldown", "回复冷却 (秒)", "同一会话自动回复的最短间隔。", 15, 0, 3600),
+			number("probability", "普通群消息回复概率 (%)", "真实 @ 本人始终触发；100% 时每批交给模型判断，不受冷却限制。群聊停顿 7 秒后合并，首条最多等待 15 秒；模型可判断不回复。仍需自动模式并通过名单规则。", 0, 0, 100),
+			flag("skip_other_mentions", "群聊 @ 他人时不插话", "默认开启：真实 @ 其他成员且未 @ 本人时跳过自动回复，100% 概率也不例外；同时 @ 本人仍触发。", true),
+			number("cooldown", "回复冷却 (秒)", "普通消息回复的最短间隔；真实 @ 本人及 100% 的群消息不受此项限制。", 15, 0, 3600),
 			number("max_parts", "每轮最多消息数", "通常回复 1–3 条；双换行分条，语音和图片也计入上限。", 5, 1, 5),
 			number("interval_ms", "分条发送间隔 (毫秒)", "逐条发送；期间人工接管立即停止。", 700, 0, 5000),
 			flag("emoji_enabled", "允许自动发送表情", "只使用表情库中填写含义并授权 AI 的表情，每轮最多一张。", false),
@@ -165,6 +166,9 @@ func Schema() []Group {
 			entry("footer", "页脚说明", "仅支持纯文本。", "we-clay · 让沟通自然发生"),
 			entry("owner", "Owner 微信 ID", "保存唯一 ID，不使用昵称作为鉴权依据。", ""),
 		}},
+		{"attachments", "附件与传输", "控制微信聊天中普通文件附件的大小。图片、语音和模型输入仍按各自限制处理。", "system", true, "立即生效", []Field{
+			number("max_file_mb", "单个文件大小上限 (MB)", "默认 500 MB，可设置 1–1024 MB；按 1 MB = 1024 × 1024 字节计算。当前 core 发送链路最多 32 MB，超出会在发送前明确拒绝；完整大文件发送需另行升级 core。", 500, 1, 1024),
+		}},
 		{"storage", "数据与保留", "清理只影响控制台数据，不删除微信账号会话。", "system", true, "下次清理", []Field{
 			number("messages", "聊天记录保留 (天)", "归档从本系统接入时开始。", 90, 1, 3650),
 			number("media", "媒体保留 (天)", "清理后历史消息仍保留附件说明。", 30, 1, 365),
@@ -190,7 +194,7 @@ func Schema() []Group {
 	groups = append(groups, safetyGroups()...)
 	groups = append(groups, businessGroups()...)
 	// 尚未接通执行器的字段也提供完整表单，但明确标注仅预览；真实模式拒绝修改它们。
-	live := strings.Fields("reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.enabled memory.direct_enabled memory.scan_enabled memory.timezone memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer logging.level security.session_hours security.login_attempts")
+	live := strings.Fields("attachments.max_file_mb reply.skip_other_mentions reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.enabled memory.direct_enabled memory.scan_enabled memory.timezone memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer logging.level security.session_hours security.login_attempts")
 	for i := range groups {
 		for j := range groups[i].Fields {
 			groups[i].Fields[j].Preview = groups[i].Area != "plugins" && !slices.Contains(live, groups[i].ID+"."+groups[i].Fields[j].Key)
@@ -216,6 +220,11 @@ func validateSettings(group string, values map[string]any) error {
 			continue
 		}
 		for key, value := range values {
+			if group == "attachments" && key == "max_file_mb" {
+				if n, ok := value.(float64); !ok || n != math.Trunc(n) {
+					return fmt.Errorf("文件大小上限必须是整数 MB")
+				}
+			}
 			if group == "memory" && key == "timezone" {
 				zone, ok := value.(string)
 				if !ok || zone == "" {

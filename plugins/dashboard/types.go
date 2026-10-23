@@ -6,6 +6,7 @@ package dashboard
 import "encoding/json"
 import "github.com/we-clay/we-clay/sdk/control"
 import "github.com/we-clay/we-clay/plugins/contextcleaner"
+import sdkmessage "github.com/we-clay/we-clay/sdk/message"
 
 // ID 始终用字符串传给浏览器，防止 64 位微信 ID 丢失精度。
 type Contact struct {
@@ -31,6 +32,8 @@ type Contact struct {
 	Time          string   `json:"time"`
 }
 type Message struct {
+	Music         *sdkmessage.Music           `json:"music,omitempty"`
+	Game          string                      `json:"game,omitempty"` // 公开游戏过程在上下文中显式标记，不作为长期记忆来源。
 	MentionAll    bool                        `json:"mention_all,omitempty"`
 	Interaction   *contextcleaner.Interaction `json:"interaction,omitempty"`
 	Mentions      []string                    `json:"mentions,omitempty"`       // 保存实际提醒对象，供失败重发复用。
@@ -122,23 +125,25 @@ type InsightInfo struct {
 }
 
 type Task struct {
-	ReplyTo        string       `json:"reply_to,omitempty"`        // 自动回复对应的归档消息，重试时重新验证。
-	ReplyRetryable bool         `json:"reply_retryable,omitempty"` // 仅尚未执行微信操作的模型失败可重新生成。
-	RetryOf        string       `json:"retry_of,omitempty"`
-	AutoRetries    int          `json:"auto_retries,omitempty"`
-	Insight        *InsightInfo `json:"insight,omitempty"`
-	Source         string       `json:"source,omitempty"`   // 区分微信自动回复与手动模型测试。
-	Delivery       string       `json:"delivery,omitempty"` // 语音发送独立于合成任务，阻止重复及未知结果重试。
-	ID             string       `json:"id"`
-	Kind           string       `json:"kind"`
-	Name           string       `json:"name"`
-	Status         string       `json:"status"`
-	Created        string       `json:"created"`
-	Result         string       `json:"result"`
-	Error          string       `json:"error,omitempty"`
-	Input          string       `json:"input"`
-	Model          string       `json:"model"`
-	Target         string       `json:"target,omitempty"`
+	ReplyMergedInto string       `json:"reply_merged_into,omitempty"` // 尚未生成的同群批次合并目标，不作为新的回复阻止父任务重试。
+	ReplyBatch      []string     `json:"reply_batch,omitempty"`       // 合并来源；手动重试重新读取归档。
+	ReplyTo         string       `json:"reply_to,omitempty"`          // 自动回复对应的归档消息，重试时重新验证。
+	ReplyRetryable  bool         `json:"reply_retryable,omitempty"`   // 仅尚未执行微信操作的模型失败可重新生成。
+	RetryOf         string       `json:"retry_of,omitempty"`
+	AutoRetries     int          `json:"auto_retries,omitempty"`
+	Insight         *InsightInfo `json:"insight,omitempty"`
+	Source          string       `json:"source,omitempty"`   // 区分微信自动回复与手动模型测试。
+	Delivery        string       `json:"delivery,omitempty"` // 语音发送独立于合成任务，阻止重复及未知结果重试。
+	ID              string       `json:"id"`
+	Kind            string       `json:"kind"`
+	Name            string       `json:"name"`
+	Status          string       `json:"status"`
+	Created         string       `json:"created"`
+	Result          string       `json:"result"`
+	Error           string       `json:"error,omitempty"`
+	Input           string       `json:"input"`
+	Model           string       `json:"model"`
+	Target          string       `json:"target,omitempty"`
 }
 
 // Vendor 将厂商凭据与具体模型分离；Key 只用于写入，读取状态不包含明文。
@@ -202,30 +207,31 @@ type Point struct {
 
 // State 是控制台读模型；不包含密码、解密后的 API Key 或微信认证票据。
 type State struct {
-	AccountEpoch   uint64                    `json:"-"`
-	ContactSync    string                    `json:"contact_sync,omitempty"`
-	ConfigRevision int64                     `json:"config_revision"`
-	Revision       int64                     `json:"revision"`
-	Mock           bool                      `json:"mock"`
-	Scenario       string                    `json:"scenario"`
-	Account        Account                   `json:"account"`
-	Contacts       []Contact                 `json:"contacts"`
-	Messages       []Message                 `json:"messages"`
-	Moments        []Moment                  `json:"moments"`
-	Plugins        []Plugin                  `json:"plugins"`
-	Logs           []Record                  `json:"logs"`
-	Tasks          []Task                    `json:"tasks"`
-	Vendors        []Vendor                  `json:"vendors"`
-	Pipelines      map[string][]string       `json:"pipelines"` // 媒体能力分别保存顺序，旧对话字段继续兼容。
-	Pipeline       []string                  `json:"pipeline"`
-	Policies       []BehaviorPolicy          `json:"policies"`
-	Models         []Model                   `json:"models"`
-	Prompts        []Prompt                  `json:"prompts"`
-	Settings       map[string]any            `json:"settings"`
-	Overrides      map[string]map[string]any `json:"overrides"`
-	History        []Change                  `json:"history"`
-	Trend          []Point                   `json:"trend"`
-	Users          []User                    `json:"users"`
+	PluginScopeDefaultsVersion int                       `json:"plugin_scope_defaults_version,omitempty"`
+	AccountEpoch               uint64                    `json:"-"`
+	ContactSync                string                    `json:"contact_sync,omitempty"`
+	ConfigRevision             int64                     `json:"config_revision"`
+	Revision                   int64                     `json:"revision"`
+	Mock                       bool                      `json:"mock"`
+	Scenario                   string                    `json:"scenario"`
+	Account                    Account                   `json:"account"`
+	Contacts                   []Contact                 `json:"contacts"`
+	Messages                   []Message                 `json:"messages"`
+	Moments                    []Moment                  `json:"moments"`
+	Plugins                    []Plugin                  `json:"plugins"`
+	Logs                       []Record                  `json:"logs"`
+	Tasks                      []Task                    `json:"tasks"`
+	Vendors                    []Vendor                  `json:"vendors"`
+	Pipelines                  map[string][]string       `json:"pipelines"` // 媒体能力分别保存顺序，旧对话字段继续兼容。
+	Pipeline                   []string                  `json:"pipeline"`
+	Policies                   []BehaviorPolicy          `json:"policies"`
+	Models                     []Model                   `json:"models"`
+	Prompts                    []Prompt                  `json:"prompts"`
+	Settings                   map[string]any            `json:"settings"`
+	Overrides                  map[string]map[string]any `json:"overrides"`
+	History                    []Change                  `json:"history"`
+	Trend                      []Point                   `json:"trend"`
+	Users                      []User                    `json:"users"`
 }
 type Change struct {
 	ID      string          `json:"id"`

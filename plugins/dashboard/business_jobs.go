@@ -213,7 +213,7 @@ func (s *Server) tickBusiness(now time.Time) {
 	for _, j := range due {
 		j := j
 		if !s.launchBusiness(func() {
-			if err := s.runBusinessJob(s.ctx, st.Account.ID, j, "schedule:"+j.ID+":"+j.Next); err != nil {
+			if err := s.runBusinessJob(s.ctx, st.Account.ID, st.AccountEpoch, j, "schedule:"+j.ID+":"+j.Next); err != nil {
 				id, e := s.beginBusiness(st.Account.ID, businessRequest{Plugin: "cron", Target: j.Request.Target}, "failed")
 				if e == nil {
 					s.finishBusiness(id, "failed", j.Name+" · "+err.Error())
@@ -227,8 +227,11 @@ func (s *Server) tickBusiness(now time.Time) {
 		}
 	}
 }
-func (s *Server) runBusinessJob(ctx context.Context, account string, j businessJob, key string) error {
+func (s *Server) runBusinessJob(ctx context.Context, account string, epoch uint64, j businessJob, key string) error {
 	st := s.store.snapshot()
+	if st.Account.ID != account || st.AccountEpoch != epoch {
+		return fmt.Errorf("账号已切换，本次跳过")
+	}
 	// 调度占位后如果用户删除或编辑任务，取消本次执行；手动执行是独立明确操作。
 	if strings.HasPrefix(key, "schedule:") {
 		jobs, e := s.businessJobs(account)
@@ -245,7 +248,7 @@ func (s *Server) runBusinessJob(ctx context.Context, account string, j businessJ
 			return fmt.Errorf("任务已修改或删除，本次跳过")
 		}
 	}
-	if st.Account.ID != account || !businessAllowed(st, "cron", j.Request.Target) {
+	if !businessAllowed(st, "cron", j.Request.Target) {
 		return fmt.Errorf("定时任务未启用或目标不在生效范围")
 	}
 	ok, e := s.claimBusiness(account, key)
@@ -263,7 +266,7 @@ func (s *Server) runBusinessJob(ctx context.Context, account string, j businessJ
 		delivery.jobRevision++
 	}
 	if j.Request.Plugin != "text" {
-		_, e = s.executeBusiness(ctx, delivery, "定时任务 · "+j.Name)
+		_, e = s.executeBusinessFor(ctx, account, epoch, delivery, "定时任务 · "+j.Name)
 		return e
 	}
 	id, e := s.beginBusiness(account, businessRequest{Plugin: "cron", Target: j.Request.Target}, "running")
@@ -271,7 +274,7 @@ func (s *Server) runBusinessJob(ctx context.Context, account string, j businessJ
 		return e
 	}
 	delivery.Plugin = "cron"
-	e = s.deliverBusiness(ctx, account, delivery, businessResult{Text: j.Request.Query})
+	e = s.deliverBusinessFor(ctx, account, epoch, delivery, businessResult{Text: j.Request.Query})
 	if e != nil {
 		s.finishBusiness(id, "unknown", "发送结果未确认，不自动重发")
 	} else {

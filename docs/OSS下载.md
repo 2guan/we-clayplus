@@ -8,7 +8,7 @@ we-clay v0.6.0 增加 OSS 下载源；新的 core 版本由 Actions 发布到北
 cfg := gateway.Config{
     CoreAddress: "127.0.0.1:8088",
     Core: &gateway.CoreConfig{
-        Version: "v0.4.5", // 必须已经发布；不会自动追踪 latest
+        Version: "v0.4.6", // 必须已经发布；不会自动追踪 latest
         DataDir: os.Getenv("WE_CLAY_DATA_DIR"), // 原账号固定绝对路径
         KeepAlive: true,
         OSS: &gateway.OSSConfig{
@@ -43,7 +43,7 @@ cfg := gateway.Config{
 
 ```toml
 [core]
-version = "v0.4.5"
+version = "v0.4.6"
 data_dir = "/absolute/path/to/existing/core-data"
 keep_alive = true
 # download_auth_base_url = "https://nww.hihfy.com/we-clay-auth" # 默认值

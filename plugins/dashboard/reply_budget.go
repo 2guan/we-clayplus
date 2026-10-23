@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/we-clay/we-clay/plugins/ai"
 	"github.com/we-clay/we-clay/plugins/contextcleaner"
@@ -8,6 +9,10 @@ import (
 
 func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c contextcleaner.Config, r safetyReport) (ai.Request, safetyReport, error) {
 	conv := *q.Conversation
+	conv.Pending = append([]contextcleaner.Message(nil), conv.Pending...)
+	for i := range conv.Pending {
+		conv.Pending[i].Text = contextcleaner.Input(c, conv.Pending[i].Text)
+	}
 	conv.Memories = append([]ai.MemoryEvidence(nil), conv.Memories...)
 	conv.References = append([]contextcleaner.Message(nil), conv.References...)
 	if q.Source != "wechat-proactive" {
@@ -26,8 +31,10 @@ func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c c
 	if q.Source != "wechat-proactive" {
 		seen[conv.Current.ID] = true
 	}
-	for _, v := range conv.References {
-		seen[v.ID] = true
+	for _, messages := range [][]contextcleaner.Message{conv.References, conv.Pending} {
+		for _, v := range messages {
+			seen[v.ID] = true
+		}
 	}
 	for _, v := range q.Context {
 		if seen[v.ID] && v.ID != "" {
@@ -56,7 +63,8 @@ func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c c
 	q.Context = clean.Messages
 	reserve := contextcleaner.Estimate(q.System) + maxOutput + 512
 	for _, tool := range q.Tools {
-		reserve += contextcleaner.Estimate(tool.Name+tool.Description) + 256
+		raw, _ := json.Marshal(tool.Parameters)
+		reserve += contextcleaner.Estimate(tool.Name+tool.Description+string(raw)) + 32
 	}
 	budget := settingNumber(st, "context_cleaner.max_input") - reserve
 	if m.ContextTokens > 0 {
@@ -84,7 +92,7 @@ func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c c
 			return q, r, fmt.Errorf("本轮消息及必要引用超过模型上下文预算，请缩短消息或提高模型预算")
 		}
 	}
-	r.Messages = append(append([]contextcleaner.Message{}, q.Context...), conv.References...)
+	r.Messages = append(append(append([]contextcleaner.Message{}, q.Context...), conv.References...), conv.Pending...)
 	r.Tokens = ai.ConversationSize(q) + contextcleaner.Estimate(q.System)
 	return q, r, nil
 }

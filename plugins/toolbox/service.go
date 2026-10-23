@@ -22,6 +22,8 @@ type Item struct {
 	URL      string `json:"url"`
 	Artist   string `json:"artist,omitempty"`
 	MediaURL string `json:"media_url,omitempty"`
+	Cover    string `json:"cover,omitempty"`
+	Lyric    string `json:"lyric,omitempty"`
 }
 
 // PublicURL 校验链接语法；连接时仍验证每一个 DNS 结果，阻止重绑定和内网跳转。
@@ -64,6 +66,13 @@ func HTTPClient() *http.Client {
 		if len(ips) == 0 {
 			return nil, fmt.Errorf("服务域名没有地址")
 		}
+		// TUN 代理可能只返回 198.18/15 虚拟地址；重新取真实公网地址，不能直接放行保留地址。
+		if onlyFakeIPs(ips) {
+			ips, e = resolvePublicDNS(ctx, host)
+			if e != nil {
+				return nil, e
+			}
+		}
 		for _, v := range ips {
 			if !publicIP(v.IP) {
 				return nil, fmt.Errorf("外部服务解析到了非公网地址")
@@ -86,6 +95,15 @@ func HTTPClient() *http.Client {
 	}}
 }
 func ReadURL(ctx context.Context, client *http.Client, raw, key string, limit int64) ([]byte, string, error) {
+	return readURL(ctx, client, raw, key, limit, "")
+}
+
+// 音乐请求按浏览器形式兼容原服务，其它 JSON / RSS 服务保留原请求头。
+func ReadMusicURL(ctx context.Context, client *http.Client, raw, key string, limit int64) ([]byte, string, error) {
+	return readURL(ctx, client, raw, key, limit, "Mozilla/5.0")
+}
+
+func readURL(ctx context.Context, client *http.Client, raw, key string, limit int64, userAgent string) ([]byte, string, error) {
 	if e := PublicURL(raw); e != nil {
 		return nil, "", e
 	}
@@ -95,6 +113,9 @@ func ReadURL(ctx context.Context, client *http.Client, raw, key string, limit in
 	}
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
 	}
 	res, e := client.Do(req)
 	if e != nil {
@@ -206,6 +227,9 @@ func Search(ctx context.Context, client *http.Client, endpoint, key, query strin
 		}
 		if v.MediaURL != "" && PublicURL(v.MediaURL) != nil {
 			return nil, fmt.Errorf("服务返回了不允许的媒体地址")
+		}
+		if len(v.Lyric) > 64<<10 || len(v.Cover) > 4096 || v.Cover != "" && PublicURL(v.Cover) != nil {
+			return nil, fmt.Errorf("服务返回了无效的封面或歌词")
 		}
 	}
 	return body.Items, nil

@@ -7,6 +7,7 @@ import { PluginConfiguration } from "./PluginConfiguration";
 import { BusinessWorkbench, businessIDs } from "./BusinessWorkbench";
 import { SafetyWorkbench } from "./SafetyWorkbench";
 import { PluginUsage } from "./PluginUsage";
+import { pluginCategories, pluginCategory, readPluginCategory } from "./pluginCategories";
 import { compareContacts, matchesContact } from "./contactSearch";
 import {
   MagnifyingGlass,
@@ -29,6 +30,8 @@ import { RoomProfile } from "./RoomProfile";
 import { ReportDetail, reportRoots, reportLatest, reportLabel, TaskBadge, TaskList } from "./ModelTasks";
 import { dateTime, download, request } from "./api";
 import { CacheSettings } from "./CacheSettings";
+import { PlayroomWorkbench, playroomIDs } from "./PlayroomWorkbench";
+import { TurtleSoupWorkbench } from "./TurtleSoupWorkbench";
 
 // 联系人详情复用微信会话策略表单，避免两处编辑逻辑不一致。
 export function Contacts(props: PageProps) {
@@ -350,7 +353,47 @@ export function Plugins(props: PageProps) {
   const [usage, setUsage] = useState<Plugin | null>(null);
   const [business, setBusiness] = useState<Plugin | null>(null);
   const [safety, setSafety] = useState<Plugin | null>(null);
+  const [play, setPlay] = useState(
+    () => new URLSearchParams(location.hash.split("?")[1]).get("play") || "",
+  );
+  const [soup, setSoup] = useState(() =>
+    new URLSearchParams(location.hash.split("?")[1]).has("soup"),
+  );
   const [plugins, setPlugins] = useState(state.plugins);
+  const [category, setCategory] = useState(readPluginCategory);
+  function pluginRoute(key: string, value: string, replace = false) {
+    const params = new URLSearchParams(location.hash.split("?")[1]);
+    if (value) params.set(key, value);
+    else params.delete(key);
+    const hash = `#plugins${params.size ? `?${params}` : ""}`;
+    if (replace) history.replaceState(null, "", hash);
+    else history.pushState(null, "", hash);
+  }
+  useEffect(() => {
+    const restore = () => {
+      setCategory(readPluginCategory());
+      const params = new URLSearchParams(location.hash.split("?")[1]);
+      setPlay(params.get("play") || "");
+      setSoup(params.has("soup"));
+    };
+    window.addEventListener("hashchange", restore);
+    return () => window.removeEventListener("hashchange", restore);
+  }, []);
+  const categories = pluginCategories.map((c) => ({
+    ...c,
+    count:
+      c.id === "all"
+        ? plugins.length
+        : plugins.filter((p) => pluginCategory(p) === c.id).length,
+  }));
+  const shown = plugins.filter(
+    (p) => category === "all" || pluginCategory(p) === category,
+  );
+  const selectCategory = (id: string) => {
+    if (id === category) return;
+    setCategory(id);
+    pluginRoute("category", id === "all" ? "" : id);
+  };
   useEffect(() => {
     let active = true;
     request<Plugin[]>("/api/plugins")
@@ -375,84 +418,164 @@ export function Plugins(props: PageProps) {
           个已启用
         </span>
       </div>
-      <div className="plugin-grid">
-        {plugins.map((p) => (
-          <article className="plugin-card" key={p.id}>
-            <div className="plugin-top">
-              <span className="plugin-icon">
-                {p.id === "ai" ? (
-                  <ChatCircleDots size={23} />
-                ) : p.id === "dashboard" ? (
-                  <SlidersHorizontal size={23} />
-                ) : (
-                  <PuzzlePiece size={23} />
-                )}
-              </span>
-              <div className="plugin-identity">
-                <h3>{p.name}</h3>
-                <code>{p.builtin ? `we-clay-plugin-${p.id}` : p.id}</code>
+      <div
+        className="tabs plugin-category-tabs"
+        role="tablist"
+        aria-label="插件分类"
+      >
+        {categories.map((c, index) => (
+          <button
+            type="button"
+            role="tab"
+            key={c.id}
+            id={`plugin-category-${c.id}`}
+            aria-selected={category === c.id}
+            aria-controls="plugin-category-panel"
+            tabIndex={category === c.id ? 0 : -1}
+            className={category === c.id ? "active" : ""}
+            onClick={() => selectCategory(c.id)}
+            onKeyDown={(event) => {
+              const next =
+                event.key === "ArrowRight"
+                  ? (index + 1) % categories.length
+                  : event.key === "ArrowLeft"
+                    ? (index - 1 + categories.length) % categories.length
+                    : event.key === "Home"
+                      ? 0
+                      : event.key === "End"
+                        ? categories.length - 1
+                        : -1;
+              if (next >= 0) {
+                event.preventDefault();
+                selectCategory(categories[next].id);
+                document
+                  .getElementById(`plugin-category-${categories[next].id}`)
+                  ?.focus();
+              }
+            }}
+          >
+            {c.label}
+            <span className="plugin-category-count">{c.count}</span>
+          </button>
+        ))}
+      </div>
+      <section
+        id="plugin-category-panel"
+        role="tabpanel"
+        aria-labelledby={`plugin-category-${category}`}
+        tabIndex={0}
+      >
+        <div className="plugin-grid">
+          {shown.map((p) => (
+            <article className="plugin-card" key={p.id}>
+              <div className="plugin-top">
+                <span className="plugin-icon">
+                  {p.id === "ai" ? (
+                    <ChatCircleDots size={23} />
+                  ) : p.id === "dashboard" ? (
+                    <SlidersHorizontal size={23} />
+                  ) : (
+                    <PuzzlePiece size={23} />
+                  )}
+                </span>
+                <div className="plugin-identity">
+                  <h3>{p.name}</h3>
+                  <code>{p.builtin ? `we-clay-plugin-${p.id}` : p.id}</code>
+                </div>
+                <Toggle
+                  label={`启用 ${p.name}`}
+                  disabled={p.id === "dashboard" || user.role !== "admin"}
+                  checked={p.enabled}
+                  onChange={(enabled) =>
+                    act({ kind: "plugin", id: p.id, enabled }).catch((e) =>
+                      notify(e.message),
+                    )
+                  }
+                />
               </div>
-              <Toggle
-                label={`启用 ${p.name}`}
-                disabled={p.id === "dashboard" || user.role !== "admin"}
-                checked={p.enabled}
-                onChange={(enabled) =>
-                  act({ kind: "plugin", id: p.id, enabled }).catch((e) =>
-                    notify(e.message),
-                  )
-                }
-              />
-            </div>
-            <p>{p.description}</p>
-            <div className="plugin-footer">
-              <span>
-                {p.version === "builtin" ? "内置版本" : `v${p.version}`}
-              </span>
-              <div className="actions">
-                {businessIDs.includes(p.id) && user.role === "admin" && (
-                  <button
-                    type="button"
-                    className="button"
-                    aria-label={`工作台 ${p.name}`}
-                    onClick={() => setBusiness(p)}
-                  >
-                    工作台
-                  </button>
-                )}
-                {["prompt_guard", "context_cleaner"].includes(p.id) &&
-                  user.role === "admin" && (
+              <p>{p.description}</p>
+              <div className="plugin-footer">
+                <span>
+                  {p.version === "builtin" ? "内置版本" : `v${p.version}`}
+                </span>
+                <div className="actions">
+                  {playroomIDs.includes(p.id) && user.role === "admin" && (
                     <button
                       type="button"
                       className="button"
-                      aria-label={`验证 ${p.name}`}
-                      onClick={() => setSafety(p)}
+                      aria-label={`工作台 ${p.name}`}
+                      onClick={() => {
+                        pluginRoute("play", p.id, true);
+                        setPlay(p.id);
+                      }}
                     >
-                      验证
+                      工作台
                     </button>
                   )}
-                <button
-                  type="button"
-                  className="button"
-                  aria-label={`使用 ${p.name}`}
-                  onClick={() => setUsage(p)}
-                >
-                  <BookOpen size={15} />
-                  使用
-                </button>
-                <button
-                  className="button"
-                  disabled={user.role !== "admin"}
-                  aria-label={`配置 ${p.name}`}
-                  onClick={() => setSelected(p)}
-                >
-                  <SlidersHorizontal size={15} />
-                  配置
-                </button>
+                  {p.id === "turtlesoup" && user.role === "admin" && (
+                    <button
+                      type="button"
+                      className="button"
+                      aria-label="工作台 海龟汤"
+                      onClick={() => {
+                        pluginRoute("soup", "games", true);
+                        setSoup(true);
+                      }}
+                    >
+                      工作台
+                    </button>
+                  )}
+                  {businessIDs.includes(p.id) && user.role === "admin" && (
+                    <button
+                      type="button"
+                      className="button"
+                      aria-label={`工作台 ${p.name}`}
+                      onClick={() => setBusiness(p)}
+                    >
+                      工作台
+                    </button>
+                  )}
+                  {["prompt_guard", "context_cleaner"].includes(p.id) &&
+                    user.role === "admin" && (
+                      <button
+                        type="button"
+                        className="button"
+                        aria-label={`验证 ${p.name}`}
+                        onClick={() => setSafety(p)}
+                      >
+                        验证
+                      </button>
+                    )}
+                  <button
+                    type="button"
+                    className="button"
+                    aria-label={`使用 ${p.name}`}
+                    onClick={() => setUsage(p)}
+                  >
+                    <BookOpen size={15} />
+                    使用
+                  </button>
+                  <button
+                    className="button"
+                    disabled={user.role !== "admin"}
+                    aria-label={`配置 ${p.name}`}
+                    onClick={() => setSelected(p)}
+                  >
+                    <SlidersHorizontal size={15} />
+                    配置
+                  </button>
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
-      </div>
+            </article>
+          ))}
+        </div>
+        {!shown.length && (
+          <Empty
+            title="这个分类暂无插件"
+            text="可以切换其它分类，或查看全部插件。"
+          />
+        )}
+      </section>
       {user.role !== "admin" && (
         <p className="hint spacious">插件配置由管理员管理。</p>
       )}
@@ -470,6 +593,26 @@ export function Plugins(props: PageProps) {
           {...props}
           plugin={business}
           onClose={() => setBusiness(null)}
+        />
+      )}
+      {play && user.role === "admin" && plugins.find((p) => p.id === play) && (
+        <PlayroomWorkbench
+          key={play}
+          {...props}
+          plugin={plugins.find((p) => p.id === play)!}
+          onClose={() => {
+            setPlay("");
+            pluginRoute("play", "", true);
+          }}
+        />
+      )}
+      {soup && user.role === "admin" && (
+        <TurtleSoupWorkbench
+          {...props}
+          onClose={() => {
+            setSoup(false);
+            pluginRoute("soup", "", true);
+          }}
         />
       )}
       {safety && (
@@ -574,7 +717,9 @@ function defaultInsightPrompt(tab: string) {
 
 // 输入与报告并排展示；对象和资料同时过滤，避免选中一个好友却分析全部朋友圈。
 function localMinute(date: Date) {
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
 }
 
 export function Insights(props: PageProps) {
@@ -1250,8 +1395,12 @@ export function Settings(props: PageProps) {
   const { state, schema, act, notify, user } = props;
   const [tab, setTab] = useState(() => {
     const requested = new URLSearchParams(location.hash.split("?")[1]).get("tab");
-    return requested && (schema.some((g) => g.area === "system" && g.id === requested) || ["users", "history","cache"].includes(requested)) ? requested : "brand";
+    return requested || "brand";
   });
+  useEffect(() => {
+    // 初次状态可能先于 schema 返回，保留深链页签，待定义加载后再校验。
+    if (schema.length && !schema.some((g) => g.area === "system" && g.id === tab) && !["users", "history", "cache"].includes(tab)) setTab("brand");
+  }, [schema, tab]);
   const [newUser, setNewUser] = useState(false);
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");

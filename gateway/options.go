@@ -30,6 +30,7 @@ type runOptions struct {
 	withoutExternalPlugins bool
 	withoutDashboard       bool
 	withoutAI              bool
+	coreConsoleControl     bool
 }
 
 // Option 配置直接接入行为，不写入 TOML。
@@ -69,3 +70,7 @@ func WithoutDashboard() Option { return func(o *runOptions) { o.withoutDashboard
 
 // WithoutAI 关闭 AI 基础插件，控制台和扩展插件继续运行。
 func WithoutAI() Option { return func(o *runOptions) { o.withoutAI = true } }
+
+// WithCoreConsoleControl 让本机控制台管理独立 core 的启停和登录。
+// 仅用于同时启用 Dashboard 与 KeepAlive core 的安装版；普通嵌入式 Run 保持原有退出语义。
+func WithCoreConsoleControl() Option { return func(o *runOptions) { o.coreConsoleControl = true } }

@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.9.1 · MIT License" width="492" />
+  <img src="docs/assets/readme-badges.svg" alt="Go 1.26+ · gRPC · v0.9.4 · MIT License" width="492" />
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 想编写自己的 Go 机器人或插件时，再引入私有 SDK：
 
 ```sh
-go get github.com/we-clay/we-clay@v0.9.1
+go get github.com/we-clay/we-clay@v0.9.4
 ```
 
 **直接安装预编译程序，或导入 `gateway` 在自己的 Go 程序里调用 `gateway.Run(ctx, cfg)`。**
@@ -81,7 +81,9 @@ curl -fsSL https://nww.hihfy.com/we-clay-auth/install.sh | bash -s -- \
   --core-data-dir /absolute/path/to/existing/core-data
 ```
 
-首次安装完成会启动主程序，控制台在 `http://127.0.0.1:8208`，微信登录页在 `http://127.0.0.1:8201`。升级安装只替换版本化二进制，不自动启动第二个 gateway；先停止旧 gateway，再运行安装目录中的 `run.sh` 或 Windows 的 `run.cmd`。独立 core 保持运行及登录。详见[三平台安装、授权文件、升级与多套实例](docs/一键安装.md)。
+首次安装完成会启动主程序。打开 `http://127.0.0.1:8208` 创建控制台管理员，再点击“微信连接”：在同一页面查看 core 状态、启停本安装管理的独立 core、扫码登录，以及提交登录 PIN 或确认设备。停止 core 后控制台继续运行，微信设备数据保留。core 原有的 `http://127.0.0.1:8201` 登录页仍保留，供兼容调用与应急排查使用。
+
+已安装用户可用同一安装脚本更新主程序、指定新 core 版本或更换授权 Key；先结束旧 gateway，传入原来的 `--data-dir`，需要自动重启时加 `--restart`。切换 core 版本或 Key 时，脚本通过受控的 `--stop-core` 入口停下原 core，保留微信设备和会话数据，再启动新版本。单独运行 `run.sh --stop-core`（Windows 为 `run.cmd --stop-core`）只停止本安装目录管理的 core。详见[三平台安装、授权文件、升级与多套实例](docs/一键安装.md)。
 
 `cmd/we-clay` 只是启动入口；现有 `gateway.Run` 和 SDK 导入方式继续可用。
 
@@ -121,7 +123,7 @@ curl -fsSL https://nww.hihfy.com/we-clay-auth/install.sh | bash -s -- \
 ```sh
 go mod init example.com/my-wechat-bot
 go env -w GOPRIVATE=github.com/we-clay/*
-go get github.com/we-clay/we-clay@v0.9.1
+go get github.com/we-clay/we-clay@v0.9.4
 ```
 
 ### 2 · 调用 Run
@@ -183,8 +185,8 @@ func main() {
 将 `WE_CLAY_CORE_VERSION` 设为私有 OSS 中**实际发布的固定 tag**，然后 `go run .`。两个仓库独立版本，不要求 tag 相同。
 
 ```sh
-# macOS / Linux：先确认 Actions 已完成发布 core v0.4.5
-export WE_CLAY_CORE_VERSION='v0.4.5'
+# macOS / Linux：先确认 Actions 已完成发布 core v0.4.6
+export WE_CLAY_CORE_VERSION='v0.4.6'
 # 通过本机受信任的环境配置提供 WE_CLAY_AUTH_KEY（运行授权 Key）
 # 默认不需要 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET
 # 填你已有账号目录的绝对路径；新部署才选择新目录
@@ -262,7 +264,7 @@ import (
 
 ```sh
 mkdir -p runtime/gateway/plugins
-GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.9.1
+GOBIN="$PWD/runtime/gateway/plugins" go install github.com/we-clay/we-clay/examples/plugin@v0.9.4
 mv runtime/gateway/plugins/plugin runtime/gateway/plugins/we-clay-plugin-example
 ```
 
@@ -280,7 +282,8 @@ flowchart LR
     P["可选插件进程 · SDK"] <-->|"gRPC"| G["你的 Go 应用 · gateway"]
     G <-->|"gRPC · 调用 / 事件 / 确认"| C["core · 微信协议服务"]
     C <--> W["微信"]
-    B["浏览器 · 登录页面"] -->|"HTTP"| C
+    B["浏览器 · Dashboard"] -->|"HTTP · 管理与扫码"| G
+    B2["core 原登录页 · 兼容/应急"] -->|"HTTP"| C
     style G fill:#143b30,color:#e2f2df,stroke:#519477
     style C fill:#143b30,color:#e2f2df,stroke:#519477
 ```
@@ -291,20 +294,20 @@ flowchart LR
 | **SDK** | 业务类型、能力接口与插件通信封装 | 编译进你的程序或插件 |
 | **core** | 微信协议、登录与底层会话 | 独立二进制服务 |
 
-gateway 与 core 统一使用 gRPC，默认端口 `8088`。浏览器登录页面由 core 的 HTTP `8201` 提供。
+gateway 与 core 统一使用 gRPC，默认端口 `8088`。Dashboard 默认在 `8208` 提供扫码；预编译安装版还可管理本安装的独立 core。core 的 HTTP `8201` 登录页继续保留，供兼容调用与应急排查使用。
 协议、确认语义及重连策略见[gRPC 通信](docs/gRPC通信.md)。
 
 ## Dashboard 与 AI 基础插件
 
-Dashboard 与 AI 是 `gateway.Run` 默认注册的内建插件，共用本地状态库、模型配置和任务执行器；无需另起 Dashboard 或 AI 服务。Dashboard 默认监听 `http://127.0.0.1:8208`。它和 core 的微信扫码登录页（默认 `http://127.0.0.1:8201`）是两个独立页面。
+Dashboard 与 AI 是 `gateway.Run` 默认注册的内建插件，共用本地状态库、模型配置和任务执行器；无需另起 Dashboard 或 AI 服务。Dashboard 默认监听 `http://127.0.0.1:8208`。管理员可以从控制台的“微信连接”入口查看二维码和登录状态；预编译安装版还可启停本安装管理的独立 core。core 原登录页默认位于 `http://127.0.0.1:8201`。
 
 ### 能力
 
 - **Dashboard 工作台：**查看运行状态、消息与 Token 统计；浏览会话、消息、联系人和媒体；在聊天页发送文字、图片、文件、语音及微信表情；管理模型、插件、任务、日志和控制台设置。桌面与手机布局均可使用，并支持亮色／暗色主题。
 - **AI 模型中心：**配置供应商、模型和能力，分别管理对话、视觉、语音识别、语音合成、图片及视频处理流水线；使用模型实验室测试连接与任务，配置提示词、并发和预算等行为限制。支持 OpenAI 兼容接口、Gemini 和 Anthropic 的已接入能力，实际可用模型取决于供应商接口及模型本身。
-- **智能洞察与自动回复：**对选定会话生成分析报告，支持流式显示和截断识别；自动回复可设置会话范围、模型、人设及行为限制。自动回复默认关闭，启用后也应先配置允许名单并在工作台检查结果。
+- **智能洞察与自动回复：**对选定会话生成分析报告，支持流式显示和截断识别；自动回复可设置会话范围、模型、人设及行为限制。自动回复总开关默认开启，仍需启用 AI 插件、将会话设为自动并配置可用模型；默认空黑名单不排除会话。已有手动关闭设置保留。
 - **内建防护：**提示词防护与上下文清洗默认注册并开启，可在插件中心调整规则、模式并离线验证。处理记录仅管理员可见；清洗不会改写原始聊天归档，也不能保证识别所有攻击。
-- **扩展业务插件：**提供定时任务、消息统计、词云、好友自动通过、入群欢迎、每日摘要、新闻、视频解析、音乐、表情包、今天吃什么和摸鱼日报。通过插件中心配置，通过工作台预览、管理素材、确认发送和查看记录。真实模式下业务插件默认关闭；自动行为需要启用插件并配置名单。新闻及音乐、视频解析、表情搜索等外部服务需要自行配置兼容地址。
+- **扩展业务插件：**提供定时任务、消息统计、词云、好友自动通过、入群欢迎、每日摘要、新闻、视频解析、音乐、表情包、今天吃什么和摸鱼日报。通过插件中心配置，通过工作台预览、管理素材、确认发送和查看记录。真实模式下业务插件默认关闭；启用后默认空黑名单全局生效，填入名单可排除指定会话。音乐和新闻沿用内置数据源；视频解析、表情搜索等外部服务需要自行配置兼容地址。
 
 ### 启动与使用
 
@@ -322,7 +325,7 @@ make mock
 make run
 ```
 
-打开 `http://127.0.0.1:8208` 创建本地 Dashboard 管理员，再到 `http://127.0.0.1:8201` 扫码登录微信。两处登录相互独立。`make run` 会启动 Mac 模式 core 并使用本地真实会话；不要把运行数据、凭据或真实聊天内容提交到仓库。若已有独立运行且已登录的 core，使用 `make attach` 启动控制台并连接它；该命令不会下载、启动或停止 core。真实启动细节见[本机真实微信验收](docs/控制台与AI.md#本机真实微信验收)。
+打开 `http://127.0.0.1:8208` 创建本地 Dashboard 管理员，再从“微信连接”入口扫码登录。控制台账号与微信账号的登录仍是两个独立步骤。`make run` 会启动 Mac 模式 core 并使用本地真实会话；不要把运行数据、凭据或真实聊天内容提交到仓库。若已有独立运行且已登录的 core，使用 `make attach` 启动控制台并连接它；该命令不会下载、启动或停止 core，控制台也不会接管外部 core 的进程。真实启动细节见[本机真实微信验收](docs/控制台与AI.md#本机真实微信验收)。
 
 **嵌入自己的 Go 应用：**直接调用 `gateway.Run` 时 Dashboard 和 AI 默认启用；用选项按需关闭：
 
@@ -348,6 +351,12 @@ disable_ai = false
 完整页面说明、配置字段、已实现范围和限制见[控制台与 AI](docs/控制台与AI.md)；完整真实启动流程见[运行指南](docs/运行指南.md)。
 
 自动回复的模型上下文、互动元数据与可审核长期记忆见 [AI 记忆](docs/AI记忆.md)。
+
+模型可调用的微信能力、发起人/目标授权、连续操作及后台确认见 [AI 行为与任务](docs/AI行为与任务.md)。
+
+私聊与群聊的模型出题、多人推理、题库及失败重试见 [海龟汤插件](docs/海龟汤.md)。
+
+点歌音源、音乐卡片与歌词见 [音乐插件](docs/音乐插件.md)；今日新闻、图卦与 RSS 推送见 [新闻插件](docs/新闻插件.md)。
 
 ## 多套独立运行
 
@@ -399,6 +408,10 @@ SDK 不依赖 gateway 内部实现，上层编译不依赖 core 源码。整个�
 </details>
 
 ## 当前状态
+
+**v0.9.4 更新：** 控制台可启停本安装目录管理的 core 并在同一页面完成扫码与登录验证；安装器支持受控切换 core 版本和授权 Key；AI 与控制台增加长期记忆、互动插件和大附件上传配置。新安装默认配套 core v0.4.6，已有安装保留原 core 版本，升级命令见[版本说明](docs/releases/v0.9.4.md)。设备质询应答仍未实现，不应把该版本视为微信风控验证已通过。
+
+**v0.9.2 更新：** 独立 core 复用前核对启动时的账号数据目录，防止移动目录后静默丢失消息；控制台改进会话恢复、通讯录资料入口和撤回展示。升级时继续填写运行中 core 的原启动路径，详见[版本说明](docs/releases/v0.9.2.md)。
 
 **v0.8.0 更新：** 内建 Dashboard 与 AI 基础插件，控制台默认监听 `127.0.0.1:8208`，core 登录页默认改为 `127.0.0.1:8201`；旧端口配置升级时须核对。新增私聊和群聊拍一拍入口，搭配 core v0.4.5 使用。Mac 模式下，core HTTP 接口的私聊与群聊请求均得到微信明确成功回执，手机端确认显示；SDK/gateway 调用链完成离线验证，尚未单独真机复验。结果不确定时不自动重试。
 
@@ -492,3 +505,5 @@ core v0.3.1 的 macOS ARM64 附件已验证下载、SHA-256 校验、缓存复�
 ## 自定义设备名称
 
 通过 `gateway.CoreConfig.DeviceName` 或 `[core].device_name` 指定名称，例如“我的 Mac 机器人”。留空沿用已有设备名称；更改后重启 core 生效，设备 ID 与账号目录保持不变。需使用 we-clay v0.6.0 及以上与 core v0.3.3 及以上 配套构建。见[设备名称配置](docs/运行指南.md#自定义设备名称)。
+
+互动插件新增谁是卧底、狼人杀、阿瓦隆、剧本杀、默契测试、剧情、电台、冒险及群内容工具；见[互动插件使用说明](docs/互动插件.md)。真实模式默认关闭，秘密身份通过已确认的好友私聊发放。

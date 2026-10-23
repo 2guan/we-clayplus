@@ -49,6 +49,83 @@ func TestWechatSystemMessages(t *testing.T) {
 	}
 }
 
+const fixtureInviteNotice = `<sysmsg type="sysmsgtemplate"><sysmsgtemplate><content_template><plain/><template><![CDATA["$username$"邀请"$names$"加入了群聊]]></template><link_list><link name="username" type="link_profile"><memberlist><member><username>fixture-inviter</username><nickname>邀请成员</nickname></member></memberlist></link><link name="names" type="link_profile"><memberlist><member><username>fixture-a</username><nickname>成员甲</nickname></member><member><username>fixture-b</username><nickname>成员乙</nickname></member></memberlist><separator>、</separator></link></link_list></content_template></sysmsgtemplate></sysmsg>`
+const fixtureCallNotice = `<voipmsg type="VoIPBubbleMsg"><VoIPBubbleMsg><msg><![CDATA[对方已取消]]></msg><room_type>1</room_type><roomid>fixture-room</roomid><roomkey>fixture-room-key</roomkey><identity>fixture-identity</identity><duration>0</duration></VoIPBubbleMsg></voipmsg>`
+
+func TestWechatReadableTemplateAndCall(t *testing.T) {
+	m, keep := ParseWechatMessage(Message{Kind: "system"}, fixtureInviteNotice)
+	if !keep || m.Content != `"邀请成员"邀请"成员甲、成员乙"加入了群聊` {
+		t.Fatal("邀请模板未展开", m.Content)
+	}
+	rename := `<sysmsg type="sysmsgtemplate"><sysmsgtemplate><content_template><template>"$username$"修改群名为“$remark$”</template><link_list><link name="username"><memberlist><member><nickname>测试成员</nickname></member></memberlist></link><link name="remark"><plain>新群名</plain></link></link_list></content_template></sysmsgtemplate></sysmsg>`
+	m, _ = ParseWechatMessage(Message{Kind: "system"}, rename)
+	if m.Content != `"测试成员"修改群名为“新群名”` {
+		t.Fatal("纯文本模板变量未展开", m.Content)
+	}
+	m, keep = ParseWechatMessage(Message{Kind: "call"}, fixtureCallNotice)
+	if !keep || m.Kind != "call" || m.Rich == nil || m.Rich.Status != "对方已取消" || m.Rich.Title != "语音通话" || m.Content != "[语音通话] 对方已取消" {
+		t.Fatal("通话未转为展示内容", m)
+	}
+	encoded, _ := json.Marshal(m)
+	for _, secret := range []string{"fixture-room", "fixture-identity", "voipmsg"} {
+		if strings.Contains(string(encoded), secret) {
+			t.Fatal("通话协议信息泄漏", secret)
+		}
+	}
+	for _, raw := range []string{fixtureCallNotice, fixtureInviteNotice} {
+		text, _ := ParseWechatMessage(Message{Kind: "text", Content: raw}, raw)
+		if text.Kind != "text" || text.Content != raw {
+			t.Fatal("用户粘贴 XML 被误识别")
+		}
+	}
+	for _, raw := range []string{`<voipmsg`, `<voipmsg type="unknown"><roomkey>fixture-secret</roomkey></voipmsg>`} {
+		m, _ := ParseWechatMessage(Message{Kind: "call", Content: raw}, raw)
+		if m.Content != "[通话通知]" {
+			t.Fatal("未知通话协议泄漏", m.Content)
+		}
+	}
+}
+
+func TestRestoreWechatNoticesFromEncryptedSources(t *testing.T) {
+	s := newServer(t, false)
+	// 切换后的 epoch 存在 store 中，不在持久化的 State 内。
+	replyRegressionCheck(t, s.SetAccount(Account{ID: "fixture-notice-account"}))
+	account := s.store.snapshot().Account.ID
+	group := Message{ID: "fixture-invite", Target: "fixture-room@chatroom", Kind: "system", Content: "[微信系统通知，请在微信中查看详情]", Status: "sent"}
+	call := Message{ID: "fixture-call", Target: "fixture-peer", Kind: "text", Content: fixtureCallNotice, Status: "sent", Time: "2026-10-22T12:00:00+08:00"}
+	pasted := call
+	pasted.ID = "fixture-pasted"
+	replyRegressionCheck(t, s.store.change(func(st *State) error {
+		st.Messages = []Message{group, call, pasted}
+		st.Contacts = []Contact{{ID: call.Target, Time: call.Time, Preview: call.Content}}
+		return nil
+	}))
+	replyRegressionCheck(t, s.RememberQuoteSource(group, fixtureInviteNotice))
+	for _, m := range []Message{call, pasted} {
+		replyRegressionCheck(t, s.RememberQuoteSource(m, fixtureCallNotice))
+		code := `{"type":{"code":50}}`
+		if m.ID == pasted.ID {
+			code = `{"type":{"code":1}}`
+		}
+		replyRegressionCheck(t, s.store.putSecret(accountMessageMediaKey(account, m), code))
+	}
+	replyRegressionCheck(t, s.restoreNoticeArchive())
+	st := s.store.snapshot()
+	if st.Messages[0].Content != `"邀请成员"邀请"成员甲、成员乙"加入了群聊` || st.Messages[1].Kind != "call" || st.Messages[1].Rich.Status != "对方已取消" || st.Messages[2].Kind != "text" || st.Messages[2].Content != fixtureCallNotice || st.Contacts[0].Preview != "[语音通话] 对方已取消" {
+		t.Fatal("历史恢复错误", st.Messages)
+	}
+	original, err := s.store.getSecret("quote:" + accountMessageMediaKey(account, call))
+	replyRegressionCheck(t, err)
+	if original != fixtureCallNotice {
+		t.Fatal("原始加密证据被改写")
+	}
+	revision := st.Revision
+	replyRegressionCheck(t, s.restoreNoticeArchive())
+	if s.store.snapshot().Revision != revision {
+		t.Fatal("重复恢复仍改写状态")
+	}
+}
+
 func TestWechatRevokeArchive(t *testing.T) {
 	for _, self := range []bool{false, true} {
 		content, status := "对方撤回了一条消息", "revoked_by_other"

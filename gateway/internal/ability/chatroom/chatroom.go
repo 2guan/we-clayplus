@@ -15,9 +15,11 @@ import (
 	baseapi "github.com/we-clay/we-clay/gateway/internal/api/base"
 	chatroomapi "github.com/we-clay/we-clay/gateway/internal/api/chatroom"
 	contactapi "github.com/we-clay/we-clay/gateway/internal/api/contact"
+	messageapi "github.com/we-clay/we-clay/gateway/internal/api/message"
 	sdkroot "github.com/we-clay/we-clay/sdk"
 	sdk "github.com/we-clay/we-clay/sdk/chatroom"
 	"github.com/we-clay/we-clay/sdk/contact"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // ability 群聊能力实现（缓存型）
@@ -218,6 +220,7 @@ func (a *ability) Create(members []string) (*sdk.Create_Response, error) {
 		cache := maputil.GetOrSet(a.cache, response.Chatroom, map[string]*sdk.Member{})
 		cache[m.Username] = cloneMember(&m)
 	}
+	contactability.HandleModifyContacts([]*messageapi.ModifyContact{{Username: wrapperspb.String(response.Chatroom), Nickname: wrapperspb.String(response.Name)}})
 	_ = a.saveCache()
 	return &response, nil
 }
@@ -306,6 +309,10 @@ func (a *ability) SetName(chatroom, name string) (*sdk.SetName_Response, error) 
 	if resp.GetCode() != 0 || resp.GetResult().GetCode() != 0 {
 		return nil, fmt.Errorf("SetName失败：%d/%d", resp.GetCode(), resp.GetResult().GetCode())
 	}
+	// 仅在既有回执校验成功后更新资料，避免后续缓存投影把已确认群名改回去。
+	contactability.HandleModifyContacts([]*messageapi.ModifyContact{{Username: wrapperspb.String(chatroom), Nickname: wrapperspb.String(name)}})
+	// 异常退出后仍应从已确认的新群名恢复，避免旧缓存覆盖控制台资料。
+	contactability.Destroy()
 	return &sdk.SetName_Response{Code: resp.GetCode(), Message: string(resp.GetResult().GetMessage())}, nil
 }
 

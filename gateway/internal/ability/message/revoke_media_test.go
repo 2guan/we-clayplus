@@ -28,6 +28,7 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 		{"file", "file", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeFile, Data: &sdk.Message_File{File: &sdk.FileData{Filename: "test.txt", Media: &sdk.Media{Data: []byte("file")}}}}},
 		{"link", "link", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppLink, Data: &sdk.Message_App{App: &sdk.AppData{Title: "test", Url: "https://example.invalid"}}}},
 		{"quote", "app", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppQuote, Data: &sdk.Message_App{App: &sdk.AppData{SubType: 57, Xml: `<appmsg><type>57</type><title>回复</title><refermsg><svrid>123</svrid></refermsg></appmsg>`}}}},
+		{"music", "app", "synthetic_peer_1789890000", true, false, &sdk.Message{Type: sdk.TypeAppMusic, Data: &sdk.Message_App{App: &sdk.AppData{SubType: 76, Xml: `<appmsg appid="wx1111111111111111"><type>3</type><title>歌名</title><des>歌手</des><url>https://example.com/song</url><dataurl>https://example.com/song.mp3</dataurl><songalbumurl>https://example.com/cover.jpg</songalbumurl><songlyric>歌词</songlyric></appmsg>`}}}},
 		{"emoji", "emoji", "1789890000", false, true, &sdk.Message{Type: sdk.TypeEmoji, Data: &sdk.Message_Emoji{Emoji: &sdk.EmojiData{Media: &sdk.Media{Data: []byte("emoji"), Md5: "synthetic"}}}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -58,6 +59,21 @@ func TestMediaRevokeUsesOriginalReceiptAcrossGateway(t *testing.T) {
 					t.Errorf("unexpected route %s", r.URL.Path)
 					w.WriteHeader(404)
 					return
+				}
+				if tc.name == "music" {
+					var q struct {
+						Receiver string `json:"receiver"`
+						XML      string `json:"xml"`
+						Extend   string `json:"extend_xml"`
+						Type     int    `json:"type"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+						t.Fatal(err)
+					}
+					music, err := sdk.ParseMusicXML(q.XML)
+					if err != nil || q.Type != 76 || q.Receiver != "synthetic_peer" || q.Extend != "" || music.Title != "歌名" || music.Lyric != "歌词" {
+						t.Error("音乐 core 请求丢失类型或字段", err)
+					}
 				}
 				data := map[string]any{"base_response": map[string]any{"code": 0}, "new_id": newID, "client_id": tc.clientID}
 				if tc.created {

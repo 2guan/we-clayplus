@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,7 +12,36 @@ import (
 	"testing"
 
 	"github.com/we-clay/we-clay/plugins/ai"
+	"github.com/we-clay/we-clay/sdk/control"
 )
+
+func TestReplyControlPartsCannotReachAnySend(t *testing.T) {
+	s, m, _ := retryFixture(t, func(w http.ResponseWriter, r *http.Request) { t.Error("不应请求模型") })
+	q, err := s.refreshReplyContext(replyRequest(s.store.snapshot(), m))
+	replyRegressionCheck(t, err)
+	replyRegressionCheck(t, s.store.change(func(st *State) error {
+		st.Settings["reply.max_parts"] = float64(5)
+		return nil
+	}))
+	s.host = replyRegressionHost(func(context.Context, control.Command) (any, error) {
+		t.Error("控制内容校验前就开始了外部操作")
+		return nil, nil
+	})
+	for _, text := range []string{
+		"前一句\n\n[NO_REPLY] 沉默原因：话题已结束",
+		"前一句\n\n[assistant]后一句",
+		"<voice>[NO_REPLY] 沉默原因：话题已结束</voice>",
+	} {
+		if err := replyPlanError(s.store.snapshot(), q, ai.Result{Text: text}); err == nil {
+			t.Fatal("分段控制内容通过模型输出检查", text)
+		} else if strings.Contains(text, "NO_REPLY") && !strings.Contains(err.Error(), "沉默标记") {
+			t.Fatal("没有在媒体能力检查前识别控制标记", err)
+		}
+		if err := s.deliverReplyEvidence(context.Background(), m.Target, text, "text", nil, &q); err == nil {
+			t.Fatal("分段控制内容通过最终发送检查", text)
+		}
+	}
+}
 
 func fragmentedReplyFixture() string {
 	var text strings.Builder
@@ -20,6 +50,55 @@ func fragmentedReplyFixture() string {
 		fmt.Fprintf(&text, "0%c\n", rune('一'+i))
 	}
 	return text.String()
+}
+
+func TestReplyRecordLabels(t *testing.T) {
+	conversation := &ai.Conversation{SelfName: "离线本人", Names: map[string]string{"fixture-other": "离线成员"}}
+	for _, tc := range []struct {
+		text    string
+		blocked bool
+	}{
+		{"16:10:31 离线本人：行，那我起头。", true},
+		{"〔m1234abcd〕16:10:31 离线本人：行，那我起头。", true},
+		{"2026-10-22 16:10 离线本人〔本人〕：接着聊。", true},
+		{"正常开头。\n16:11:00 离线成员：模型冒充另一成员。", true},
+		{"16:30 见，到时候给你消息。", false},
+		{"日程安排：\n16:30 会议：需求评审。", false},
+		{"> 16:10:31 离线本人：这是引用的原话。", false},
+		{"```text\n16:10:31 离线本人：这是日志示例。\n```", false},
+		{(writeIntentMissing{}).Error(), true},
+	} {
+		if err := replyQualityError(tc.text, conversation); (err != nil) != tc.blocked {
+			t.Errorf("记录格式判断不符: %q: %v", tc.text, err)
+		}
+	}
+}
+
+func TestReplyRecordLabelsRetryWithoutSendingMalformedText(t *testing.T) {
+	for _, recover := range []bool{true, false} {
+		t.Run(fmt.Sprint(recover), func(t *testing.T) {
+			var calls atomic.Int32
+			s, m, sends := retryFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				text := "16:10:31 离线本人：这是错误的聊天记录格式。"
+				if calls.Add(1) == 2 && recover {
+					text = "我们接着聊。"
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": text}}}})
+			})
+			replyRegressionCheck(t, s.store.change(func(st *State) error { st.Account.Name = "离线本人"; return nil }))
+			task := retrySubmit(t, s, m)
+			if calls.Load() != 2 || task.AutoRetries != 1 {
+				t.Fatal("未走完整重试流程", task, calls.Load())
+			}
+			if recover {
+				if task.Status != "completed" || task.Result != "我们接着聊。" || sends.Load() != 1 {
+					t.Fatal(task, sends.Load())
+				}
+			} else if task.Status != "failed" || !task.ReplyRetryable || sends.Load() != 0 || !strings.Contains(task.Error, "记录标签") {
+				t.Fatal(task, sends.Load())
+			}
+		})
+	}
 }
 
 func TestReplyQuality(t *testing.T) {
@@ -45,12 +124,47 @@ func TestReplyQuality(t *testing.T) {
 		{"tilde-code", "~~~\n" + code.String() + "~~~", false},
 		{"separator", strings.Repeat("-", 100) + "\n分隔线", false},
 		{"tool-only", "", false},
+		{"planning", "I notice the current message is for another participant, so I should stay quiet.\n\nI will not interrupt.", true},
+		{"planning-zh", "当前消息是在问另一个人，我应该保持沉默。", true},
+		{"planning-nonreply", "那俩表情是发给你看的，又没@我，我就不凑热闹了", true},
+		{"planning-stay-quiet", "你们聊，我先不插话了。", true},
+		{"ordinary-nonreply", "我不参与这个项目，交给另一组负责。", false},
+		{"quoted-nonreply", "> 你们聊，我先不插话了。", false},
+		{"explained-nonreply", "他说“你们聊，我不插话了”，是在表示礼貌。", false},
+		{"role-continuation", "正常正文\n[assistant]继续错误示范", true},
+		{"role-code", "```text\n[assistant]示例\n```", false},
+		{"wechat-emotion", "[微笑] 好的", false},
+		{"ordinary-english", "I noticed the upgrade is ready. You can try the new version.", false},
+		{"quoted-planning", "> I notice the current message is for another participant, so I should stay quiet.\n\n这是引用示例。", false},
+		{"code-planning", "```text\nI notice the current message is for another participant, so I should stay quiet.\n```", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := replyQualityError(tc.text); (err != nil) != tc.blocked {
+			if err := replyQualityError(tc.text, nil); (err != nil) != tc.blocked {
 				t.Fatal("异常判断不符", err)
 			}
 		})
+	}
+}
+
+func TestNonReplyPlanningRetriesToSilentWithoutSending(t *testing.T) {
+	var calls atomic.Int32
+	s, m, sends := retryFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		answer := "那俩表情是发给你看的，又没@我，我就不凑热闹了"
+		if calls.Add(1) > 1 {
+			answer = "[assistant]NO_REPLY: 非本人对话"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": answer}}}})
+	})
+	task := retrySubmit(t, s, m)
+	if task.Status != "completed" || task.Result != "本次无需回复" || task.AutoRetries != 1 || calls.Load() != 2 || sends.Load() != 0 {
+		t.Fatal("把不插话判断或角色标签沉默协议发到微信", task, calls.Load(), sends.Load())
+	}
+	found := false
+	for _, log := range s.store.snapshot().Logs {
+		found = found || strings.Contains(log.Message, task.ID) && strings.Contains(log.Message, "模型判断：非本人对话")
+	}
+	if !found {
+		t.Fatal("没有记录不回复原因")
 	}
 }
 
