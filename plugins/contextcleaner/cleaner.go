@@ -14,7 +14,8 @@ import (
 
 // Message 保留真实身份和来源；它是资料，不会被转换成 system 指令。
 type Message struct {
-	Game        string       `json:"game,omitempty"` // 游戏过程只作会话参考，不能作为现实人物事实。
+	MediaText   bool         `json:"media_text,omitempty"` // 宿主已关联的文字描述，不是媒体编码或票据。
+	Game        string       `json:"game,omitempty"`       // 游戏过程只作会话参考，不能作为现实人物事实。
 	Status      string       `json:"status,omitempty"`
 	SenderID    string       `json:"sender_id,omitempty"`
 	ActorType   string       `json:"actor_type,omitempty"`
@@ -112,7 +113,7 @@ func Prepare(c Config, messages []Message, session string) (Result, error) {
 			if c.Controls {
 				m.Text = cleanControls(m.Text)
 			}
-			if c.Media && slices.Contains([]string{"image", "audio", "video", "file", "emoji"}, m.Kind) {
+			if c.Media && !m.MediaText && slices.Contains([]string{"image", "audio", "video", "file", "emoji"}, m.Kind) {
 				m.Text = "[" + m.Kind + "媒体；原始内容保留在消息归档中]"
 			}
 			if strings.TrimSpace(m.Text) == "" {
@@ -157,6 +158,32 @@ var closing = regexp.MustCompile(`(?is)^.*?</(?:think|thought|reasoning|reflecti
 var stage = regexp.MustCompile(`[（(](笑|轻笑|叹气|停顿|思考|低声)[）)]`)
 
 var nonReplyDecision = regexp.MustCompile(`我(?:就|先|还是|这次|也)?不(?:凑热闹|插话|打扰|参与)(?:了|啦|哈|吧)?[。！？!?，,～~\s]*$`)
+
+var toolCallMarkup = regexp.MustCompile(`(?i)<(?:tool_calls?|function(?:_call)?|parameter)(?:[=\s>])|<\|tool_calls?[^|]*\|>`)
+var inlineCode = regexp.MustCompile("`[^`]*`")
+
+// ToolCallText 识别模型把内部调用协议写成正文的情况；代码示例与引用不执行，
+// 也不据此丢弃。实际工具调用仍只能来自供应商的结构化 tool_calls 字段。
+func ToolCallText(text string) bool {
+	fence := ""
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if fence != "" {
+			if strings.HasPrefix(line, fence) {
+				fence = ""
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			fence = line[:3]
+			continue
+		}
+		if !strings.HasPrefix(line, ">") && toolCallMarkup.MatchString(inlineCode.ReplaceAllString(line, "")) {
+			return true
+		}
+	}
+	return false
+}
 
 // ReplyDecision 只识别直接写给读者的回复规划，不处理引用、代码或正常回答。
 func ReplyDecision(text string) bool {

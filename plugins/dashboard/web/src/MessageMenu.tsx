@@ -78,7 +78,7 @@ export function MessageMenu({
       id: "quote",
       label: "引用",
       icon: ChatCircleDots,
-      disabled: target.message.kind === "call" || ["sending", "unknown", "revoked"].includes(
+      disabled: target.message.kind === "call" || target.message.status.startsWith("revoked") || ["sending", "unknown"].includes(
         target.message.status,
       ),
     },

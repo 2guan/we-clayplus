@@ -45,7 +45,7 @@ func safetyConfig(st State, source, target string) (promptguard.Config, contextc
 	if soupSource(source) {
 		source = "wechat"
 	}
-	if source == "reply-media" || source == "wechat-proactive" {
+	if source == "reply-media" || source == "wechat-proactive" || source == "reply-review" {
 		source = "wechat"
 	}
 	if source == "memory-scan" {
@@ -216,14 +216,14 @@ func materializeSafety(st State, q ai.Request, m Model, maxOutput int) (ai.Reque
 		raw, _ := json.Marshal(t.Parameters)
 		reserve += contextcleaner.Estimate(t.Name+t.Description+string(raw)) + 32
 	}
-	budget := settingNumber(st, "context_cleaner.max_input") - reserve
+	budget := tokenCapacity(settingNumber(st, "context_cleaner.max_input")) - reserve
 	if budget <= 0 {
 		return q, r, fmt.Errorf("当前请求超过容量预算，请缩短输入或提高请求容量上限")
 	}
 	if m.Context > 0 {
 		c.MaxMessages = m.Context
 	}
-	c.Budget = min(c.Budget, budget)
+	c.Budget = min(tokenCapacity(contextTokenBudget(st, m)), budget)
 	clean, err := contextcleaner.Prepare(c, q.Context, q.Target)
 	r.Changes = append(r.Changes, clean.Changes...)
 	r.Messages = clean.Messages
@@ -271,7 +271,9 @@ func filterSafetyOutput(st State, q ai.Request, result ai.Result, secret string)
 		return result, r, err
 	}
 	// 凭据不可输出是独立边界，关闭插件也不允许回显实际 API 密钥。
-	if len(secret) >= 8 && (strings.Contains(result.Text, secret) || slices.ContainsFunc(result.ToolCalls, func(t ai.ToolCall) bool { return strings.Contains(t.Arguments, secret) })) {
+	if len(secret) >= 8 && (strings.Contains(result.Text, secret) || slices.ContainsFunc(result.ToolCalls, func(t ai.ToolCall) bool {
+		return strings.Contains(t.Arguments, secret) || strings.Contains(t.Name, secret)
+	})) {
 		r.Blocked = true
 		r.Hits = append(r.Hits, promptguard.Hit{Rule: "secret-leak", Name: "实际凭据泄露", Level: "high", Action: "block", Source: "output"})
 		return ai.Result{}, r, safetyBlocked{}

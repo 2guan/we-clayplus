@@ -30,6 +30,10 @@ import (
 var assets embed.FS
 
 type Server struct {
+	imageMu         sync.Mutex
+	imageWake       chan struct{}
+	imageChanged    chan struct{}
+	imageCancel     context.CancelFunc
 	attachmentMu    sync.Mutex // 大文件逐个落盘；普通文字与媒体发送不持有此锁。
 	newsCache       toolbox.NewsCache
 	cacheMu         sync.Mutex
@@ -45,7 +49,6 @@ type Server struct {
 	soupWorkers     map[string]bool
 	businessSlots   chan struct{}
 	businessPending chan struct{}
-	startedAt       time.Time // 仅记录本次服务启动，使用单调时钟计算，不写入持久化快照。
 	cfg             control.Config
 	host            control.Host
 	store           *store
@@ -89,7 +92,8 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), startedAt: time.Now(), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
+	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
+	s.imageWake, s.imageChanged = make(chan struct{}, 1), make(chan struct{})
 	s.taskWaiting, s.taskWake = map[string]bool{}, make(chan struct{})
 	if host != nil {
 		s.host = debugHost{Host: host, s: s}
@@ -166,6 +170,8 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 	}
 	s.workers.Add(1)
 	go s.scheduler()
+	s.workers.Add(1)
+	go s.imageAnalysisWorker(cfg.Mock)
 	return s, nil
 }
 func (s *Server) Address() string { return s.address }
@@ -202,6 +208,15 @@ func (s *Server) Handler() http.Handler {
 			return
 		}
 		switch r.URL.Path {
+		case "/api/core-uptime":
+			if r.Method != http.MethodGet {
+				writeError(w, 405, "请求方法不支持")
+				return
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			writeJSON(w, 200, struct {
+				UptimeSeconds *int64 `json:"uptime_seconds"`
+			}{s.coreUptime(r.Context())})
 		case "/api/attachments/send":
 			s.sendAttachment(w, r)
 		case "/api/cache":
@@ -314,11 +329,11 @@ func (s *Server) Handler() http.Handler {
 					state.Users = append([]User{u}, state.Users...)
 				}
 			}
-			// 运行时指标随状态响应返回，刷新页面和重置 Mock 数据都不会重置计时。
+			// 只显示当前 core 进程的运行时间，无法获取时返回null。
 			writeJSON(w, 200, struct {
 				State
-				UptimeSeconds int64 `json:"uptime_seconds"`
-			}{State: state, UptimeSeconds: int64(time.Since(s.startedAt) / time.Second)})
+				UptimeSeconds *int64 `json:"uptime_seconds"`
+			}{State: state, UptimeSeconds: s.coreUptime(r.Context())})
 		case "/api/schema":
 			if r.Method != http.MethodGet {
 				writeError(w, 405, "请求方法不支持")
@@ -531,6 +546,7 @@ func (s *Server) streamTask(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func (s *Server) notify() {
+	s.wakeImageAnalysis()
 	s.eventMu.Lock()
 	defer s.eventMu.Unlock()
 	for ch := range s.subscribers {
@@ -589,6 +605,11 @@ func addLog(v *State, level, component, text string) {
 }
 func (s *Server) SetAccount(a Account) error {
 	if previous := s.store.snapshot(); previous.Account.ID != "" && a.ID != "" && previous.Account.ID != a.ID {
+		s.imageMu.Lock()
+		if s.imageCancel != nil {
+			s.imageCancel()
+		}
+		s.imageMu.Unlock()
 		s.replyBatchMu.Lock()
 		batches := []*groupReplyBatch{}
 		for _, b := range s.replyBatches {
@@ -759,7 +780,9 @@ func (s *Server) Record(m Message) error {
 			}
 			if revoked {
 				m.Status = "revoked_by_other"
-				m.Content = "[消息已撤回]"
+				if m.Self {
+					m.Status = "revoked"
+				}
 			}
 		}
 		for _, old := range v.Messages {
@@ -798,6 +821,7 @@ func (s *Server) Record(m Message) error {
 		}
 	}
 	if added {
+		s.scheduleImageAnalysis(m)
 		if isPlay {
 			s.replyDecision(m, "转交插件", "消息属于互动游戏流程，不触发普通聊天回复；发送结果见插件记录")
 			s.notify()

@@ -63,7 +63,7 @@ func TestMixedReplyAndSingleSlot(t *testing.T) {
 			t.Fatalf("顺序错误 %+v", got)
 		}
 	}
-	if !strings.Contains(got[3].Content, "晴天花园") || got[3].Media == "" || got[2].Media == "" {
+	if !strings.Contains(got[3].GenerationPrompt, "晴天花园") || !got[3].ImageGenerated || got[3].Media == "" || got[2].Media == "" {
 		t.Fatal("媒体或记忆描述丢失")
 	}
 	children := 0
@@ -315,8 +315,11 @@ func TestAutoReplyRejectsUnprovidedTool(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]json.RawMessage
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if _, ok := body["tools"]; !ok {
+		correcting := strings.Contains(string(body["messages"]), "上一轮没有执行任何工具或发送消息")
+		if _, ok := body["tools"]; !ok && !correcting {
 			t.Error("已授权工具未提供给模型进行语义判断")
+		} else if ok && correcting {
+			t.Error("纠正后仍提供可执行写操作工具")
 		}
 		fmt.Fprint(w, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"chatroom__SetName","arguments":"{\"content\":\"synthetic\"}"}}]}}]}`)
 	}))

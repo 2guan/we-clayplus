@@ -4,7 +4,9 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/we-clay/we-clay/plugins/internal/debuglog"
 	"github.com/we-clay/we-clay/sdk/control"
@@ -56,6 +58,13 @@ func (s *Server) debugContext(ctx context.Context, account string, epoch uint64,
 type debugHost struct {
 	control.Host
 	s *Server
+}
+
+func (h debugHost) CoreUptime(ctx context.Context) (time.Duration, error) {
+	if source, ok := h.Host.(control.CoreRuntimeHost); ok {
+		return source.CoreUptime(ctx)
+	}
+	return 0, fmt.Errorf("宿主未提供 core 运行时间")
 }
 
 func (h debugHost) Execute(ctx context.Context, command control.Command) (any, error) {

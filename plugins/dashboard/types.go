@@ -32,28 +32,44 @@ type Contact struct {
 	Time          string   `json:"time"`
 }
 type Message struct {
-	Music         *sdkmessage.Music           `json:"music,omitempty"`
-	Game          string                      `json:"game,omitempty"` // 公开游戏过程在上下文中显式标记，不作为长期记忆来源。
-	MentionAll    bool                        `json:"mention_all,omitempty"`
-	Interaction   *contextcleaner.Interaction `json:"interaction,omitempty"`
-	Mentions      []string                    `json:"mentions,omitempty"`       // 保存实际提醒对象，供失败重发复用。
-	RevokeReceipt *control.RevokeReceipt      `json:"revoke_receipt,omitempty"` // 与消息一起落盘，仅使用原始回执。
-	SenderAvatar  string                      `json:"sender_avatar,omitempty"`  // 群成员不必是好友，直接保留消息来源头像。
-	Rich          *RichMessage                `json:"rich,omitempty"`
-	Articles      []MessageArticle            `json:"articles,omitempty"`
-	Publisher     string                      `json:"publisher,omitempty"`
-	SenderID      string                      `json:"sender_id,omitempty"` // 稳定成员 ID，避免同名成员统计合并。
-	ID            string                      `json:"id"`
-	Target        string                      `json:"target"`
-	Sender        string                      `json:"sender"`
-	Content       string                      `json:"content"`
-	Kind          string                      `json:"kind"`
-	Self          bool                        `json:"self"`
-	Source        string                      `json:"source"`
-	Status        string                      `json:"status"`
-	Time          string                      `json:"time"`
-	Media         string                      `json:"media,omitempty"`
-	Duration      int                         `json:"duration,omitempty"`
+	ImageAnalysis    *ImageAnalysis              `json:"image_analysis,omitempty"`
+	ImageGenerated   bool                        `json:"image_generated,omitempty"`
+	GenerationPrompt string                      `json:"generation_prompt,omitempty"`
+	Music            *sdkmessage.Music           `json:"music,omitempty"`
+	Game             string                      `json:"game,omitempty"` // 公开游戏过程在上下文中显式标记，不作为长期记忆来源。
+	MentionAll       bool                        `json:"mention_all,omitempty"`
+	Interaction      *contextcleaner.Interaction `json:"interaction,omitempty"`
+	Mentions         []string                    `json:"mentions,omitempty"`       // 保存实际提醒对象，供失败重发复用。
+	RevokeReceipt    *control.RevokeReceipt      `json:"revoke_receipt,omitempty"` // 与消息一起落盘，仅使用原始回执。
+	SenderAvatar     string                      `json:"sender_avatar,omitempty"`  // 群成员不必是好友，直接保留消息来源头像。
+	Rich             *RichMessage                `json:"rich,omitempty"`
+	Articles         []MessageArticle            `json:"articles,omitempty"`
+	Publisher        string                      `json:"publisher,omitempty"`
+	SenderID         string                      `json:"sender_id,omitempty"` // 稳定成员 ID，避免同名成员统计合并。
+	ID               string                      `json:"id"`
+	Target           string                      `json:"target"`
+	Sender           string                      `json:"sender"`
+	Content          string                      `json:"content"`
+	Kind             string                      `json:"kind"`
+	Self             bool                        `json:"self"`
+	Source           string                      `json:"source"`
+	Status           string                      `json:"status"`
+	Time             string                      `json:"time"`
+	Media            string                      `json:"media,omitempty"`
+	Duration         int                         `json:"duration,omitempty"`
+}
+
+// 识图是与原消息关联的模型描述，不覆盖原文，也不是长期记忆或操作授权。
+type ImageAnalysis struct {
+	Status      string `json:"status"`
+	Description string `json:"description,omitempty"`
+	SHA256      string `json:"sha256,omitempty"`
+	ConfigHash  string `json:"config_hash,omitempty"`
+	Model       string `json:"model,omitempty"`
+	TaskID      string `json:"task_id,omitempty"`
+	Updated     string `json:"updated"`
+	Error       string `json:"error,omitempty"`
+	CacheHit    bool   `json:"cache_hit,omitempty"`
 }
 type MomentLike struct {
 	ID   string `json:"id"`
@@ -125,6 +141,7 @@ type InsightInfo struct {
 }
 
 type Task struct {
+	ReplyFollowup   bool         `json:"reply_followup,omitempty"`
 	ReplyMergedInto string       `json:"reply_merged_into,omitempty"` // 尚未生成的同群批次合并目标，不作为新的回复阻止父任务重试。
 	ReplyBatch      []string     `json:"reply_batch,omitempty"`       // 合并来源；手动重试重新读取归档。
 	ReplyTo         string       `json:"reply_to,omitempty"`          // 自动回复对应的归档消息，重试时重新验证。

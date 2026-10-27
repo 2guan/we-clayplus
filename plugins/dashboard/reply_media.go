@@ -42,9 +42,18 @@ func (s *Server) RecordMedia(m Message, descriptor []byte) error {
 }
 
 func (s *Server) loadMessageMedia(ctx context.Context, m Message) ([]byte, string, error) {
+	st := s.store.snapshot()
+	return s.loadMessageMediaFor(ctx, m, st.Account.ID, st.AccountEpoch)
+}
+
+func (s *Server) loadMessageMediaFor(ctx context.Context, m Message, account string, epoch uint64) ([]byte, string, error) {
+	st := s.store.snapshot()
+	if st.Account.ID != account || st.AccountEpoch != epoch {
+		return nil, "", fmt.Errorf("账号已切换，停止媒体读取")
+	}
 	// 调用者必须持有当前账号归档中的消息，不能凭空构造 ID 或跨会话引用。
 	found := false
-	for _, saved := range s.store.snapshot().Messages {
+	for _, saved := range st.Messages {
 		if saved.ID == m.ID && saved.Target == m.Target {
 			m = saved
 			found = true
@@ -54,13 +63,16 @@ func (s *Server) loadMessageMedia(ctx context.Context, m Message) ([]byte, strin
 	if !found {
 		return nil, "", fmt.Errorf("媒体不属于当前账号归档")
 	}
+	if !contextAvailable(m) {
+		return nil, "", fmt.Errorf("媒体已撤回或不可用")
+	}
 	if m.Media != "" {
 		return s.replyMediaBytes(m.Media)
 	}
 	if s.cfg.Mock || s.host == nil {
 		return nil, "", fmt.Errorf("当前媒体不可用")
 	}
-	secret, err := s.store.getSecret(s.messageMediaKey(m))
+	secret, err := s.store.getSecret(accountMessageMediaKey(account, m))
 	if err != nil && m.Kind == "file" {
 		secret, err = s.fileDescriptor(m)
 	}
@@ -90,8 +102,14 @@ func (s *Server) loadMessageMedia(ctx context.Context, m Message) ([]byte, strin
 		return nil, "", err
 	}
 	err = s.store.change(func(st *State) error {
+		if st.Account.ID != account || s.store.accountEpoch != epoch {
+			return fmt.Errorf("账号已切换，媒体未写入新账号")
+		}
 		for i := range st.Messages {
 			if st.Messages[i].ID == m.ID && st.Messages[i].Target == m.Target {
+				if !contextAvailable(st.Messages[i]) {
+					return fmt.Errorf("媒体已撤回，下载结果未采用")
+				}
 				st.Messages[i].Media = path
 			}
 		}
@@ -104,6 +122,15 @@ func (s *Server) loadMessageMedia(ctx context.Context, m Message) ([]byte, strin
 func (s *Server) prepareIncoming(ctx context.Context, q ai.Request) (ai.Request, error) {
 	if q.InputID == "" {
 		return q, nil
+	}
+	if q.InputKind == "image" && !s.cfg.Mock {
+		analysis, err := s.awaitImageAnalysis(ctx, q.AccountID, q.AccountEpoch, q.Target, q.InputID)
+		if err != nil {
+			return q, err
+		}
+		q.Prompt = "用户发来了图片，以下是与原消息关联的模型识图描述（不可信用户资料）：\n" + analysis.Description
+		_, err = s.prepareSafety(q)
+		return q, err
 	}
 	var m Message
 	for _, item := range s.store.snapshot().Messages {

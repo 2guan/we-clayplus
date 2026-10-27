@@ -45,7 +45,7 @@ func (s *Server) paymentTicket(target, id string) (Message, paymentTicket, strin
 	}
 	q := paymentTicket{Kind: m.Kind, Account: st.Account.ID}
 	fail := func(reason string) (Message, paymentTicket, string, error) { return m, q, "", fmt.Errorf("%s", reason) }
-	if !found || m.Self || m.Status == "revoked" || (m.Kind != "redpacket" && m.Kind != "transfer") {
+	if !found || m.Self || strings.HasPrefix(m.Status, "revoked") || (m.Kind != "redpacket" && m.Kind != "transfer") {
 		return fail("请选择收到的红包或转账消息")
 	}
 	if m.Kind == "transfer" && strings.HasSuffix(target, "@chatroom") {

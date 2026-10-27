@@ -7,6 +7,25 @@ import (
 	"github.com/we-clay/we-clay/plugins/contextcleaner"
 )
 
+// 0 沿用全局，-1 为模型显式不限制；传给 AI 执行器的 0 表示不限制。
+func contextTokenBudget(st State, m Model) int {
+	if m.ContextTokens < 0 {
+		return 0
+	}
+	if m.ContextTokens > 0 {
+		return m.ContextTokens
+	}
+	return settingNumber(st, "memory.tokens")
+}
+
+// 清洗器内部需要正预算；用机器整数上界表示应用不限制，不发送给模型接口。
+func tokenCapacity(n int) int {
+	if n <= 0 {
+		return int(^uint(0) >> 1)
+	}
+	return n
+}
+
 func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c contextcleaner.Config, r safetyReport) (ai.Request, safetyReport, error) {
 	conv := *q.Conversation
 	conv.Pending = append([]contextcleaner.Message(nil), conv.Pending...)
@@ -22,9 +41,7 @@ func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c c
 	if m.Context > 0 {
 		c.MaxMessages = m.Context
 	}
-	if m.ContextTokens > 0 {
-		c.Budget = m.ContextTokens
-	}
+	c.Budget = tokenCapacity(contextTokenBudget(st, m))
 	// 当前消息之外的去重和身份边界不依赖可选清洗插件开关。
 	history := []contextcleaner.Message{}
 	seen := map[string]bool{}
@@ -66,12 +83,7 @@ func materializeConversation(st State, q ai.Request, m Model, maxOutput int, c c
 		raw, _ := json.Marshal(tool.Parameters)
 		reserve += contextcleaner.Estimate(tool.Name+tool.Description+string(raw)) + 32
 	}
-	budget := settingNumber(st, "context_cleaner.max_input") - reserve
-	if m.ContextTokens > 0 {
-		budget = min(budget, m.ContextTokens)
-	} else {
-		budget = min(budget, c.Budget)
-	}
+	budget := min(tokenCapacity(settingNumber(st, "context_cleaner.max_input"))-reserve, c.Budget)
 	if budget <= 0 {
 		return q, r, fmt.Errorf("当前请求没有可用的模型上下文预算")
 	}

@@ -70,9 +70,9 @@ test("六类能力都有可查看结果，聊天可发送和撤回", async ({ pa
   await expect(message).toBeVisible();
   await message.getByRole("button", { name: "消息操作" }).click();
   await page.getByRole("menuitem", { name: "撤回", exact: true }).click();
-  await expect(page.locator(".system-message").last()).toHaveText(
-    "你撤回了一条消息",
-  );
+  await expect(message).toContainText("浏览器脱机消息");
+  await expect(message).toHaveClass(/message-revoked/);
+  await expect(message).toContainText("已撤回 · 不计入上下文");
 });
 
 test("设置保存后刷新仍然存在，错误场景可恢复", async ({ page }) => {

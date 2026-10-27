@@ -59,7 +59,7 @@ func (w remote) SendText(receiver, content, remind string) (*SendMessageResponse
 
 // SendImage 发送图片消息（multipart/form-data）
 func (w remote) SendImage(receiver string, reader io.Reader) (*UploadImageResponse, error) {
-	imageData, err := io.ReadAll(reader)
+	imageData, err := prepareImageUpload(reader)
 	if err != nil {
 		return nil, err
 	}

@@ -22,32 +22,34 @@ import (
 )
 
 type actionRequest struct {
-	fileMedia   string // 仅服务端上传或可信归档重发使用。
-	fileAccount string
-	Music       *sdkmessage.Music `json:"-"` // 仅可信插件预览或归档重发可以提供音乐卡片。
-	Mentions    []string          `json:"mentions,omitempty"`
-	RetryID     string            `json:"-"` // 仅内部重发链路赋值，不接受浏览器指定删除记录。
-	StickerID   string            `json:"sticker_id,omitempty"`
-	QuoteID     string            `json:"quote_id,omitempty"`
-	Vendor      *Vendor           `json:"vendor,omitempty"`
-	Models      []Model           `json:"models,omitempty"`
-	Pipeline    []string          `json:"pipeline,omitempty"`
-	Policy      *BehaviorPolicy   `json:"policy,omitempty"`
-	Kind        string            `json:"kind"`
-	ID          string            `json:"id,omitempty"`
-	Target      string            `json:"target,omitempty"`
-	Content     string            `json:"content,omitempty"`
-	Group       string            `json:"group,omitempty"`
-	Values      map[string]any    `json:"values,omitempty"`
-	Revision    int64             `json:"revision,omitempty"`
-	Enabled     bool              `json:"enabled,omitempty"`
-	Model       *Model            `json:"model,omitempty"`
-	Prompt      *Prompt           `json:"prompt,omitempty"`
-	Name        string            `json:"name,omitempty"`
-	Role        string            `json:"role,omitempty"`
-	Password    string            `json:"password,omitempty"`
-	Media       string            `json:"media,omitempty"`
-	MIME        string            `json:"mime,omitempty"`
+	generatedImage   bool // 只由服务端生成流程设置，不接受浏览器或模型声称图片来源。
+	generationPrompt string
+	fileMedia        string // 仅服务端上传或可信归档重发使用。
+	fileAccount      string
+	Music            *sdkmessage.Music `json:"-"` // 仅可信插件预览或归档重发可以提供音乐卡片。
+	Mentions         []string          `json:"mentions,omitempty"`
+	RetryID          string            `json:"-"` // 仅内部重发链路赋值，不接受浏览器指定删除记录。
+	StickerID        string            `json:"sticker_id,omitempty"`
+	QuoteID          string            `json:"quote_id,omitempty"`
+	Vendor           *Vendor           `json:"vendor,omitempty"`
+	Models           []Model           `json:"models,omitempty"`
+	Pipeline         []string          `json:"pipeline,omitempty"`
+	Policy           *BehaviorPolicy   `json:"policy,omitempty"`
+	Kind             string            `json:"kind"`
+	ID               string            `json:"id,omitempty"`
+	Target           string            `json:"target,omitempty"`
+	Content          string            `json:"content,omitempty"`
+	Group            string            `json:"group,omitempty"`
+	Values           map[string]any    `json:"values,omitempty"`
+	Revision         int64             `json:"revision,omitempty"`
+	Enabled          bool              `json:"enabled,omitempty"`
+	Model            *Model            `json:"model,omitempty"`
+	Prompt           *Prompt           `json:"prompt,omitempty"`
+	Name             string            `json:"name,omitempty"`
+	Role             string            `json:"role,omitempty"`
+	Password         string            `json:"password,omitempty"`
+	Media            string            `json:"media,omitempty"`
+	MIME             string            `json:"mime,omitempty"`
 }
 
 func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
@@ -66,6 +68,8 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 		err = s.sendTaskVoice(r.Context(), q)
 	case "retry-reply":
 		err = s.retryReply(q.ID, q.Target)
+	case "retry-image-analysis":
+		err = s.retryImageAnalysis(q.Target, q.ID)
 	case "proactive-reply":
 		err = s.proactiveReply(q.Target)
 	case "resend":
@@ -910,6 +914,7 @@ func (s *Server) sendChecked(ctx context.Context, q actionRequest, source, accou
 		}
 	}
 	m := Message{Mentions: q.Mentions, ID: randomID(), Target: q.Target, Sender: state.Account.Name, Content: q.Content, Kind: kind, Rich: rich, Self: true, Source: source, Status: "sending", Time: time.Now().Format(time.RFC3339), Media: media}
+	m.ImageGenerated, m.GenerationPrompt = q.generatedImage, q.generationPrompt
 	m.Music = q.Music
 	if s.cfg.Mock && kind == "music" {
 		m.Media = "/sample-audio.wav"
@@ -977,6 +982,16 @@ func (s *Server) sendChecked(ctx context.Context, q actionRequest, source, accou
 		}
 		// core 可能在发送 RPC 返回前推送本账号的同步消息，按正式 ID 合并这条回显。
 		if serverID != "" && serverID != m.ID {
+			for _, echo := range v.Messages {
+				if echo.ID == serverID && echo.Target == q.Target && echo.Kind == "image" && contextAvailable(echo) {
+					for i := range v.Messages {
+						if v.Messages[i].ID == m.ID && v.Messages[i].Target == q.Target {
+							v.Messages[i].ImageAnalysis = echo.ImageAnalysis
+							break
+						}
+					}
+				}
+			}
 			v.Messages = slices.DeleteFunc(v.Messages, func(item Message) bool { return item.ID == serverID && item.Target == q.Target })
 		}
 		for i := range v.Messages {
@@ -1002,6 +1017,13 @@ func (s *Server) sendChecked(ctx context.Context, q actionRequest, source, accou
 	s.notify()
 	if err != nil {
 		return err
+	}
+	if sendErr == nil && kind == "image" {
+		m.Status = "sent"
+		if serverID != "" {
+			m.ID = serverID
+		}
+		s.scheduleImageAnalysis(m)
 	}
 	return sendErr
 }

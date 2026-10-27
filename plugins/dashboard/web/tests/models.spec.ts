@@ -7,6 +7,21 @@ test.beforeEach(async ({ request }) => {
   await request.post("/api/action", { data: { kind: "mock-reset" } });
 });
 
+test("全局 Token 预算支持 9999999 和无限制", async ({ page, request }) => {
+  await page.goto("/#models?tab=global");
+  const input = page.getByLabel("上下文 Token 预算", { exact: true });
+  const form = page.locator("form").filter({ has: input });
+  for (const budget of [9999999, 0]) {
+    await input.fill(String(budget));
+    await form.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(form.getByText("已与服务器同步", { exact: true })).toBeVisible();
+    const state = await (await request.get("/api/state")).json();
+    expect(state.settings["memory.tokens"]).toBe(budget);
+    await page.reload();
+    await expect(input).toHaveValue(String(budget));
+  }
+});
+
 test("厂商模型发现、独立参数、流水线与测活", async ({ page, request }) => {
   await page.goto("/#models");
   await page.getByRole("button", { name: "添加厂商", exact: true }).click();
@@ -26,8 +41,8 @@ test("厂商模型发现、独立参数、流水线与测活", async ({ page, re
   await dialog.getByLabel("超时时间（秒，0 继承）").fill("12");
   await dialog.getByLabel("温度（留空由厂商决定）").fill("0.4");
   await dialog.getByLabel("思维链", { exact: true }).selectOption("on");
-  await dialog.getByLabel("上下文条数（0 继承）").fill("20");
-  await dialog.getByLabel("上下文 Token 预算（0 继承）").fill("4096");
+  await dialog.getByLabel("上下文条数（0 继承）").fill("99999");
+  await dialog.getByLabel("上下文 Token 预算（0 继承）").fill("9999999");
   await dialog.getByRole("button", { name: "保存参数", exact: true }).click();
   const state = await (await request.get("/api/state")).json();
   const model = state.models.find(
@@ -36,8 +51,14 @@ test("厂商模型发现、独立参数、流水线与测活", async ({ page, re
   expect(model.timeout).toBe(12);
   expect(model.temperature).toBe(0.4);
   expect(model.thinking).toBe("on");
-  expect(model.context).toBe(20);
-  expect(model.context_tokens).toBe(4096);
+  expect(model.context).toBe(99999);
+  expect(model.context_tokens).toBe(9999999);
+  await page.getByRole("button", { name: "配置 mock-chat", exact: true }).click();
+  await dialog.getByLabel("不限制上下文 Token 预算（模型接口容量仍有限）").check();
+  await expect(dialog.getByLabel("上下文 Token 预算（0 继承）")).toBeDisabled();
+  await dialog.getByRole("button", { name: "保存参数", exact: true }).click();
+  const unlimitedState = await (await request.get("/api/state")).json();
+  expect(unlimitedState.models.find((m: { id: string }) => m.id === model.id).context_tokens).toBe(-1);
   await expect(page.locator(".vendor-model").filter({ hasText: "mock-chat" }).getByText("思维链开启", { exact: true })).toBeVisible();
   await page.getByLabel("添加流水线模型").selectOption(model.id);
   await page

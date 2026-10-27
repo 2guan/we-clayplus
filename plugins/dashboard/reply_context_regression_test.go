@@ -81,8 +81,8 @@ func TestReplyRegressionRevokeBeforeOriginal(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, v := range s.store.snapshot().Messages {
-		if v.ID == m.ID && contextAvailable(v) {
-			t.Fatal("先撤回后入库的原消息恢复为可注入状态")
+		if v.ID == m.ID && (contextAvailable(v) || v.Content != m.Content) {
+			t.Fatal("先撤回后入库丢失原文或恢复为可注入状态")
 		}
 	}
 }

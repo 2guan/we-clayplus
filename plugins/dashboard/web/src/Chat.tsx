@@ -47,6 +47,7 @@ import { EmojiPicker, AttachmentPreview, VoiceComposer } from "./ChatTools";
 import { mergeFileMessages } from "./fileMessages";
 import { compareContacts, matchesContact } from "./contactSearch";
 import { ConversationScroller } from "./ConversationScroller";
+import { ImageDescription } from "./ImageDescription";
 
 function useScrollActivity() {
   const [scrolling, setScrolling] = useState(false);
@@ -188,7 +189,7 @@ export default function Chat(props: PageProps) {
       (item) =>
         item.target === message.target && (item.id === message.rich?.quote_id || item.displayID === message.rich?.quote_id),
     );
-    if (!original || original.status === "revoked") {
+    if (!original || original.status.startsWith("revoked")) {
       notify("引用原消息未归档或已撤回，暂时无法打开");
       return;
     }
@@ -794,17 +795,13 @@ export default function Chat(props: PageProps) {
                   {(index === 0 || index % 5 === 0) && (
                     <div className="message-time">{dateTime(m.time)}</div>
                   )}
-                  {m.status === "revoked" || m.status === "revoked_by_other" ? (
-                    <div className="system-message">
-                      {m.status === "revoked_by_other" ? m.content : "你撤回了一条消息"}
-                    </div>
-                  ) : m.kind === "system" ? (
+                  {m.kind === "system" ? (
                     <div className="system-message">{m.content}{m.interaction && <small className="interaction-detail">
                       {m.interaction.actor_name || "未知成员"}（{m.interaction.actor_id || "身份未知"}） → {m.interaction.all ? "全体成员" : `${m.interaction.target_name || "未知成员"}（${m.interaction.target_id || "身份未知"}）`}
                       {!m.interaction.verified && " · 关系未核实"}
                     </small>}</div>
                   ) : (
-                    <div className={`message ${m.self ? "self" : ""}`}>
+                    <div className={`message ${m.self ? "self" : ""} ${m.status.startsWith("revoked") ? "message-revoked" : ""}`}>
                       <button
                         className="person-avatar-button"
                         onContextMenu={(e) => {
@@ -941,7 +938,7 @@ export default function Chat(props: PageProps) {
                                   {m.content}
                                   <small>{m.rich?.description || "文件附件"}</small>
                                 </span>
-                                {m.rich?.status !== "uploading" && (
+                                {m.rich?.status !== "uploading" && !m.status.startsWith("revoked") && (
                                   <a
                                     href={`/api/message-media?target=${encodeURIComponent(m.target)}&id=${encodeURIComponent(m.id)}`}
                                     download={m.content}
@@ -963,7 +960,7 @@ export default function Chat(props: PageProps) {
                                 key={m.id}
                                 message={m}
                                 openPayment={
-                                  props.user.role === "admin"
+                                  props.user.role === "admin" && !m.status.startsWith("revoked")
                                     ? setPayment
                                     : undefined
                                 }
@@ -989,7 +986,13 @@ export default function Chat(props: PageProps) {
                             <DotsThree size={16} />
                           </button>
                         </div>
+                        {m.status.startsWith("revoked") && <div className="message-revoke-status" role="note">已撤回 · 不计入上下文</div>}
                         {/* 仅发送中和异常保留状态提示，正常消息不再占用底部一行。 */}
+                        {m.kind === "image" && <ImageDescription message={m}
+                          enabled={current.mode === "auto" && !!state.settings["reply.enabled"] && !!state.settings["vision.auto"] && state.account.status === "online"}
+                          retry={async (image) => { await act({ kind: "retry-image-analysis", target: image.target, id: image.id }); }}
+                          notify={notify}
+                        />}
                         {m.self &&
                           ["sending", "unknown", "failed"].includes(
                             m.status,

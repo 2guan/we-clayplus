@@ -40,7 +40,6 @@ func applyRevokeNotice(v *State, target, id, content string) bool {
 			m.Status = "revoked"
 		} else {
 			m.Status = "revoked_by_other"
-			m.Content = content
 		}
 		return true
 	}

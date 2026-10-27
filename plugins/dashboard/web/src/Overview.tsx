@@ -19,7 +19,7 @@ import {
 import { WechatLogin } from "./WechatLogin";
 import type { PageProps, State } from "./types";
 import { Avatar, Badge, Empty } from "./ui";
-import { dateTime, number } from "./api";
+import { dateTime, number, request } from "./api";
 
 // 使用本地日历日期，避免 UTC 转换导致起止日期偏移一天。
 function calendarDate(value: Date) {
@@ -124,17 +124,35 @@ function Chart({
   );
 }
 // 只更新运行时间卡片，避免每秒重绘图表；用单调时钟补足两次状态同步之间的时间。
-function UptimeAsset({ seconds }: { seconds?: number }) {
+function UptimeAsset({ seconds }: { seconds?: number | null }) {
+  const [sample, setSample] = useState({ seconds });
   const [elapsed, setElapsed] = useState(seconds);
+  useEffect(() => setSample({ seconds }), [seconds]);
   useEffect(() => {
-    setElapsed(seconds);
-    if (seconds === undefined) return;
+    let active = true, pending = false;
+    const sync = async () => {
+      if (pending || document.hidden) return;
+      pending = true;
+      try {
+        const data = await request<{ uptime_seconds: number | null }>("/api/core-uptime");
+        if (active) setSample({ seconds: data.uptime_seconds });
+      } catch { if (active) setSample({ seconds: null }); }
+      finally { pending = false; }
+    };
+    const timer = window.setInterval(() => void sync(), 15000);
+    document.addEventListener("visibilitychange", sync);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", sync); };
+  }, []);
+  useEffect(() => {
+    setElapsed(sample.seconds);
+    if (sample.seconds == null) return;
+    const base = sample.seconds;
     const receivedAt = performance.now();
     const timer = window.setInterval(() => {
-      setElapsed(seconds + Math.floor((performance.now() - receivedAt) / 1000));
+      setElapsed(base + Math.floor((performance.now() - receivedAt) / 1000));
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [seconds]);
+  }, [sample]);
   const total = Math.max(0, Math.floor(elapsed ?? 0));
   const days = Math.floor(total / 86400);
   // 只显示两位时分，不展示秒；满一天后才加上天数。
@@ -142,11 +160,11 @@ function UptimeAsset({ seconds }: { seconds?: number }) {
     .map((value) => String(value).padStart(2, "0"))
     .join(":");
   return (
-    <div className="asset uptime-asset" title="当前服务本次启动后的运行时间">
+    <div className="asset uptime-asset" title="当前 core 进程的运行时间，重启 dashboard 不重置；无法读取时显示 —">
       <Clock size={18} />
       <span>已运行时间</span>
       <strong>
-        {elapsed === undefined
+        {elapsed == null
           ? "—"
           : `${days > 0 ? `${days}天 ` : ""}${clock}`}
       </strong>

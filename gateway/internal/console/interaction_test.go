@@ -151,7 +151,7 @@ func TestBridgeRevokeOrderingAndConversationIsolation(t *testing.T) {
 	st := read()
 	revoked := interactionFind(t, st, a, "500")
 	untouched := interactionFind(t, st, other, "500")
-	if !strings.HasPrefix(revoked.Status, "revoked") || strings.Contains(revoked.Content, "fixture-original-body") {
+	if !strings.HasPrefix(revoked.Status, "revoked") || revoked.Content != "fixture-original-body-"+a {
 		t.Fatal("Bridge撤回未到达原消息", revoked)
 	}
 	if strings.HasPrefix(untouched.Status, "revoked") || untouched.Content != "fixture-original-body-"+other {
@@ -171,7 +171,7 @@ func TestBridgeRevokeOrderingAndConversationIsolation(t *testing.T) {
 	st = read()
 	late := interactionFind(t, st, early, "700")
 	cross := interactionFind(t, st, other, "700")
-	if !strings.HasPrefix(late.Status, "revoked") || strings.Contains(late.Content, "fixture-late-revoked-body") {
+	if !strings.HasPrefix(late.Status, "revoked") || late.Content != "fixture-late-revoked-body" {
 		t.Fatal("先到撤回未约束迟到正文", late)
 	}
 	if strings.HasPrefix(cross.Status, "revoked") || cross.Content != "fixture-same-id-other-conversation" {

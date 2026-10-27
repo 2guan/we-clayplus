@@ -32,6 +32,12 @@ import (
 )
 
 type Bridge struct {
+	uptimeMu           sync.Mutex
+	coreAddress        string
+	uptimeAddress      string
+	uptimeChecked      time.Time
+	coreStarted        time.Time
+	uptimeError        error
 	contactSync        atomic.Bool
 	contactSyncMu      sync.Mutex
 	contactSyncWG      sync.WaitGroup

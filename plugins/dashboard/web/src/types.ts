@@ -24,6 +24,17 @@ export type Contact = {
   time: string;
 };
 export type Message = {
+	image_generated?: boolean;
+	generation_prompt?: string;
+	image_analysis?: {
+		status: "pending" | "running" | "completed" | "failed";
+		description?: string;
+		error?: string;
+		model?: string;
+		task_id?: string;
+		updated: string;
+		cache_hit?: boolean;
+	};
   music?: { app_id: string; title: string; artist?: string; url: string; audio_url: string; cover?: string; lyric?: string };
   rich?: {
     file_notice_id?: string;
@@ -208,7 +219,7 @@ export type Group = {
   fields: Field[];
 };
 export type State = {
-  uptime_seconds?: number; // 服务端本次启动的运行秒数，不使用浏览器打开时间。
+  uptime_seconds?: number | null; // 当前core进程运行秒数；无法读取或Mock时为null。
   config_revision: number;
   revision: number;
   contact_sync?: string;

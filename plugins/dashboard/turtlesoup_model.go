@@ -199,10 +199,8 @@ func materializeSoup(st State, q ai.Request, m Model, maxOutput int, c contextcl
 	if m.Context > 0 {
 		c.MaxMessages = m.Context
 	}
-	if m.ContextTokens > 0 {
-		c.Budget = m.ContextTokens
-	}
-	capacity := settingNumber(st, "context_cleaner.max_input")
+	c.Budget = tokenCapacity(contextTokenBudget(st, m))
+	capacity := tokenCapacity(settingNumber(st, "context_cleaner.max_input"))
 	if m.ContextTokens > 0 {
 		capacity = min(capacity, m.ContextTokens)
 	}

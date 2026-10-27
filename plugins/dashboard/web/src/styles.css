@@ -4915,3 +4915,16 @@ button.workspace { width: 100%; }
 .business-image-gallery figure { margin: 0; min-width: 0; }
 .business-image-gallery img { display: block; max-width: 100%; height: auto; max-height: 500px; object-fit: contain; }
 .business-image-gallery figcaption { margin-top: 6px; color: var(--muted); font-size: 12px; }
+
+.image-description { max-width: 320px; min-width: 0; margin-top: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.image-description summary { cursor: pointer; padding: 5px 0; }
+.image-description p { margin: 6px 0; white-space: pre-wrap; line-height: 1.6; }
+.image-description small { display: block; line-height: 1.5; }
+.image-description-status { display: flex; align-items: start; flex-wrap: wrap; gap: 4px 12px; }
+.image-description-status > details { flex: 1 1 160px; min-width: 0; }
+.image-description button { padding: 4px 8px; min-height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); }
+@media (max-width: 700px) { .image-description button, .image-description summary { min-height: 44px; } }
+
+/* 撤回仅改变展示状态；正文保留用于后台核对，不用于模型上下文。 */
+.message-revoked .bubble { outline: 1px dashed var(--muted); outline-offset: -1px; }
+.message-revoke-status { color: var(--muted); font-size: 11px; margin-top: 5px; }

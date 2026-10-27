@@ -163,8 +163,8 @@ export function WechatMessage({
   const [attempt, setAttempt] = useState(0);
   const r = m.rich;
   const src =
-    m.media ||
-    `/api/message-media?target=${encodeURIComponent(m.target)}&id=${encodeURIComponent(m.id)}`;
+    m.media || (m.status.startsWith("revoked") ? undefined :
+    `/api/message-media?target=${encodeURIComponent(m.target)}&id=${encodeURIComponent(m.id)}`);
   if (m.kind === "call")
     return (
       <div className="wechat-call" role="group" aria-label={r?.title || "通话"}>
@@ -318,7 +318,7 @@ export function WechatMessage({
               : m.kind === "image"
                 ? "图片"
                 : r?.title || "表情包"}
-            {failed ? "暂时无法加载" : "暂无可用图片"}
+            {m.status.startsWith("revoked") ? "已撤回，原媒体未缓存或已不可用" : failed ? "暂时无法加载" : "暂无可用图片"}
           </span>
           {url && (
             <button

@@ -123,7 +123,13 @@ func TestReplyBehaviorToolsAreAvailableForModelIntentDecision(t *testing.T) {
 	}
 	st := s.store.snapshot()
 	rules := replyInstructions(st, "你好", "")
+	_, image := replyOutputCapabilities(st, "你好", "")
+	if strings.Contains(rules, "本轮可用生图") != image {
+		t.Fatal("媒体协议与已配置能力不符")
+	}
+	st.Settings["reply.image_enabled"] = false
+	rules = replyInstructions(st, "你好", "")
 	if strings.Contains(rules, "<voice>") || strings.Contains(rules, "<image") || !strings.Contains(rules, "本轮只用文字") {
-		t.Fatal("普通闲聊仍带媒体协议")
+		t.Fatal("关闭媒体后仍带媒体协议")
 	}
 }

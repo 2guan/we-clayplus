@@ -15,11 +15,11 @@ import (
 )
 
 func validateModel(m Model) error {
-	if m.ContextTokens < 0 || m.ContextTokens > 2000000 {
-		return fmt.Errorf("上下文预算应为 0–2000000 Token；0 继承全局")
+	if m.ContextTokens < -1 || m.ContextTokens > 9999999 {
+		return fmt.Errorf("上下文预算应为 0–9999999 Token；0 继承全局，-1 表示无限制")
 	}
-	if m.Timeout < 0 || m.Timeout > 600 || m.Context < 0 || m.Context > 500 || m.MaxOutput < 0 || m.MaxOutput > 32768 {
-		return fmt.Errorf("超时应为 0–600 秒，上下文 0–500 条，最大输出 0–32768；0 继承全局")
+	if m.Timeout < 0 || m.Timeout > 600 || m.Context < 0 || m.Context > 99999 || m.MaxOutput < 0 || m.MaxOutput > 32768 {
+		return fmt.Errorf("超时应为 0–600 秒，上下文 0–99999 条，最大输出 0–32768；0 继承全局")
 	}
 	if m.Temperature != nil && (*m.Temperature < 0 || *m.Temperature > 2) {
 		return fmt.Errorf("温度应为 0–2")

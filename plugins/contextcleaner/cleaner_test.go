@@ -87,3 +87,37 @@ func TestOutputSilenceReasonAndBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestToolCallTextPreservesExamples(t *testing.T) {
+	for _, tc := range []struct {
+		text    string
+		blocked bool
+	}{
+		{"行吧<tool_call><function=image_gen><parameter=prompt>风景</parameter></function></tool_call>", true},
+		{"<|tool_calls_section_begin|>payload", true},
+		{"```xml\n<tool_call><function=image_gen/></tool_call>\n```\n这是示例。", false},
+		{"~~~xml\n<tool_call>example</tool_call>\n~~~", false},
+		{"> <tool_call>这是引用</tool_call>", false},
+		{"这里的 `<tool_call>` 是格式名。", false},
+		{"<image prompt=\"风景\"/>", false},
+		{"正常代码：function draw() {}", false},
+	} {
+		if got := ToolCallText(tc.text); got != tc.blocked {
+			t.Errorf("%q: %v", tc.text, got)
+		}
+	}
+}
+
+func TestMediaCleanerKeepsAssociatedDescriptionAndRemovesRawMedia(t *testing.T) {
+	input := []Message{
+		{ID: "described", Session: "fixture", Role: "user", Kind: "image", Text: "[收到图片] 红色屋顶", MediaText: true},
+		{ID: "raw", Session: "fixture", Role: "user", Kind: "image", Text: "data:image/png;base64,fixture-private-binary"},
+	}
+	result, err := Prepare(Config{Enabled: true, Media: true, Budget: 10000}, input, "fixture")
+	if err != nil || result.Messages[0].Text != input[0].Text || strings.Contains(result.Messages[1].Text, "fixture-private-binary") {
+		t.Fatal(result, err)
+	}
+	if input[1].Text != "data:image/png;base64,fixture-private-binary" {
+		t.Fatal("改写原始媒体")
+	}
+}

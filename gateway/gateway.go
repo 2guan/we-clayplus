@@ -141,6 +141,7 @@ func Run(ctx context.Context, cfg Config, options ...Option) (err error) {
 		cc.DisableAI = cc.DisableAI || opts.withoutAI
 		keepConsole = !cc.Disabled
 		bridge = &consolebridge.Bridge{}
+		bridge.SetCoreAddress(cfg.CoreAddress)
 		dashboardServer, startErr := dashboard.Start(runCtx, cc, bridge)
 		if startErr != nil {
 			return fmt.Errorf("控制台启动失败: %w", startErr)
@@ -203,6 +204,9 @@ func runCoreSession(runCtx context.Context, cancelCause context.CancelCauseFunc,
 		return err
 	}
 	defer client.Close()
+	if bridge != nil {
+		bridge.SetCoreAddress(cfg.CoreAddress)
+	}
 	if observer == nil {
 		oldClient := api.GetCore
 		api.GetCore = func() *api.Client { return client }

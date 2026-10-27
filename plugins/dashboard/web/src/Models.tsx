@@ -778,7 +778,7 @@ function ModelSettings({
           <input
             type="number"
             min={0}
-            max={500}
+            max={99999}
             value={m.context || 0}
             onChange={(e) => set({ ...m, context: Number(e.target.value) })}
           />
@@ -788,10 +788,21 @@ function ModelSettings({
           <input
             type="number"
             min={0}
-            max={2000000}
-            value={m.context_tokens || 0}
+            max={9999999}
+            disabled={m.context_tokens === -1}
+            value={m.context_tokens === -1 ? 0 : m.context_tokens || 0}
             onChange={(e) => set({ ...m, context_tokens: Number(e.target.value) })}
           />
+        </label>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={m.context_tokens === -1}
+            onChange={(e) =>
+              set({ ...m, context_tokens: e.target.checked ? -1 : 0 })
+            }
+          />
+          不限制上下文 Token 预算（模型接口容量仍有限）
         </label>
         <label>
           最大输出 Token（0 继承）

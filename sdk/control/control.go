@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"time"
 )
 
 // Config 只包含启动配置；业务配置通过控制台保存，不包含明文凭据。
@@ -38,6 +39,12 @@ type FileInput struct {
 // message-file 返回 io.ReadCloser，由调用方读取至 EOF 并关闭；仅用于进程内附件下载。
 type Host interface {
 	Execute(context.Context, Command) (any, error)
+}
+
+// CoreRuntimeHost 为可选的只读指标，不改变 Host 的业务调用契约。
+// 无法可靠获取当前 core 进程时返回错误，不使用 gateway/dashboard 启动时间。
+type CoreRuntimeHost interface {
+	CoreUptime(context.Context) (time.Duration, error)
 }
 
 // Capability 来源于 gateway 能力清单，仅描述可用性，不授予执行权限。

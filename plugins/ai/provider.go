@@ -44,6 +44,9 @@ type InputImage struct {
 	Data  string `json:"data"`
 }
 type Request struct {
+	MediaCaption   bool               `json:"-"` // 后台图像描述限制输出，复用已有识图流水线。
+	NoTools        bool               `json:"-"` // 协议纠正禁止原生工具，但保留本轮已开放的媒体输出协议。
+	ReplyFollowup  bool               `json:"-"` // 活动回复期间收下的补充，不因本轮刚结束而被冷却丢弃。
 	PlainReply     bool               `json:"-"` // 纠正生成仅允许文字或沉默，不重新请求操作。
 	GameTurnID     string             `json:"-"`
 	GamePuzzle     *turtlesoup.Puzzle `json:"-"`
@@ -105,6 +108,9 @@ type Result struct {
 type HTTPError struct{ Status int }
 
 func (e *HTTPError) Error() string {
+	if e.Status == http.StatusUnsupportedMediaType {
+		return "模型服务返回 HTTP 415：接口不支持本次请求的内容类型，请检查 JSON/multipart 图片协议"
+	}
 	return fmt.Sprintf("模型服务返回 HTTP %d；请检查连接、额度和模型权限", e.Status)
 }
 func Retryable(err error) bool {
@@ -329,6 +335,18 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 		return streamChatCompletions(ctx, endpoint+path, c.Key, raw, onText)
 	}
 	response, mime, err := request(ctx, endpoint+path, c.Key, contentType, raw, nil)
+	var formatError *HTTPError
+	if r.Kind == "image" && r.Media != "" && errors.As(err, &formatError) && formatError.Status == http.StatusUnsupportedMediaType {
+		// 415 明确表示 multipart 未被接受。仅协商一次 JSON，不重试超时、
+		// 5xx 或结果未知的生成请求，避免重复生成或计费。
+		data, _ := base64.StdEncoding.DecodeString(r.Media) // imageEdit 已验证内容。
+		body.(map[string]any)["image"] = "data:" + http.DetectContentType(data) + ";base64," + r.Media
+		raw, err = json.Marshal(body)
+		if err != nil {
+			return Result{}, err
+		}
+		response, mime, err = request(ctx, endpoint+path, c.Key, "application/json", raw, nil)
+	}
 	if err != nil {
 		return Result{}, err
 	}
@@ -357,6 +375,7 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 		} `json:"choices"`
 		Data []struct {
 			Base64 string `json:"b64_json"`
+			URL    string `json:"url"`
 		} `json:"data"`
 		Usage struct {
 			Input  int `json:"prompt_tokens"`
@@ -383,11 +402,24 @@ func execute(ctx context.Context, c Config, r Request, mock bool, onText func(st
 		}
 	}
 	if r.Kind == "image" {
-		if len(v.Data) == 0 || v.Data[0].Base64 == "" {
-			return Result{}, fmt.Errorf("模型未返回内嵌图片；请使用支持 b64_json 的接口")
+		if len(v.Data) == 0 {
+			return Result{}, fmt.Errorf("模型未返回图片")
 		}
-		result.Data, err = base64.StdEncoding.DecodeString(v.Data[0].Base64)
-		result.MIME = "image/png"
+		if v.Data[0].Base64 != "" {
+			result.Data, err = base64.StdEncoding.DecodeString(v.Data[0].Base64)
+			if err != nil {
+				return Result{}, fmt.Errorf("模型图片的 Base64 编码无效")
+			}
+		} else {
+			result.Data, err = downloadGeneratedImage(ctx, c, v.Data[0].URL)
+			if err != nil {
+				return Result{}, err
+			}
+		}
+		result.MIME = http.DetectContentType(result.Data)
+		if !strings.HasPrefix(result.MIME, "image/") || len(result.Data) == 0 {
+			return Result{}, fmt.Errorf("模型未返回有效图片内容")
+		}
 		return result, err
 	}
 	if strings.TrimSpace(result.Text) == "" && len(result.ToolCalls) == 0 {

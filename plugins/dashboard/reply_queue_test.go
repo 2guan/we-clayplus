@@ -144,11 +144,11 @@ func TestGroupHundredPercentQueuesBatchesAndPreservesOrder(t *testing.T) {
 	first := waitModelTask(t, s, st.Tasks[0].ID)
 	combined := waitModelTask(t, s, st.Tasks[1].ID)
 	absorbed := waitModelTask(t, s, st.Tasks[2].ID)
-	if first.Status != "completed" || first.ReplyTo != "fixture-msg-0" || combined.Status != "completed" || combined.ReplyTo != "fixture-msg-2" || len(combined.ReplyBatch) != 2 || absorbed.Status != "cancelled" || !strings.Contains(absorbed.Error, "已合并至任务") {
+	if first.Status != "completed" || first.ReplyTo != "fixture-msg-2" || len(first.ReplyBatch) != 3 || combined.Status != "cancelled" || combined.ReplyMergedInto != first.ID || absorbed.Status != "cancelled" || absorbed.ReplyMergedInto != first.ID {
 		t.Fatal(first, combined, absorbed)
 	}
-	if sends.Load() != 2 || calls.Load() != 2 {
-		t.Fatal("未合并尚未生成的后续批次", sends.Load(), calls.Load())
+	if sends.Load() != 1 || calls.Load() != 2 {
+		t.Fatal("旧草稿外发或补充消息重复生成", sends.Load(), calls.Load())
 	}
 }
 

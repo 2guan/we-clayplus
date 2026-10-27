@@ -21,6 +21,9 @@ type groupReplyBatch struct {
 	ids         []string
 	first, last time.Time
 	wake        chan struct{}
+	submitting  bool
+	submitted   chan struct{}
+	followup    bool
 }
 
 func (b *groupReplyBatch) deadline() time.Time {
@@ -43,7 +46,7 @@ func (s *Server) accumulateGroupReply(st State, m Message, now time.Time) {
 		s.replyBatches = map[string]*groupReplyBatch{}
 	}
 	b := s.replyBatches[m.Target]
-	if b != nil && b.account == st.Account.ID && b.epoch == st.AccountEpoch {
+	if b != nil && !b.submitting && b.account == st.Account.ID && b.epoch == st.AccountEpoch {
 		if !slices.Contains(b.ids, m.ID) {
 			b.ids = append(b.ids, m.ID)
 			b.last = now
@@ -65,7 +68,7 @@ func (s *Server) accumulateGroupReply(st State, m Message, now time.Time) {
 		s.replyQueueError(m, fmt.Errorf("待合并群聊已达到 256 个上限"))
 		return
 	}
-	b = &groupReplyBatch{account: st.Account.ID, epoch: st.AccountEpoch, target: m.Target, ids: []string{m.ID}, first: now, last: now, wake: make(chan struct{}, 1)}
+	b = &groupReplyBatch{account: st.Account.ID, epoch: st.AccountEpoch, target: m.Target, ids: []string{m.ID}, first: now, last: now, wake: make(chan struct{}, 1), submitted: make(chan struct{}), followup: activeReply(st, m.Target)}
 	s.replyBatches[m.Target] = b
 	s.workers.Add(1)
 	s.replyBatchMu.Unlock()
@@ -101,6 +104,9 @@ func (s *Server) accumulateGroupReply(st State, m Message, now time.Time) {
 	trigger := replyDirectedAtSelf(st, contextMessage(st, m))
 	if trigger == "" {
 		trigger = "普通群消息，命中回复概率"
+		if !memoryGroup(st, m.Target) {
+			trigger = "私聊回复期间收到补充"
+		}
 	}
 	s.replyDecision(m, "等待合并", trigger+"；停顿 7 秒后处理，首条消息最多等待 15 秒")
 }
@@ -112,13 +118,28 @@ func (s *Server) flushGroupReply(b *groupReplyBatch, now time.Time) bool {
 		s.replyBatchMu.Unlock()
 		return true
 	}
+	if b.submitting {
+		s.replyBatchMu.Unlock()
+		return true
+	}
 	if now.Before(b.deadline()) {
 		s.replyBatchMu.Unlock()
 		return false
 	}
-	delete(s.replyBatches, b.target)
+	// 入队完成前仍保留可见标记，发送校验不能从“合并中→队列中”的间隙穿过。
+	b.submitting = true
 	ids := slices.Clone(b.ids)
 	s.replyBatchMu.Unlock()
+	defer func() {
+		s.replyBatchMu.Lock()
+		if s.replyBatches[b.target] == b {
+			delete(s.replyBatches, b.target)
+		}
+		if b.submitted != nil {
+			close(b.submitted)
+		}
+		s.replyBatchMu.Unlock()
+	}()
 	q := ai.Request{AccountID: b.account, AccountEpoch: b.epoch, Target: b.target, BatchIDs: ids}
 	if s.ctx.Err() != nil {
 		s.recordReplyDecision(q, "", "INFO", "取消", "应用停止，尚未提交的合并消息不补发")
@@ -163,7 +184,9 @@ func (s *Server) flushGroupReply(b *groupReplyBatch, now time.Time) bool {
 	if len(valid) == 0 {
 		return true
 	}
-	s.queueAutoReply(batchReplyRequest(st, latest, valid), latest)
+	next := batchReplyRequest(st, latest, valid)
+	next.ReplyFollowup = b.followup
+	s.queueAutoReply(next, latest)
 	return true
 }
 

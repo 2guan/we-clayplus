@@ -19,6 +19,18 @@ import (
 	"github.com/we-clay/we-clay/sdk/control"
 )
 
+func TestContextMessageLimits(t *testing.T) {
+	for _, count := range []int{501, 99999, 100000} {
+		wantValid := count <= 99999
+		if err := validateModel(Model{Context: count}); (err == nil) != wantValid {
+			t.Fatalf("模型上下文 %d 条校验错误：%v", count, err)
+		}
+		if err := validateSettings("memory", map[string]any{"messages": float64(count)}); (err == nil) != wantValid {
+			t.Fatalf("全局上下文 %d 条校验错误：%v", count, err)
+		}
+	}
+}
+
 func TestPipelineTimeoutAndExplicitProbe(t *testing.T) {
 	s := newServer(t, false)
 	var mu sync.Mutex
@@ -201,7 +213,7 @@ func TestMediaPipelines(t *testing.T) {
 					w.Header().Set("Content-Type", "audio/wav")
 					w.Write([]byte("fixture-wave"))
 				case "image":
-					fmt.Fprint(w, `{"data":[{"b64_json":"aW1hZ2U="}]}`)
+					fmt.Fprint(w, `{"data":[{"b64_json":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jDe8AAAAASUVORK5CYII="}]}`)
 				case "video_generation":
 					fmt.Fprint(w, `{"id":"video_fixture","status":"completed"}`)
 				}

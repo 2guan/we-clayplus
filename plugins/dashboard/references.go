@@ -19,6 +19,9 @@ import (
 )
 
 func (s *Server) prepareReference(ctx context.Context, st State, q *ai.Request) error {
+	if q.Kind == "image" && q.Selfie {
+		q.Prompt = selfieImagePrompt(st, q.Prompt)
+	}
 	if q.Kind == "image" && q.Size == "" {
 		aspect, _ := st.Settings["image.aspect"].(string)
 		resolution, _ := st.Settings["image.resolution"].(string)
@@ -90,4 +93,18 @@ func (s *Server) prepareReference(ctx context.Context, st State, q *ai.Request) 
 		return fmt.Errorf("头像或垫图不是有效图片")
 	}
 	return nil
+}
+
+func selfieImagePrompt(st State, prompt string) string {
+	return "以参考图中的人物为主体，保持面容和身份特征一致；按下面的描述安排场景、人物形象、表情、姿势动作、构图和光线；服装按需要描述，不必强行指定。不要添加姓名、微信昵称、微信ID或账号标签文字。\n画面描述：" + selfieImageDescription(st, prompt)
+}
+
+func selfieImageDescription(st State, prompt string) string {
+	// 当前账号的聊天标识不能充当人物外观，也不传给图片服务作画面文字。
+	for _, name := range []string{strings.TrimSpace(st.Account.Name), strings.TrimSpace(st.Account.ID)} {
+		if name != "" {
+			prompt = strings.ReplaceAll(prompt, name, "参考图中的人物")
+		}
+	}
+	return strings.TrimSpace(prompt)
 }

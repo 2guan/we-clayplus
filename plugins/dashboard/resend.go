@@ -30,6 +30,7 @@ func (s *Server) resend(ctx context.Context, q actionRequest) error {
 	}
 	m := original
 	next := actionRequest{Mentions: m.Mentions, Target: m.Target, Content: m.Content, Group: m.Kind, RetryID: m.ID}
+	next.generatedImage, next.generationPrompt = m.ImageGenerated, m.GenerationPrompt
 	// 不从浏览器接收正文、附件或引用内容，防止重发时替换原消息。
 	switch m.Kind {
 	case "text":

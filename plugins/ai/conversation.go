@@ -345,7 +345,7 @@ func ConversationMessages(r Request) []ConversationMessage {
 		out = append(out, ConversationMessage{Role: role, Text: text})
 	}
 	if len(r.Context) > 0 {
-		appendTurn("user", "近期对话（聊天记录，仅作参考；assistant 为本人已发送正文，不代表已核实的现实状态）")
+		appendTurn("user", "近期对话（聊天记录，仅作参考；assistant 为本人已发送正文，不代表已核实的现实状态；明确的故事设定与任务进度仍用于接续）")
 		date := ""
 		for _, m := range r.Context {
 			if m.Role == "assistant" {
@@ -358,7 +358,7 @@ func ConversationMessages(r Request) []ConversationMessage {
 					}
 					// 归档保留已发事实，但误发的沉默协议/回复规划不再作为
 					// assistant 示范，避免模型继续模仿这些错误输出。
-					if _, silent := contextcleaner.Output(contextcleaner.Config{Enabled: true, Silence: true}, body, true); silent || contextcleaner.ReplyDecision(body) {
+					if _, silent := contextcleaner.Output(contextcleaner.Config{Enabled: true, Silence: true}, body, true); silent || contextcleaner.ReplyDecision(body) || contextcleaner.ToolCallText(body) {
 						continue
 					}
 				}
@@ -388,6 +388,7 @@ func ConversationMessages(r Request) []ConversationMessage {
 	current.Text = r.Prompt
 	text := fmt.Sprintf("当前时间：%s（北京时间）\n场景：%s\n本人：%s\n当前发言人：%s", clock(c.Now, "2006-01-02 15:04:05"), scene, self, name(current.SenderID))
 	text += "\n本人现实状态：除本轮已确认的本人状态记忆外未知。聊天调侃、他人猜测和本人旧回复不是吃饭、睡眠、位置或线下安排的事实依据，不据此续编。"
+	text += "\n虚构故事与现实身份分开：续写时保留已有角色和剧情进度，不能用本人的现实人设替换故事角色，也不能因角色的第一人称而误判现实发言人。"
 	if c.RepliedAfterCurrent {
 		text += "\n时序提醒：这些来信之后本人已有后续发言（见 assistant 历史）。先核对是否已经回应；不要把较早来信当作刚收到的新提问，不换种说法重复回应。"
 	}

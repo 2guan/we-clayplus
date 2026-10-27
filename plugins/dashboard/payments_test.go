@@ -116,3 +116,13 @@ func TestRedpacketParsingAndTradeDedup(t *testing.T) {
 		t.Fatal("同一红包被不同消息 ID 绕过")
 	}
 }
+
+func TestRevokedPaymentCannotBeClaimed(t *testing.T) {
+	s, host, m := paymentFixture(t)
+	for _, status := range []string{"revoked", "revoked_by_other"} {
+		replyRegressionCheck(t, s.store.change(func(st *State) error { st.Messages[0].Status = status; return nil }))
+		if paymentCall(s, m, true, "POST", "admin").Code == 200 || host.calls.Load() != 0 {
+			t.Fatal("撤回消息仍可触发收款", status)
+		}
+	}
+}

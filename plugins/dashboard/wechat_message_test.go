@@ -5,8 +5,10 @@ package dashboard
 
 import (
 	"encoding/json"
+	"github.com/we-clay/we-clay/plugins/ai"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWechatArticleCards(t *testing.T) {
@@ -141,8 +143,8 @@ func TestWechatRevokeArchive(t *testing.T) {
 			if len(v.Messages) != 1 || v.Messages[0].ID != "123" || v.Messages[0].Status != status {
 				t.Fatalf("历史撤回状态丢失或通知重复：%+v", v.Messages)
 			}
-			if !self && v.Messages[0].Content != content {
-				t.Fatal("对方撤回提示丢失")
+			if v.Messages[0].Content != original.Content || contextAvailable(v.Messages[0]) {
+				t.Fatal("撤回原文丢失或进入模型上下文")
 			}
 		}
 	}
@@ -163,7 +165,7 @@ func TestWechatRevokeRecord(t *testing.T) {
 		}
 	}
 	v := s.store.snapshot()
-	if len(v.Messages) != 1 || v.Messages[0].Status != "revoked_by_other" || v.Messages[0].Content != "对方撤回了一条消息" {
+	if len(v.Messages) != 1 || v.Messages[0].Status != "revoked_by_other" || v.Messages[0].Content != "原消息" || contextAvailable(v.Messages[0]) {
 		t.Fatalf("撤回事件未更新原消息：%+v", v.Messages)
 	}
 }
@@ -192,5 +194,48 @@ func TestForwardedArticleThumbnail(t *testing.T) {
 	secret, err := s.store.getSecret("message-thumbnail:" + ref)
 	if err != nil || !strings.Contains(secret, "fixture-secret") {
 		t.Fatal("缺少加密票据")
+	}
+}
+
+func TestRestoreRevokedContentForDisplayOnly(t *testing.T) {
+	s, current := replyRegressionFixture(t)
+	st := s.store.snapshot()
+	original := Message{ID: "fixture-revoked-text", Target: current.Target, Sender: "测试成员", SenderID: current.SenderID, Kind: "text", Content: "撤回前的唯一原文", Status: "sent", Time: current.Time}
+	replyRegressionCheck(t, s.recordMemoryArchive(st.Account.ID, original))
+	legacy := original
+	legacy.Status, legacy.Content = "revoked_by_other", "对方撤回了一条消息"
+	fallback := legacy
+	fallback.ID = "fixture-revoked-quote-source"
+	replyRegressionCheck(t, s.RememberQuoteSource(fallback, "加密引用中保留的旧原文"))
+	missing := legacy
+	missing.ID = "fixture-revoked-missing"
+	deleted := legacy
+	deleted.ID = "fixture-revoked-deleted"
+	replyRegressionCheck(t, s.RememberQuoteSource(deleted, "已删除原文不能恢复"))
+	_, err := s.store.db.Exec("INSERT INTO memory_deleted_sources(account,target,message_id) VALUES(?,?,?)", st.Account.ID, deleted.Target, deleted.ID)
+	replyRegressionCheck(t, err)
+	quoted := current
+	quoted.Kind, quoted.Rich = "quote", &RichMessage{QuoteID: original.ID, QuoteUnavailable: true}
+	replyRegressionCheck(t, s.store.change(func(v *State) error { v.Messages = []Message{legacy, fallback, missing, deleted, quoted}; return nil }))
+	replyRegressionCheck(t, s.restoreNoticeArchive())
+	after := s.store.snapshot()
+	if after.Messages[0].Content != original.Content || after.Messages[1].Content != "加密引用中保留的旧原文" || after.Messages[2].Content != missing.Content || after.Messages[3].Content != deleted.Content {
+		t.Fatal("旧撤回原文恢复错误", after.Messages)
+	}
+	for _, m := range after.Messages[:4] {
+		if !strings.HasPrefix(m.Status, "revoked") || contextAvailable(m) {
+			t.Fatal("恢复展示改变了撤回状态", m)
+		}
+	}
+	conv, history := buildReplyContext(after, quoted, time.Now())
+	for _, turn := range ai.ConversationMessages(ai.Request{Prompt: quoted.Content, Conversation: &conv, Context: history}) {
+		if strings.Contains(turn.Text, original.Content) || strings.Contains(turn.Text, "加密引用中保留的旧原文") {
+			t.Fatal("撤回原文泄露到模型上下文", turn.Text)
+		}
+	}
+	revision := after.Revision
+	replyRegressionCheck(t, s.restoreNoticeArchive())
+	if s.store.snapshot().Revision != revision {
+		t.Fatal("重复恢复改写状态")
 	}
 }

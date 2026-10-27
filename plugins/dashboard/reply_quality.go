@@ -15,7 +15,14 @@ import (
 var replyRecordLine = regexp.MustCompile(`^(?:〔m[0-9a-f]{8}〕)?(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T])?\[?(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\]?\s+(.{1,80}?)[：:]`)
 var replyRoleLine = regexp.MustCompile(`(?i)^\[(?:assistant|user|system|developer)\]`)
 
+type replyProtocolError struct{ reason string }
+
+func (e replyProtocolError) Error() string { return e.reason }
+
 func replyQualityError(text string, conversation *ai.Conversation) error {
+	if contextcleaner.ToolCallText(text) {
+		return replyProtocolError{"模型把工具调用协议写成正文，未发送；请按本轮已开放的媒体输出协议或自然正文回复，不能编造 image_gen 等函数或输出 tool_call/function/parameter 标签"}
+	}
 	if strings.TrimSpace(text) == (writeIntentMissing{}).Error() {
 		return fmt.Errorf("模型复读内部操作拒绝提示，已停止发送")
 	}

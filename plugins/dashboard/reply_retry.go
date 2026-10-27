@@ -53,6 +53,13 @@ func (s *Server) retryReply(id, target string) error {
 		if m.Self || !contextAvailable(m) || !slices.Contains([]string{"text", "quote", "image", "audio"}, m.Kind) {
 			return fmt.Errorf("原消息已撤回或不可用于回复")
 		}
+		for _, image := range st.Messages {
+			if image.Target == target && image.Kind == "image" && (image.ID == m.ID || slices.Contains(t.ReplyBatch, image.ID)) && image.ImageAnalysis != nil && image.ImageAnalysis.Status == "failed" {
+				if err := s.retryImageAnalysis(target, image.ID); err != nil {
+					return err
+				}
+			}
+		}
 		_, err := s.queueTaskRetry(batchReplyRequest(st, m, t.ReplyBatch), nil, id)
 		return err
 	}

@@ -83,6 +83,9 @@ func contextMessage(st State, m Message) contextcleaner.Message {
 		name = "未知发言人"
 	}
 	out := contextcleaner.Message{Game: messageGame(m), ID: m.ID, Session: m.Target, Role: role, SenderID: id, Sender: name, ActorType: actor, Source: m.Source, Kind: m.Kind, Text: m.Content, Time: m.Time, Status: m.Status, Mentions: append([]string(nil), m.Mentions...), MentionAll: m.MentionAll, Interaction: m.Interaction}
+	if m.Kind == "image" {
+		out.Text, out.MediaText = imageContextText(m), true
+	}
 	if m.Rich != nil && m.Rich.QuoteID != "" {
 		out.Quote = &contextcleaner.Reference{ID: m.Rich.QuoteID, Sender: m.Rich.Author, Text: m.Rich.Quote}
 		if m.Rich.QuoteUnavailable {
@@ -145,7 +148,7 @@ func buildReplyContext(st State, current Message, now time.Time) (ai.Conversatio
 	}
 	retention := settingNumber(st, "memory.retention")
 	if retention <= 0 {
-		retention = 30
+		retention = 3000
 	}
 	cutoff := now.Add(-time.Duration(retention) * 24 * time.Hour)
 	since, _ := time.Parse(time.RFC3339, settingOverride(st, current.Target, "memory_since"))
@@ -381,6 +384,8 @@ func (s *Server) validateReplyEvidence(q ai.Request) error {
 }
 
 type replyTrace struct {
+	ToolNames      []string                `json:"tool_names,omitempty"`
+	OutputModes    []string                `json:"output_modes,omitempty"`
 	BatchIDs       []string                `json:"batch_ids,omitempty"`
 	CurrentID      string                  `json:"current_id"`
 	HistoryIDs     []string                `json:"history_ids"`
@@ -396,6 +401,23 @@ func (s *Server) saveReplyTrace(id string, q ai.Request, model string, changes [
 		return nil
 	}
 	v := replyTrace{BatchIDs: slices.Clone(q.BatchIDs), CurrentID: q.Conversation.Current.ID, Model: model, Changes: changes, HistoryIDs: []string{}, ReferenceIDs: []string{}, MemoryIDs: []string{}, MemoryVersions: []int{}}
+	for _, tool := range q.Tools {
+		v.ToolNames = append(v.ToolNames, tool.Name)
+	}
+	v.OutputModes = []string{"text"}
+	st := s.store.snapshot()
+	voice, image := replyOutputCapabilities(st, q.Prompt, q.InputKind)
+	if !q.PlainReply && q.Source != "wechat-proactive" {
+		if voice {
+			v.OutputModes = append(v.OutputModes, "voice")
+		}
+		if image {
+			v.OutputModes = append(v.OutputModes, "image")
+		}
+	}
+	if settingText(st, "logging.level") == "DEBUG" {
+		s.debugRecord(q.AccountID, q.AccountEpoch, q.Target, "本轮实际下发能力", map[string]any{"task": id, "model": model, "tool_names": v.ToolNames, "output_modes": v.OutputModes})
+	}
 	for _, m := range q.Context {
 		v.HistoryIDs = append(v.HistoryIDs, m.ID)
 	}

@@ -162,6 +162,7 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	t := Task{Source: q.Source, ID: id, Kind: q.Kind, Name: map[string]string{"chat": "对话测试", "vision": "图片理解", "audio": "音频识别", "video": "视频理解", "tts": "语音合成", "image": "图片生成", "video_generation": "视频生成", "insight": "会话洞察"}[q.Kind], Status: "queued", Created: time.Now().Format(time.RFC3339), Input: q.Prompt, Target: q.Target}
 	t.RetryOf = retryOf
 	t.ReplyBatch = slices.Clone(q.BatchIDs)
+	t.ReplyFollowup = q.ReplyFollowup
 	if len(q.BatchIDs) > 1 {
 		t.Name = fmt.Sprintf("群聊合并回复（%d 条）", len(q.BatchIDs))
 	}
@@ -286,6 +287,8 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	return id, nil
 }
 func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
+	refreshes := 0
+regenerate:
 	if active := s.store.snapshot(); q.AccountID != "" && (active.Account.ID != q.AccountID || active.AccountEpoch != q.AccountEpoch) {
 		s.updateTask(id, func(t *Task) { t.Status = "failed"; t.Error = "账号已切换，停止旧任务" })
 		s.replyTaskDecision(q, id, "INFO", "取消", "账号已切换，停止旧任务")
@@ -466,10 +469,13 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			request.SpeechMode = speechMode(m.Model)
 		}
 		if q.Source == "wechat" && q.Kind == "chat" && q.Target != "" {
-			if !request.PlainReply {
+			if request.PlainReply || request.NoTools {
+				request.Tools = nil
+			}
+			if !request.PlainReply && !request.NoTools {
 				request.Tools = s.behaviorToolsFor(request)
 			}
-			if m.Provider == "anthropic" && !request.PlainReply {
+			if m.Provider == "anthropic" && !request.PlainReply && !request.NoTools {
 				request.Tools = s.behaviorToolInventory(request)
 			}
 			if len(request.Tools) > 0 {
@@ -487,6 +493,9 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 		if m.MaxOutput > 0 {
 			maxOutput = m.MaxOutput
 		}
+		if q.MediaCaption {
+			maxOutput = min(maxOutput, 2048)
+		}
 		design, _ := state.Settings["tts.design"].(string)
 		quality, _ := state.Settings["image.quality"].(string)
 		config := ai.Config{Endpoint: m.Endpoint, Key: key, Model: m.Model, Provider: m.Provider, Voice: voice, Design: design, Size: size, Quality: quality, Temperature: m.Temperature, Thinking: m.Thinking, Speed: s.number("tts.speed", 1), Timeout: time.Duration(timeout) * time.Second, MaxOutput: maxOutput}
@@ -494,6 +503,9 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			err = s.prepareReference(ctx, state, &request)
 			if err != nil {
 				break
+			}
+			if request.Kind == "image" && request.Selfie {
+				s.updateTask(id, func(t *Task) { t.Input = request.Prompt })
 			}
 		}
 		// 按候选模型整理上下文；处理失败必须停止整个流水线。
@@ -513,10 +525,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			break
 		}
 		selectedConfig = config
-		selectedConfig.ContextBudget = m.ContextTokens
-		if selectedConfig.ContextBudget <= 0 {
-			selectedConfig.ContextBudget = settingNumber(state, "memory.tokens")
-		}
+		selectedConfig.ContextBudget = contextTokenBudget(state, m)
 		usedKey = key
 		actualRequest = request
 		modelCtx := s.debugContext(ctx, q.AccountID, q.AccountEpoch, q.Target, id, m.Name)
@@ -531,6 +540,32 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			}
 		} else {
 			result, err = ai.Execute(modelCtx, config, request, s.cfg.Mock)
+		}
+		if err == nil && q.Source == "wechat" && q.Kind == "chat" {
+			if s.replyReplacedByOperator(actualRequest) {
+				s.recordDiscardedReplyUsage(q, result)
+				s.updateTask(id, func(t *Task) {
+					t.Status, t.Error = "cancelled", "生成期间本人已人工发言，未发送旧草稿"
+				})
+				s.replyTaskDecision(q, id, "INFO", "取消", "生成期间本人已人工发言，旧草稿不再追答")
+				return
+			}
+			next, changed, refreshErr := s.refreshPendingReply(ctx, id, q)
+			if refreshErr != nil {
+				err = refreshErr
+				break
+			}
+			if changed {
+				s.recordDiscardedReplyUsage(q, result)
+				s.replyTaskDecision(next, id, "INFO", "草稿作废", "生成期间收到新一批来信，合并全部补充后重新判断；尚未发送或执行工具")
+				q = next
+				if refreshes >= maxReplyRefreshes {
+					s.deferBusyReply(id, q)
+					return
+				}
+				refreshes++
+				goto regenerate
+			}
 		}
 		if err == nil && soupSource(q.Source) {
 			outputChecked = true
@@ -570,9 +605,21 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 				if err == nil {
 					err = replyPlanError(s.store.snapshot(), actualRequest, result)
 				}
+				if err == nil {
+					err = s.reviewReply(modelCtx, id, actualRequest, config, &result, usedKey)
+				}
 				if err != nil {
+					s.recordDiscardedReplyUsage(q, result)
 					result = ai.Result{}
-					if operationErr == nil {
+					var blocked safetyBlocked
+					if errors.As(err, &blocked) {
+						break // 复核输出的安全拦截同样不能靠换模型绕过。
+					}
+					var protocolErr replyProtocolError
+					if errors.As(err, &protocolErr) {
+						q.NoTools = true
+						q.System += "\n上一轮没有执行任何工具或发送消息，协议校验失败：" + err.Error() + "。重新理解当前发言，仅使用本轮已开放的媒体输出协议或自然正文；不要输出伪工具代码，不得声称已执行。"
+					} else if operationErr == nil {
 						q.PlainReply = true
 						q.System += "\n上一轮回复未通过检查：" + err.Error() + "。请重新理解本轮发言，只输出本人身份的自然文字或 NO_REPLY，不使用工具及媒体标签。"
 					} else {
@@ -681,7 +728,40 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	}
 	// 父任务在全部消息发送结束后才完成，防止同会话后续请求穿插发送。
 	if err == nil && !silent && !actionTaken && q.Source == "wechat" && q.Kind == "chat" {
-		err = s.deliverReplyEvidence(ctx, q.Target, result.Text, q.InputKind, func() error { return s.validateReplyEvidence(actualRequest) }, &actualRequest)
+		started := false
+		err = s.deliverReplyEvidence(ctx, q.Target, result.Text, q.InputKind, func() error {
+			if e := s.validateReplyEvidence(actualRequest); e != nil {
+				return e
+			}
+			if !hadTools && s.replyReplacedByOperator(actualRequest) {
+				return fmt.Errorf("本人已人工发言，已停止旧回复的后续发送")
+			}
+			if !hadTools && s.replyHasPending(id, actualRequest) {
+				if !started {
+					return replyOutdated{}
+				}
+				return fmt.Errorf("收到新的补充，已停止本轮后续段落；已经发送的部分不会重发")
+			}
+			started = true
+			return nil
+		}, &actualRequest)
+		var outdated replyOutdated
+		if errors.As(err, &outdated) && !started {
+			next, changed, refreshErr := s.refreshPendingReply(ctx, id, q)
+			if refreshErr != nil {
+				err = refreshErr
+			} else if changed {
+				s.recordDiscardedReplyUsage(q, result)
+				q = next
+				if refreshes >= maxReplyRefreshes {
+					s.deferBusyReply(id, q)
+					return
+				}
+				refreshes++
+				s.replyTaskDecision(q, id, "INFO", "草稿作废", "发送前收到新补充，尚未发送的草稿重新生成")
+				goto regenerate
+			}
+		}
 	}
 	if err == nil && !silent && !actionTaken && q.Source == "wechat-proactive" && q.Kind == "chat" {
 		err = s.deliverProactive(ctx, actualRequest, result.Text)
@@ -734,18 +814,7 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 			v.Logs[len(v.Logs)-1].Target = q.Target
 		}
 		if generated {
-			date := time.Now().Format("2006-01-02")
-			found := false
-			for i := range v.Trend {
-				if v.Trend[i].Date == date {
-					v.Trend[i].Input += result.InputTokens
-					v.Trend[i].Output += result.OutputTokens
-					found = true
-				}
-			}
-			if !found {
-				v.Trend = append(v.Trend, Point{Date: date, Input: result.InputTokens, Output: result.OutputTokens})
-			}
+			addModelUsage(v, result)
 		}
 		return nil
 	})
@@ -753,6 +822,18 @@ func (s *Server) runTask(ctx context.Context, id string, q ai.Request) {
 	if q.Source == "wechat" && err != nil {
 		s.safetyNotice(q.Target, err)
 	}
+}
+
+func addModelUsage(st *State, result ai.Result) {
+	date := time.Now().Format("2006-01-02")
+	for i := range st.Trend {
+		if st.Trend[i].Date == date {
+			st.Trend[i].Input += result.InputTokens
+			st.Trend[i].Output += result.OutputTokens
+			return
+		}
+	}
+	st.Trend = append(st.Trend, Point{Date: date, Input: result.InputTokens, Output: result.OutputTokens})
 }
 func (s *Server) deleteReport(id string) error {
 	if handled, err := s.deleteManagedReport(id); handled {
@@ -836,6 +917,7 @@ func (s *Server) autoReply(m Message) {
 		return
 	}
 	guaranteed := false
+	active := activeReply(state, m.Target)
 	if contact.Kind == "group" {
 		addressed := replyDirectedAtSelf(state, contextMessage(state, m)) != ""
 		if skipOtherGroupMention(state, m) {
@@ -843,7 +925,7 @@ func (s *Server) autoReply(m Message) {
 			return
 		}
 		probability := groupReplyProbability(state, m.Target)
-		pending := s.hasGroupReplyBatch(state, m.Target)
+		pending := s.hasGroupReplyBatch(state, m.Target) || active
 		guaranteed = addressed || probability == 100 || pending
 		if !addressed && !pending && rand.Float64()*100 >= probability {
 			s.replyDecision(m, "跳过", "未命中普通群消息回复概率")
@@ -877,6 +959,10 @@ func (s *Server) autoReply(m Message) {
 		}
 	}
 	if !guaranteed {
+		if active {
+			s.accumulateGroupReply(state, m, time.Now())
+			return
+		}
 		if reason := replyCooldownReason(state, m.Target, "", time.Duration(s.number("reply.cooldown", 15))*time.Second); reason != "" {
 			s.replyDecision(m, "跳过", reason)
 			return

@@ -35,6 +35,9 @@ func replyCooldownReason(st State, target, beforeID string, cooldown time.Durati
 }
 
 func queuedReplyGuaranteed(st State, q ai.Request) bool {
+	if q.ReplyFollowup {
+		return true
+	}
 	if q.Conversation == nil || st.Account.ID == "" {
 		return false
 	}
@@ -163,13 +166,20 @@ func quietReplyLog(r Record) bool {
 	return r.Component == "ai" && slices.ContainsFunc(quietReplyLogPrefixes, func(prefix string) bool { return strings.HasPrefix(r.Message, prefix) })
 }
 
-// 出队时合并尚未开始生成的同群批次；不重跑正在生成或已经执行操作的任务。
+// 出队时合并同会话尚未开始生成的批次。
 func (s *Server) coalesceQueuedReplies(id string, q ai.Request) (ai.Request, error) {
-	if q.Source != "wechat" || q.Conversation == nil || q.Conversation.Scene != "group" {
+	return s.coalesceReplyInputs(id, q, false)
+}
+
+// buffered 仅用于草稿生成后刷新；此时尚未产生微信副作用。
+func (s *Server) coalesceReplyInputs(id string, q ai.Request, buffered bool) (ai.Request, error) {
+	if q.Source != "wechat" || q.Conversation == nil {
 		return q, nil
 	}
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
+	s.replyBatchMu.Lock()
+	defer s.replyBatchMu.Unlock()
 	st := s.store.snapshot()
 	if st.Account.ID != q.AccountID || st.AccountEpoch != q.AccountEpoch {
 		return q, fmt.Errorf("账号已切换，停止合并排队回复")
@@ -194,7 +204,18 @@ func (s *Server) coalesceQueuedReplies(id string, q ai.Request) (ai.Request, err
 			}
 		}
 	}
-	if len(children) == 0 {
+	var batch *groupReplyBatch
+	if buffered {
+		if b := s.replyBatches[q.Target]; b != nil && !b.submitting && b.account == q.AccountID && b.epoch == q.AccountEpoch {
+			batch = b
+			for _, source := range b.ids {
+				if !slices.Contains(ids, source) {
+					ids = append(ids, source)
+				}
+			}
+		}
+	}
+	if len(children) == 0 && batch == nil {
 		return q, nil
 	}
 	valid := []string{}
@@ -209,11 +230,12 @@ func (s *Server) coalesceQueuedReplies(id string, q ai.Request) (ai.Request, err
 		return q, fmt.Errorf("待合并消息已撤回或不可用")
 	}
 	next := batchReplyRequest(st, latest, valid)
+	next.ReplyFollowup = q.ReplyFollowup || batch != nil && batch.followup
 	err := s.store.change(func(v *State) error {
 		if v.Account.ID != q.AccountID || s.store.accountEpoch != q.AccountEpoch {
 			return fmt.Errorf("账号已切换，停止合并排队回复")
 		}
-		index := slices.IndexFunc(v.Tasks, func(t Task) bool { return t.ID == id && t.Status == "queued" })
+		index := slices.IndexFunc(v.Tasks, func(t Task) bool { return t.ID == id && (t.Status == "queued" || t.Status == "running") })
 		if index < 0 {
 			return fmt.Errorf("当前排队任务已取消")
 		}
@@ -223,6 +245,7 @@ func (s *Server) coalesceQueuedReplies(id string, q ai.Request) (ai.Request, err
 			}
 		}
 		v.Tasks[index].ReplyTo = latest.ID
+		v.Tasks[index].ReplyFollowup = next.ReplyFollowup
 		v.Tasks[index].ReplyBatch = slices.Clone(valid)
 		v.Tasks[index].Input = latest.Content
 		v.Tasks[index].Name = fmt.Sprintf("群聊合并回复（%d 条）", len(valid))
@@ -238,11 +261,18 @@ func (s *Server) coalesceQueuedReplies(id string, q ai.Request) (ai.Request, err
 	if err != nil {
 		return q, err
 	}
+	if batch != nil {
+		delete(s.replyBatches, q.Target)
+		select {
+		case batch.wake <- struct{}{}:
+		default:
+		}
+	}
 	for _, child := range children {
 		if cancel := s.taskCancel[child]; cancel != nil {
 			cancel()
 		}
 	}
-	s.replyTaskDecision(next, id, "INFO", "合并排队", "同群尚未生成的批次统一处理，避免依次追答旧消息")
+	s.replyTaskDecision(next, id, "INFO", "合并排队", "同会话尚未发送的批次统一处理，避免依次追答旧消息")
 	return next, nil
 }
