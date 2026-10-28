@@ -5,11 +5,9 @@ package gateway_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -29,9 +27,9 @@ func TestMockPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	address, err := mockPreviewAddress(os.Getenv("WE_CLAY_MOCK_ADDRESS"), os.Getenv("WE_CLAY_DASHBOARD_PORT"))
-	if err != nil {
-		t.Fatal(err)
+	address := os.Getenv("WE_CLAY_MOCK_ADDRESS")
+	if address == "" {
+		address = "127.0.0.1:8208"
 	}
 	dataDir := os.Getenv("WE_CLAY_MOCK_DATA_DIR")
 	if dataDir == "" {
@@ -54,39 +52,5 @@ func TestMockRunBypassesCore(t *testing.T) {
 	}
 	if _, err = os.Stat(filepath.Join(dir, "gateway")); !os.IsNotExist(err) {
 		t.Fatal("Mock 不应建立微信账号缓存")
-	}
-}
-
-// 显式地址优先；旧预览的端口环境变量仍可沿用，Mock 不创建虚假的 core 或登录服务。
-func mockPreviewAddress(address, port string) (string, error) {
-	if address != "" {
-		return address, nil
-	}
-	if port == "" {
-		return "127.0.0.1:8208", nil
-	}
-	n, err := strconv.Atoi(port)
-	if err != nil || n < 1 || n > 65535 {
-		return "", fmt.Errorf("WE_CLAY_DASHBOARD_PORT 必须为 1—65535")
-	}
-	return "127.0.0.1:" + strconv.Itoa(n), nil
-}
-
-func TestMockPreviewAddress(t *testing.T) {
-	for _, tt := range []struct {
-		address, port, want string
-		invalid             bool
-	}{
-		{want: "127.0.0.1:8208"},
-		{port: "5699", want: "127.0.0.1:5699"},
-		{address: "127.0.0.1:9000", port: "invalid", want: "127.0.0.1:9000"},
-		{port: "0", invalid: true},
-		{port: "65536", invalid: true},
-		{port: "invalid", invalid: true},
-	} {
-		got, err := mockPreviewAddress(tt.address, tt.port)
-		if (err != nil) != tt.invalid || got != tt.want {
-			t.Errorf("address=%q port=%q: got %q, err=%v", tt.address, tt.port, got, err)
-		}
 	}
 }

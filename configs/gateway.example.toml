@@ -16,6 +16,7 @@ plugins_dir = "./runtime/gateway/plugins"
 # cache_dir = "./runtime/core-bin"
 # data_dir = "/absolute/path/to/existing/core-data" # 托管模式必填绝对路径；升级保留原账号目录
 # login_address = "127.0.0.1:8201"
+# device_type = "mac" # mac（默认）或 win；win 需配套支持该模式的 core 和独立新账号目录
 # device_name = "我的 Mac 机器人" # 可选；留空保留原名，变更需重启 core
 # stage = "auto"
 # github_token_env = "WE_CLAY_GITHUB_TOKEN"

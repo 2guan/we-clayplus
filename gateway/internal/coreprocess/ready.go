@@ -89,7 +89,7 @@ func waitOnline(ctx context.Context, client *api.Client, c config.CoreConfig, ke
 					waitCtx = ctx
 				}
 				if c.LoginAddress != "-" {
-					slog.Info("core 已启动，请完成 Mac 登录", "url", "http://"+c.LoginAddress)
+					slog.Info("core 已启动，请完成微信登录", "url", "http://"+c.LoginAddress)
 				}
 			}
 			if report != nil {

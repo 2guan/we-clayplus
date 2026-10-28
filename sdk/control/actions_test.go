@@ -22,7 +22,7 @@ func TestEveryDeclaredCapabilityHasAnExplicitAIStatus(t *testing.T) {
 			op := domain + "." + name
 			_, ready := AIActions[op]
 			support := AIBackendOperations[op]
-			restricted := domain == "payment" || excluded[op]
+			restricted := domain == "payment" || excluded[op] || AIDeferredOperations[op]
 			count := 0
 			if ready {
 				count++
@@ -46,7 +46,7 @@ func TestEveryDeclaredCapabilityHasAnExplicitAIStatus(t *testing.T) {
 			}
 		}
 	}
-	if direct != 42 || backend != 11 || manual != 8 {
+	if direct != 42 || backend != 11 || manual != 14 {
 		t.Fatal(direct, backend, manual)
 	}
 	for op, action := range AIActions {

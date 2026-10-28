@@ -2,8 +2,19 @@
 package messageapi
 
 import (
+	"context"
 	"io"
 )
+
+// VoiceTranscribeInput 使用消息同步回执中的 ID 和语音正文大小。
+type VoiceTranscribeInput struct {
+	MessageID  uint32
+	NewID      uint64
+	Size       uint32
+	Format     int32
+	ChatroomID string
+	BufferID   int64
+}
 
 // MessageService 消息服务 API 接口（返回 API proto 类型）
 type MessageService interface {
@@ -47,6 +58,8 @@ type MessageService interface {
 	DownloadVideo(receiver, fileId, aesKey string, totalSize uint32) (*DownloadVideoResponse, error)
 	// DownloadVoice 下载语音
 	DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceLength uint32) (*DownloadVoiceResponse, error)
+	// TranscribeVoice 请求微信转写已收到的语音消息。
+	TranscribeVoice(ctx context.Context, input VoiceTranscribeInput) (string, error)
 	// DownloadFile 下载文件附件
 	DownloadFile(receiver, fileId, aesKey string, totalSize uint32) (*DownloadFileResponse, error)
 	// DownloadFileChunk 按偏移下载一个附件分块；大文件调用方应逐块消费。

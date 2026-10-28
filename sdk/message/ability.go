@@ -1,6 +1,9 @@
 package message
 
-import "io"
+import (
+	"context"
+	"io"
+)
 
 // Ability 消息能力接口（供插件嵌入使用）
 type Ability interface {
@@ -15,6 +18,11 @@ type Ability interface {
 	Pat(receiver, pattedUsername string) (*Pat_Response, error)
 	// Download 下载消息中的媒体资源（server-stream：流式返回）
 	Download(msg *Message) (io.ReadCloser, error)
+}
+
+// VoiceTranscriptionAbility 是可选扩展，避免新增能力破坏已有 Ability 实现。
+type VoiceTranscriptionAbility interface {
+	TranscribeVoice(ctx context.Context, msg *Message) (string, error)
 }
 
 // Instance 消息能力实例（由 gateway/internal/ability 层注入）

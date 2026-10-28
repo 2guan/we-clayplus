@@ -160,9 +160,10 @@ func mockCoreMain() {
 	if mode == "exit" {
 		os.Exit(7)
 	}
-	if *device != "mac" || *updateVersion || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
+	if (*device != "mac" && *device != "win") || *updateVersion || os.Getenv("WE_CLAY_TEST_RELEASE_TOKEN") != "" {
 		os.Exit(8)
 	}
+	os.WriteFile(filepath.Join(*data, "fixture-device-type"), []byte(*device), 0600)
 	os.WriteFile(filepath.Join(*data, "fixture-stage"), []byte(*stage), 0600)
 	os.WriteFile(filepath.Join(*data, "fixture-device-name"), []byte(*deviceName), 0600)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

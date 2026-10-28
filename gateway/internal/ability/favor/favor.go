@@ -3,10 +3,10 @@ package favorability
 
 import (
 	"errors"
+	"fmt"
 	sdk "github.com/we-clay/we-clay/sdk/favor"
 
 	favorapi "github.com/we-clay/we-clay/gateway/internal/api/favor"
-	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability 收藏能力实现（直连型）
@@ -38,13 +38,46 @@ func (a ability) GetInfo() (*sdk.GetInfo_Info, error) {
 
 // GetItem 获取收藏项详情
 func (a ability) GetItem(favId int32) ([]*sdk.Item, error) {
-	return nil, sdkroot.NotImplemented(
-		"favor.GetItem")
+	if favId <= 0 {
+		return nil, errors.New("收藏 ID 必须为正数")
+	}
+	resp, err := a.api.GetItem(favId)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("收藏查询回执缺失，结果未确认")
+	}
+	items := make([]*sdk.Item, 0, len(resp.GetItems()))
+	for _, item := range resp.GetItems() {
+		if item == nil || item.GetId() != uint32(favId) {
+			return nil, errors.New("收藏查询回执的 ID 不匹配")
+		}
+		items = append(items, mapItem(item))
+	}
+	return items, nil
 }
 
 // Delete 删除收藏项
 func (a ability) Delete(favId int32) error {
-	return sdkroot.NotImplemented("favor.Delete")
+	if favId <= 0 {
+		return errors.New("收藏 ID 必须为正数")
+	}
+	resp, err := a.api.Delete(favId)
+	if err != nil {
+		return err
+	}
+	if resp == nil || len(resp.GetResults()) != 1 || resp.GetResults()[0] == nil {
+		return errors.New("收藏删除回执缺失，结果未确认，请勿自动重试")
+	}
+	result := resp.GetResults()[0]
+	if result.Code == nil {
+		return errors.New("收藏删除回执缺少单项状态，结果未确认，请勿自动重试")
+	}
+	if result.GetId() != uint32(favId) || result.GetCode() != 0 {
+		return fmt.Errorf("收藏删除未确认：ID %d，返回码 %d，请勿自动重试", result.GetId(), result.GetCode())
+	}
+	return nil
 }
 
 // Sync 同步收藏列表

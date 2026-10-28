@@ -22,6 +22,6 @@ type CDNService interface {
 	UploadMomentsVideo(videoData, thumbData []byte) (*UploadSnsVideoResult, error)
 	// DownloadVideoCover CDN 下载视频封面
 	DownloadVideoCover(fileID, fileAesKey string) ([]byte, error)
-	// DownloadSnsVideo CDN 下载朋友圈视频
-	DownloadSnsVideo(videoURL string, encKey uint64) ([]byte, error)
+	// DownloadMomentsVideo CDN 下载朋友圈视频
+	DownloadMomentsVideo(videoURL string, encKey uint64) ([]byte, error)
 }

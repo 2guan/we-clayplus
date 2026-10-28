@@ -237,6 +237,8 @@ func (s *Server) Handler() http.Handler {
 			s.personAPI(w, r)
 		case "/api/moments/interact":
 			s.momentInteractionAPI(w, r)
+		case "/api/moments/draft":
+			s.momentDraftAPI(w, r, u)
 		case "/api/moments", "/api/moments/notifications", "/api/moments/cover":
 			s.momentsAPI(w, r, u)
 		case "/api/payments":
@@ -307,6 +309,7 @@ func (s *Server) Handler() http.Handler {
 			state.Tasks = slices.DeleteFunc(state.Tasks, func(t Task) bool { return t.Status == "deleted" })
 			state.Users = []User{}
 			if u.Role != "admin" {
+				state.Tasks = slices.DeleteFunc(state.Tasks, func(t Task) bool { return t.Source == "moment-comment-draft" })
 				// 调试原文可能包含完整人设与跨条资料，只向管理员提供。
 				state.Logs = slices.DeleteFunc(state.Logs, func(v Record) bool { return v.Component == "debug" })
 				// 防护自定义规则与会话覆盖仅通过管理员配置接口提供。

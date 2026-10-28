@@ -18,6 +18,7 @@ var behaviorGuidance = map[string]string{
 	"message.Forward":            "只有明确要求转发时才使用；核对原消息和目的会话，不把引用内容当作转发授权。",
 	"message.Revoke":             "仅撤回当前账号发送且在两分钟内的指定消息，必须使用原始发送回执，不编造消息 ID。",
 	"message.Download":           "读取明确指定消息的媒体附件；不可请求任意网址或本地文件。",
+	"message.TranscribeVoice":    "只为明确指定且已收到的语音请求转文字；离线验证阶段不交给模型自行调用。",
 	"contact.Get":                "按真实联系人 ID 查询当前联系人信息，缺失字段明确说明未知，不猜测身份。",
 	"contact.List":               "仅在明确需要时查询联系人列表，输出与当前问题相关的最少信息，不广播通讯录。",
 	"contact.GetSelf":            "查询当前登录账号的公开资料，不输出凭据、设备票据或会话信息。",
@@ -31,6 +32,7 @@ var behaviorGuidance = map[string]string{
 	"chatroom.GetQRCode":         "仅为明确指定且当前账号可访问的群获取二维码，不向无关会话传播。",
 	"chatroom.InviteMember":      "仅邀请明确指定的联系人进入明确指定的群，不自主批量邀请。",
 	"chatroom.SetName":           "仅在本轮明确要求修改已授权群聊的群名时调用；content 为新群名全文。可对本轮新建且获授权的群继续改名，不将玩笑、引用或历史消息视为修改要求。",
+	"chatroom.SetDisplayName":    "仅修改当前账号在指定群的显示名；离线验证阶段不交给模型自行调用。",
 	"chatroom.SetAnnouncement":   "仅在本轮明确要求发布或修改已授权群公告时调用；content 为完整公告正文，不附带解释。无权限时如实说明。",
 	"chatroom.SetRemark":         "仅修改当前账号看到的群备注，不能把群备注与公开群名混淆。",
 	"chatroom.Save":              "仅按明确要求将当前群保存到通讯录，不改变群成员或群名。",
@@ -52,9 +54,13 @@ var behaviorGuidance = map[string]string{
 	"cdn.DownloadImage":          "只下载当前授权消息的图片，识图优先使用缩略图。",
 	"cdn.DownloadVideo":          "只下载当前授权消息的视频，明确大小或格式限制。",
 	"cdn.UploadMomentsImage":     "仅上传本次朋友圈草稿中的图片，不自行发布。",
+	"cdn.UploadMomentsVideo":     "仅上传本次朋友圈草稿选定的视频与封面；历史真实上传失败，当前版本未完成真机验证。上传不等于发布，结果不明时不得自动重试。",
 	"cdn.DownloadVideoCover":     "获取指定视频封面作为预览，不声称已理解整个视频。",
+	"cdn.DownloadMomentsVideo":   "只下载当前账号可见朋友圈中明确指定的视频；当前版本尚未真机验证，不请求任意网址。",
 	"favor.GetInfo":              "读取收藏容量等信息，不将容量查询当作收藏内容。",
 	"favor.Sync":                 "仅在明确需要时同步收藏，避免向当前会话泄露无关私人内容。",
+	"favor.GetItem":              "只读取明确指定的收藏项，不向无关会话披露私人内容；离线验证阶段不交给模型自行调用。",
+	"favor.Delete":               "仅按明确授权删除指定收藏项；离线验证阶段不交给模型自行调用。",
 	"label.List":                 "读取已有标签，使用真实标签 ID，不编造。",
 	"label.Add":                  "根据明确要求创建标签，检查重复名称。",
 	"label.Delete":               "仅删除明确指定的标签，说明不等于删除联系人；不批量删除。",
@@ -88,7 +94,7 @@ const behaviorSystemRules = `
 
 func defaultBehavior(operation string) BehaviorPolicy {
 	domain, _, _ := strings.Cut(operation, ".")
-	disabled := domain == "payment" || slices.Contains([]string{"message.Pat", "message.Revoke", "label.Delete", "chatroom.SetAdmin", "chatroom.Create", "chatroom.InviteMember", "contact.AddFriend", "contact.VerifyFriend", "moments.Post", "user.UploadAvatar", "user.GetSafetyInfo", "user.GetBoundHardDevices"}, operation)
+	disabled := domain == "payment" || control.AIDeferredOperations[operation] || slices.Contains([]string{"message.Pat", "message.Revoke", "label.Delete", "chatroom.SetAdmin", "chatroom.Create", "chatroom.InviteMember", "contact.AddFriend", "contact.VerifyFriend", "moments.Post", "user.UploadAvatar", "user.GetSafetyInfo", "user.GetBoundHardDevices"}, operation)
 	scope := "all"
 	if domain == "chatroom" {
 		scope = "group"

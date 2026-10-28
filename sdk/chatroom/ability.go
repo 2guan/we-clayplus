@@ -99,5 +99,10 @@ type Ability interface {
 	GetMembersDetail(chatroom string, members []string) []*Member
 }
 
+// DisplayNameAbility 是可选扩展，避免新增能力破坏已有 Ability 实现。
+type DisplayNameAbility interface {
+	SetDisplayName(chatroom, displayName string) (*SetDisplayName_Response, error)
+}
+
 // Instance 群聊能力实例（由 gateway/internal/ability 层注入）
 var Instance Ability

@@ -67,6 +67,8 @@ service ChatroomService {
   rpc ListMembers(ListMembers.Request) returns (ListMembers.Response);
   // GetMemberDetail 获取群成员详情
   rpc GetMembersDetail(GetMemberDetail.Request) returns (GetMemberDetail.Response);
+  // SetDisplayName 设置当前账号在群内的显示名
+  rpc SetDisplayName(SetDisplayName.Request) returns (SetDisplayName.Response);
 }
 
 // OperateResponse 通用操作响应
@@ -193,6 +195,7 @@ message SetName {
     string message = 2; // 提示信息
   }
 }
+
 message SetAnnouncement {
   message Request {
     string chatroom = 1; // 群 ID
@@ -305,5 +308,16 @@ message ListMembers {
   }
   message Response {
     repeated Member members= 1; // 群成员列表
+  }
+}
+
+message SetDisplayName {
+  message Request {
+    string chatroom = 1; // 群 ID
+    string display_name = 2; // 当前账号的群内显示名；空字符串表示清除
+  }
+  message Response {
+    int32 code = 1; // 状态码（0=成功）
+    string message = 2; // 提示信息
   }
 }

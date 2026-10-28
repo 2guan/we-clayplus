@@ -189,18 +189,69 @@ else:
         self.events.write_text("")
         self.install(VERSION_NEW, "--key-file", str(self.key_old),
                      "--core-data-dir", str(self.account_dir), "--no-run", success=True)
-        self.assertEqual(self.saved("core-version.txt"), "v0.4.6")
+        self.assertEqual(self.saved("core-version.txt"), "v0.5.0")
         self.assertEqual(self.saved("core-data-dir.txt"), str(self.account_dir))
         self.assertEqual(self.events.read_text(), "")
+        self.assertEqual(self.saved("device-type.txt"), "mac")
+
+    def test_gateway_upgrade_preserves_saved_core_version(self):
+        (self.install_dir / "core-version.txt").write_text("v0.4.6\n")
+        self.install(VERSION_NEW, "--restart", success=True)
+        self.assertEqual(self.saved("core-version.txt"), "v0.4.6")
+        self.assertEqual(self.saved("core-data-dir.txt"), str(self.account_dir))
+        self.assertEqual(self.events.read_text().splitlines(), [
+            "run:v0.4.6:127.0.0.1:8089:old",
+        ])
+
+    def test_new_windows_device_is_saved_and_preserved_during_maintenance(self):
+        shutil.rmtree(self.install_dir)
+        self.install(VERSION_OLD, "--key-file", str(self.key_old),
+                     "--core-data-dir", str(self.account_dir),
+                     "--device-type", "win", "--no-run", success=True)
+        self.assertEqual(self.saved("device-type.txt"), "win")
+        self.argv_log.write_text("")
+        self.install(VERSION_NEW, "--core-version", "v0.4.7", "--restart", success=True)
+        binary_calls = [line for line in self.argv_log.read_text().splitlines() if line.startswith("binary:")]
+        self.assertEqual(len(binary_calls), 3)
+        for call in binary_calls:
+            self.assertIn("--device-type win", call)
+        self.assertEqual(self.saved("device-type.txt"), "win")
+
+    def test_legacy_install_without_device_type_remains_mac(self):
+        (self.install_dir / "device-type.txt").unlink()
+        self.install(VERSION_NEW, "--restart", success=True)
+        self.assertEqual(self.saved("device-type.txt"), "mac")
+        self.assertIn("--device-type mac", self.argv_log.read_text())
+
+    def test_existing_install_rejects_device_type_changes_before_any_download_or_stop(self):
+        for saved, requested in (("mac", "win"), ("win", "mac")):
+            with self.subTest(saved=saved):
+                (self.install_dir / "device-type.txt").write_text(saved + "\n")
+                self.argv_log.write_text("")
+                result = self.install(VERSION_NEW, "--device-type", requested, "--restart")
+                self.assertIn("已有安装不能切换设备类型", result.stderr)
+                self.assertEqual(self.events.read_text(), "")
+                self.assertEqual(self.argv_log.read_text(), "")
+                self.assertEqual(self.saved("device-type.txt"), saved)
+                self.assert_old_state()
+
+    def test_invalid_device_types_are_rejected_before_download(self):
+        for typ in ("", "windows", "windows_unified", "WIN", "win\n"):
+            with self.subTest(typ=typ):
+                result = self.install(VERSION_NEW, "--device-type", typ)
+                self.assertIn("必须为 mac 或 win", result.stderr)
+                self.assertEqual(self.argv_log.read_text(), "")
+                self.assertEqual(self.events.read_text(), "")
+                self.assert_old_state()
 
     def test_legacy_install_without_core_version_uses_original_default_for_stop(self):
         (self.install_dir / "core-version.txt").unlink()
-        self.install(VERSION_NEW, "--core-version", "v0.4.6", "--restart", success=True)
+        self.install(VERSION_NEW, "--core-version", "v0.5.0", "--restart", success=True)
         self.assertEqual(self.events.read_text().splitlines(), [
-            "prepare:v0.4.6:old", "stop:v0.4.5:127.0.0.1:8089:old",
-            "run:v0.4.6:127.0.0.1:8089:old",
+            "prepare:v0.5.0:old", "stop:v0.4.5:127.0.0.1:8089:old",
+            "run:v0.5.0:127.0.0.1:8089:old",
         ])
-        self.assertEqual(self.saved("core-version.txt"), "v0.4.6")
+        self.assertEqual(self.saved("core-version.txt"), "v0.5.0")
 
     def test_failed_auth_download_and_hash_leave_old_install_running(self):
         for stage in ("auth", "download", "hash"):
@@ -344,6 +395,31 @@ else:
 
 
 class PowerShellMaintenanceTests(unittest.TestCase):
+    def test_powershell_device_type_validation_rejects_changes_before_download(self):
+        powershell = shutil.which("pwsh") or shutil.which("powershell")
+        if not powershell:
+            self.skipTest("未安装 PowerShell，未执行原生设备类型校验")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script = root / "install.ps1"
+            script.write_text((ROOT / "scripts/install.ps1").read_text().replace("@WE_CLAY_VERSION@", VERSION_NEW), encoding="utf-8-sig")
+            installed = root / "installed"
+            installed.mkdir()
+            (installed / "installed-version.txt").write_text(VERSION_OLD)
+            env = os.environ | {"LOCALAPPDATA": str(root)}
+            for saved, requested, message in (("mac", "win", "已有安装不能切换设备类型"),
+                                               ("win", "mac", "已有安装不能切换设备类型"),
+                                               ("mac", "windows", "必须为 mac 或 win")):
+                with self.subTest(saved=saved, requested=requested):
+                    (installed / "device-type.txt").write_text(saved)
+                    result = subprocess.run([powershell, "-NoProfile", "-File", str(script),
+                                             "-DataDir", str(installed), "-DeviceType", requested, "-NoRun"],
+                                            env=env, text=True, capture_output=True, timeout=20)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(message, result.stdout + result.stderr)
+                    self.assertEqual(sorted(path.name for path in installed.iterdir()),
+                                     ["device-type.txt", "installed-version.txt"])
+
     def test_windows_installer_orders_verification_stop_and_key_write(self):
         source = ROOT / "scripts/install.ps1"
         script = source.read_text()
@@ -358,6 +434,13 @@ class PowerShellMaintenanceTests(unittest.TestCase):
         self.assertIn("$pathOverride = $existingInstall -and ($oldCoreDataDir -cne $savedCoreDataDir)", script)
         self.assertIn("$needStop = $existingInstall -and ($pathOverride -or", script)
         self.assertIn("Join-Path $oldCoreDataDir 'gateway-core.json'", script)
+        self.assertIn("Read-Setting (Join-Path $DataDir 'device-type.txt') 'mac'", script)
+        self.assertIn("$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.5.0' }", script)
+        self.assertIn("'--device-type', $DeviceType", script)
+        self.assertIn("'--device-type', $oldDeviceType", script)
+        self.assertIn("@('core-version', 'device-type',", script)
+        self.assertLess(script.index("Fail '已有安装不能切换设备类型"),
+                        script.index("$response = Invoke-WebRequest"))
         powershell = shutil.which("pwsh") or shutil.which("powershell")
         if powershell:
             command = (

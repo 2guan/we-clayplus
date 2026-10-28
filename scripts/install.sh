@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF'
 用法：install.sh [--key-file 授权文件] [--data-dir 本机目录] [--core-data-dir 旧微信账号目录]
                 [--core-version vX.Y.Z] [--core-address 本机地址] [--login-address 本机地址]
-                [--dashboard-address 本机地址] [--device-name 微信设备名称]
+                [--dashboard-address 本机地址] [--device-type mac|win] [--device-name 微信设备名称]
                 [--previous-core-version vX.Y.Z] [--previous-core-address 本机地址]
                 [--previous-login-address 本机地址] [--previous-dashboard-address 本机地址]
                 [--previous-core-data-dir 旧微信账号目录]
@@ -19,6 +19,8 @@ usage() {
 
 不传 --key-file 时读取已安装的授权文件；首次安装会安全提示输入 Key。
 已有微信登录数据时，必须传 --core-data-dir 指向原来的 core 账号目录。
+--device-type 默认 mac；新 Windows 设备用 win，须使用独立新安装目录和账号目录。
+已有安装不可切换设备类型，旧安装缺少类型配置时按 mac 保留。
 --device-name 可选；不传时沿用此前保存的名称或 core 中的原设备名称。
 --restart 用于已安装实例：校验后保存新配置并运行；需要切换 core 配置时才受控停止旧 core。
 执行 --restart 前先结束旧 gateway；脚本不会结束来源不明的进程。
@@ -32,6 +34,8 @@ stage() { printf '%s\n' "$1" >&2; }
 key_file=''
 data_dir=''
 core_data_dir=''
+device_type=''
+device_type_set=0
 device_name=''
 device_name_set=0
 core_version=''
@@ -47,12 +51,13 @@ restart=0
 run_after=1
 while (($#)); do
   case "$1" in
-    --key-file|--data-dir|--core-data-dir|--device-name|--core-version|--core-address|--login-address|--dashboard-address|--previous-core-version|--previous-core-address|--previous-login-address|--previous-dashboard-address|--previous-core-data-dir)
+    --key-file|--data-dir|--core-data-dir|--device-type|--device-name|--core-version|--core-address|--login-address|--dashboard-address|--previous-core-version|--previous-core-address|--previous-login-address|--previous-dashboard-address|--previous-core-data-dir)
       (($# >= 2)) || fail "$1 缺少参数值"
       case "$1" in
         --key-file) key_file=$2 ;;
         --data-dir) data_dir=$2 ;;
         --core-data-dir) core_data_dir=$2 ;;
+        --device-type) device_type=$2; device_type_set=1 ;;
         --device-name) device_name=$2; device_name_set=1 ;;
         --core-version) core_version=$2 ;;
         --core-address) core_address=$2 ;;
@@ -138,12 +143,19 @@ existing_install=0
 [[ -f "$data_dir/installed-version.txt" ]] && existing_install=1
 (( !restart || existing_install )) || fail '--restart 只用于已有安装；首次安装请直接运行安装脚本'
 # 旧安装可能尚未保存 core-version.txt；该场景必须按原默认值核验旧进程。
-core_version_fallback='v0.4.6'
+core_version_fallback='v0.5.0'
 if ((existing_install)); then core_version_fallback='v0.4.5'; fi
 old_core_version=$(read_setting "$data_dir/core-version.txt" "$core_version_fallback")
 old_core_address=$(read_setting "$data_dir/core-address.txt" '127.0.0.1:8088')
 old_login_address=$(read_setting "$data_dir/login-address.txt" '127.0.0.1:8201')
 old_dashboard_address=$(read_setting "$data_dir/dashboard-address.txt" '127.0.0.1:8208')
+old_device_type=$(read_setting "$data_dir/device-type.txt" 'mac')
+[[ "$old_device_type" = mac || "$old_device_type" = win ]] || fail '已保存的设备类型必须为 mac 或 win'
+if (( !device_type_set )); then device_type=$old_device_type; fi
+[[ "$device_type" = mac || "$device_type" = win ]] || fail '--device-type 必须为 mac 或 win'
+if ((existing_install)) && [[ "$device_type" != "$old_device_type" ]]; then
+  fail '已有安装不能切换设备类型；请为 Windows 设备使用独立新安装目录和账号目录'
+fi
 if [[ -n "$previous_core_version" ]]; then old_core_version=$previous_core_version; fi
 if [[ -n "$previous_core_address" ]]; then old_core_address=$previous_core_address; fi
 if [[ -n "$previous_login_address" ]]; then old_login_address=$previous_login_address; fi
@@ -292,7 +304,7 @@ if ((need_stop)); then
   printf '%s\n' "$key" > "$candidate_license_tmp"
   chmod 0600 "$candidate_license_tmp"
   if ! "$destination" --prepare-core --data-dir "$data_dir" --core-data-dir "$old_core_data_dir" \
-      --core-version "$core_version" --core-address "$core_address" --login-address "$login_address" \
+      --core-version "$core_version" --device-type "$device_type" --core-address "$core_address" --login-address "$login_address" \
       --dashboard-address "$dashboard_address" --license-file "$candidate_license_tmp"; then
     fail '目标 core 下载或校验失败；旧 core 与本地授权配置未修改'
   fi
@@ -303,7 +315,7 @@ if ((need_stop)); then
   fi
   stage '正在核验并停止旧独立 core…'
   if ! "$destination" --stop-core --data-dir "$data_dir" --core-data-dir "$old_core_data_dir" \
-      --core-version "$old_core_version" --core-address "$old_core_address" --login-address "$old_login_address" \
+      --core-version "$old_core_version" --device-type "$old_device_type" --core-address "$old_core_address" --login-address "$old_login_address" \
       --dashboard-address "$old_dashboard_address"; then
     fail '未能确认并停止旧 core；原授权与配置未修改，请核对旧版本和地址'
   fi
@@ -332,7 +344,7 @@ root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 IFS= read -r version < "$root/installed-version.txt"
 [[ "$version" =~ ^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$ ]] || { printf '安装版本文件无效\n' >&2; exit 1; }
 args=(--data-dir "$root" --license-file "$root/secrets/license.key")
-for setting in core-version core-address login-address dashboard-address; do
+for setting in core-version device-type core-address login-address dashboard-address; do
   if [[ -f "$root/${setting}.txt" ]]; then
     IFS= read -r value < "$root/${setting}.txt"
     args+=("--${setting}" "$value")
@@ -359,6 +371,7 @@ fi
 chmod 0600 "$license_file"
 key=''
 write_setting 'core-version.txt' "$core_version"
+write_setting 'device-type.txt' "$device_type"
 write_setting 'core-address.txt' "$core_address"
 write_setting 'login-address.txt' "$login_address"
 write_setting 'dashboard-address.txt' "$dashboard_address"

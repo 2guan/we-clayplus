@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+func TestNewInstallDefaultsToCoreV050AndMac(t *testing.T) {
+	a, err := parseArgs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.coreVersion != "v0.5.0" || a.deviceType != "mac" {
+		t.Fatalf("new installation defaults changed: core=%q device=%q", a.coreVersion, a.deviceType)
+	}
+}
+
 func TestStopCoreDoesNotRequireLicenseFile(t *testing.T) {
 	root := t.TempDir()
 	coreDir := filepath.Join(root, "core")
@@ -124,5 +134,114 @@ func TestLicenseFileMustBePrivateRegularFile(t *testing.T) {
 		if _, err := readLicense(path); err == nil {
 			t.Fatal("accepted world-readable authorization key")
 		}
+	}
+}
+
+func TestDeviceTypeArgumentReachesManagedCore(t *testing.T) {
+	for _, typ := range []string{"mac", "win", "windows"} {
+		t.Run(typ, func(t *testing.T) {
+			a, err := parseArgs([]string{"--data-dir", t.TempDir(), "--device-type", typ})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := prepareConfig(a)
+			if typ == "windows" {
+				if err == nil {
+					t.Fatal("unsupported legacy type accepted")
+				}
+				return
+			}
+			if err != nil || cfg.Core.DeviceType != typ {
+				t.Fatalf("type lost: %v", err)
+			}
+		})
+	}
+	a, err := parseArgs([]string{"--data-dir", t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := prepareConfig(a)
+	if err != nil || cfg.Core.DeviceType != "mac" {
+		t.Fatalf("default changed: %v", err)
+	}
+}
+
+func TestInstalledDeviceTypeCannotDriftThroughCLIOverrides(t *testing.T) {
+	for _, saved := range []string{"mac", "win"} {
+		t.Run(saved, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "device-type.txt")
+			if err := os.WriteFile(path, []byte(saved+"\r\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{
+				{"--data-dir", root},
+				{"--data-dir", root, "--device-type", saved},
+			} {
+				parsed, err := parseArgs(args)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cfg, err := prepareConfig(parsed)
+				if err != nil || cfg.Core.DeviceType != saved {
+					t.Fatalf("saved type lost: %v", err)
+				}
+			}
+			other := "win"
+			if saved == "win" {
+				other = "mac"
+			}
+			// 与 run.sh / run.ps1 相同：保存参数在前，用户手工追加参数在后。
+			parsed, err := parseArgs([]string{"--data-dir", root, "--device-type", saved, "--device-type", other})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := prepareConfig(parsed); err == nil || !strings.Contains(err.Error(), "不能切换设备类型") {
+				t.Fatalf("runner override created a different profile: %v", err)
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil || string(raw) != saved+"\r\n" {
+				t.Fatal("guard modified installer configuration")
+			}
+			if _, err := os.Stat(filepath.Join(root, "core")); !os.IsNotExist(err) {
+				t.Fatal("guard created an account directory")
+			}
+			// 设备类型绑定不改变其他参数的末值优先规则。
+			parsed, err = parseArgs([]string{"--data-dir", root, "--core-address", "127.0.0.1:8088", "--core-address", "127.0.0.1:8089"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := prepareConfig(parsed)
+			if err != nil || cfg.CoreAddress != "127.0.0.1:8089" {
+				t.Fatalf("other option precedence changed: %v", err)
+			}
+		})
+	}
+}
+
+func TestInstalledDeviceTypeRejectsInvalidFiles(t *testing.T) {
+	for _, value := range []string{"", "windows", "WIN", "mac ", "mac\nwin", strings.Repeat("m", 65)} {
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, "device-type.txt"), []byte(value), 0600); err != nil {
+			t.Fatal(err)
+		}
+		a, err := parseArgs([]string{"--data-dir", root, "--device-type", "mac"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := prepareConfig(a); err == nil || !strings.Contains(err.Error(), "安装器设备类型配置") {
+			t.Fatalf("invalid installation type accepted: %v", err)
+		}
+	}
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "device-type.txt"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	a, err := parseArgs([]string{"--data-dir", root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareConfig(a); err == nil {
+		t.Fatal("non-file installation type accepted")
 	}
 }

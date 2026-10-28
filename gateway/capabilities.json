@@ -6,10 +6,11 @@
       "Forward",
       "Revoke",
       "Pat",
-      "Download"
+      "Download",
+      "TranscribeVoice"
     ],
     "placeholder": [],
-    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；拍一拍在 Mac 模式下经 core HTTP 私聊与群聊真机验证，SDK/gateway 调用链仅完成离线测试，仍需 core 显式开启实验接口"
+    "evidence": "文字/图片/语音/视频/文件、@、链接、名片、位置、转发及撤回；拍一拍在 Mac 模式下经 core HTTP 私聊与群聊真机验证。语音转写依据 v1.0.beta 静态反编译接通并完成离线测试，尚未真机验证"
   },
   "contact": {
     "label": "联系人",
@@ -38,6 +39,7 @@
       "GetQRCode",
       "InviteMember",
       "SetName",
+      "SetDisplayName",
       "SetAnnouncement",
       "SetRemark",
       "Save",
@@ -57,7 +59,7 @@
       "ScanJoinEnterprise",
       "ConsentJoin"
     ],
-    "evidence": "建群、查询、邀请及入群读回、群名/公告/备注/通讯录保存、设置管理员有历史验收；缓存和适配层仍需当前版本真机复验"
+    "evidence": "建群、查询、邀请及入群读回、群名/公告/备注/通讯录保存、设置管理员有历史验收；当前账号群内显示名 SetDisplayName 仅完成离线验证，真机未验证，需配套含该接口的 core；缓存和适配层仍需当前版本真机复验"
   },
   "moments": {
     "label": "朋友圈",
@@ -87,25 +89,23 @@
       "DownloadImage",
       "DownloadVideo",
       "UploadMomentsImage",
-      "DownloadVideoCover"
-    ],
-    "placeholder": [
+      "DownloadVideoCover",
       "UploadMomentsVideo",
       "DownloadMomentsVideo"
     ],
-    "evidence": "聊天图片/视频/封面往返字节一致、朋友圈图片上传通过；朋友圈视频上传曾返回 -5103015"
+    "placeholder": [],
+    "evidence": "聊天图片/视频/封面往返字节一致、朋友圈图片上传通过；朋友圈视频上传与下载仅完成 SDK/gateway/core 路由的离线验证。历史真机上传曾返回 -5103015，当前版本尚未真机复验，不能据此认定视频上传或下载在真实账号可用"
   },
   "favor": {
     "label": "收藏",
     "enabled": [
       "GetInfo",
-      "Sync"
-    ],
-    "placeholder": [
+      "Sync",
       "GetItem",
       "Delete"
     ],
-    "evidence": "仅容量和空列表同步通过；单项详情及删除未测"
+    "placeholder": [],
+    "evidence": "容量和空列表同步已有真机验证；单项详情与删除基于现有 core 批量协议接入并通过离线回执测试，尚未真机验证"
   },
   "label": {
     "label": "标签",

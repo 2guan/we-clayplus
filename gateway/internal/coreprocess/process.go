@@ -50,7 +50,7 @@ func Start(ctx context.Context, binary string, cfg config.Config) (*Process, err
 	if loginAddress == "-" {
 		loginAddress = ""
 	}
-	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", "mac", "-update-version=false", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
+	args := []string{"-stage", stage, "-data", c.DataDir, "-device-type", coreDeviceType(c.DeviceType), "-update-version=false", "-listen", loginAddress, "-grpc-listen", cfg.CoreAddress, "-api-token-env", "WE_CLAY_GATEWAY_CORE_TOKEN"}
 	if c.DeviceName != "" {
 		args = append(args, "-device-name", c.DeviceName)
 	}
@@ -159,4 +159,12 @@ func authorizationEnv(env []string, keyEnv string) []string {
 		out = append(out, "WE_CLAY_AUTH_KEY="+key)
 	}
 	return out
+}
+
+// 旧配置和旧独立进程记录仅支持 Mac，缺少类型时保持原行为。
+func coreDeviceType(value string) string {
+	if value == "" {
+		return "mac"
+	}
+	return value
 }

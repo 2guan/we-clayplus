@@ -32,6 +32,7 @@ type independentRecord struct {
 	LoginAddress    string `json:"login_address"`
 	Binary          string `json:"binary"`
 	DataDir         string `json:"data_dir,omitempty"`    // 启动 core 时传入的绝对账号目录；防止搬迁后误复用旧进程。
+	DeviceType      string `json:"device_type,omitempty"` // 旧记录缺少此字段时按 mac 核验。
 	DeviceName      string `json:"device_name,omitempty"` // 启动时明确指定的名称，不读取 core 的设备文件。
 	Encrypted       bool   `json:"storage_encrypted"`
 }
@@ -138,6 +139,9 @@ func probe(ctx context.Context, cfg config.Config) error {
 }
 
 func matchIndependent(r *independentRecord, cfg config.Config) error {
+	if coreDeviceType(r.DeviceType) != coreDeviceType(cfg.Core.DeviceType) {
+		return errors.New("已有独立 core 的设备类型与配置不同；请使用原设备类型和账号目录，Windows 设备须使用独立新目录")
+	}
 	if r.Source != ossSource(*cfg.Core) || r.Repository != cfg.Core.Repository || r.Version != cfg.Core.Version || r.Address != cfg.CoreAddress || r.LoginAddress != cfg.Core.LoginAddress || r.Encrypted != cfg.Core.StorageEncrypted {
 		return errors.New("已有独立 core 的版本或地址配置不同；请先用原配置显式 StopCore，再启动新配置")
 	}
@@ -231,7 +235,7 @@ func EnsureIndependent(ctx context.Context, cfg config.Config) (config.Config, e
 		p.Stop()
 		return cfg, errors.New("无法确认新 core 的进程身份，已停止新进程")
 	}
-	r = &independentRecord{AuthorizationID: authorizationIdentity(cfg.Core.AuthKeyEnv), Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DataDir: cfg.Core.DataDir, DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
+	r = &independentRecord{AuthorizationID: authorizationIdentity(cfg.Core.AuthKeyEnv), Stamp: stamp, PID: p.cmd.Process.Pid, Source: ossSource(*cfg.Core), Token: cfg.CoreToken, Repository: cfg.Core.Repository, Version: cfg.Core.Version, Address: cfg.CoreAddress, LoginAddress: cfg.Core.LoginAddress, Binary: binary, DataDir: cfg.Core.DataDir, DeviceType: coreDeviceType(cfg.Core.DeviceType), DeviceName: cfg.Core.DeviceName, Encrypted: cfg.Core.StorageEncrypted}
 	if err = writeIndependent(cfg.Core.DataDir, *r); err != nil {
 		p.Stop()
 		return cfg, errors.New("保存独立 core 进程记录失败，已停止新进程")

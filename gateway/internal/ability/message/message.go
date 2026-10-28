@@ -6,6 +6,7 @@ package messageability
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -493,6 +494,54 @@ func (a *ability) Pat(receiver, pattedUsername string) (*sdk.Pat_Response, error
 		Id: resp.GetId(), SelfMessage: resp.GetSelfMessage(),
 		Suffix: resp.GetSuffix(), SuffixVersion: resp.GetSuffixVersion(),
 	}, nil
+}
+
+// TranscribeVoice 使用现有语音同步消息的原始 ID；不将语音再次发给聊天对象。
+func (a *ability) TranscribeVoice(ctx context.Context, msg *sdk.Message) (string, error) {
+	if ctx == nil {
+		return "", errors.New("语音转写需要 context")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if msg == nil || msg.GetType().GetCode() != sdk.TypeVoice.Code || msg.GetVoice() == nil {
+		return "", errors.New("语音转写需要已接收的语音消息")
+	}
+	media := msg.GetVoice().GetMedia()
+	if media == nil || media.GetSize() == 0 || msg.GetId() <= 0 {
+		return "", errors.New("语音转写缺少消息 ID 或语音大小")
+	}
+	var original struct {
+		ID    *int32 `json:"id"`
+		NewID *int64 `json:"new_id"`
+	}
+	if msg.GetRaw() != "" {
+		if err := json.Unmarshal([]byte(msg.GetRaw()), &original); err != nil {
+			return "", fmt.Errorf("语音原始消息无效: %w", err)
+		}
+	}
+	if original.NewID != nil && *original.NewID != msg.GetId() {
+		return "", errors.New("语音原始 ID 与消息 ID 不一致")
+	}
+	format := int32(4) // 收到的 SILK 语音通常没有显式格式字段。
+	if msg.GetVoice().Format != nil {
+		format = msg.GetVoice().GetFormat()
+	}
+	if format != 0 && format != 1 && format != 4 {
+		return "", fmt.Errorf("不支持的语音转写格式 %d，仅支持 0、1、4", format)
+	}
+	chatroomID := ""
+	if sender := msg.GetSender().GetUsername(); strings.HasSuffix(sender, "@chatroom") || strings.HasSuffix(sender, "@im.chatroom") {
+		chatroomID = sender
+	}
+	input := api.VoiceTranscribeInput{
+		NewID: uint64(msg.GetId()), Size: media.GetSize(), Format: format,
+		ChatroomID: chatroomID,
+	}
+	if original.ID != nil && *original.ID > 0 {
+		input.MessageID = uint32(*original.ID)
+	}
+	return a.api.TranscribeVoice(ctx, input)
 }
 
 // Download 下载媒体资源

@@ -270,7 +270,7 @@ func runCoreSession(runCtx context.Context, cancelCause context.CancelCauseFunc,
 	}
 	profile, err := userapi.Get().GetProfile()
 	if err != nil {
-		return fmt.Errorf("请先启动 core 并完成 Mac 登录: %w", err)
+		return fmt.Errorf("请先启动 core 并完成微信登录: %w", err)
 	}
 	info, ext := profile.GetUserInfo(), profile.GetUserInfoExt()
 	username := info.GetUserName().GetValue()

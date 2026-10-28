@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/we-clay/we-clay/sdk"
+	"github.com/we-clay/we-clay/sdk/corewire"
+	"google.golang.org/grpc"
 )
 
 // GRPCClient 实现 Ability 接口，通过 gRPC 调用远程 CDN 服务
@@ -157,7 +159,7 @@ func (c GRPCClient) DownloadMomentsVideo(videoURL string, encKey uint64) ([]byte
 	resp, err := c.Client.DownloadMomentsVideo(context.Background(), &DownloadMomentsVideo_Request{
 		VideoUrl: videoURL,
 		EncKey:   encKey,
-	})
+	}, grpc.MaxCallRecvMsgSize(corewire.MaxMessageBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -296,8 +298,8 @@ func (s Server) DownloadVideoCover(ctx context.Context, request *DownloadVideoCo
 	return &DownloadVideoCover_Response{Data: data}, nil
 }
 
-// DownloadSnsVideo 下载朋友圈视频（小文件，非流式）
-func (s Server) DownloadSnsVideo(ctx context.Context, request *DownloadMomentsVideo_Request) (*DownloadMomentsVideo_Response, error) {
+// DownloadMomentsVideo 下载朋友圈视频（小文件，非流式）
+func (s Server) DownloadMomentsVideo(ctx context.Context, request *DownloadMomentsVideo_Request) (*DownloadMomentsVideo_Response, error) {
 	data, err := s.Impl.DownloadMomentsVideo(request.VideoUrl, request.EncKey)
 	if err != nil {
 		return nil, err

@@ -68,6 +68,8 @@ func (a ability) UserPage(username, firstPageMd5 string, maxId uint64) (*sdk.Use
 		LimitedId:             resp.GetLimitedId(),
 		ContinueId:            resp.GetContinueId(),
 		ReturnTips:            resp.GetReturnTips(),
+		BgImageId:             resp.GetSnsUserInfo().GetBgImageId(),
+		BgObjectId:            resp.GetSnsUserInfo().GetBgObjectId(),
 	}, nil
 }
 

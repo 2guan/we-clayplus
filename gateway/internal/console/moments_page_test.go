@@ -162,10 +162,15 @@ type interactionFixture struct {
 	moments.Ability
 	writes int
 	wrong  bool
+	liked  bool
 }
 
 func (f *interactionFixture) Detail(id uint64) (*moments.Detail_Response, error) {
-	return &moments.Detail_Response{BaseResult: &moments.BaseResult{}, Object: &moments.Moment{Id: id, Username: "fixture-author"}}, nil
+	var flag uint32
+	if f.liked {
+		flag = 1
+	}
+	return &moments.Detail_Response{BaseResult: &moments.BaseResult{}, Object: &moments.Moment{Id: id, Username: "fixture-author", Nickname: "测试作者", CreateTime: 1700000000, LikeFlag: flag, LikeCount: flag, ObjectDescription: `<TimelineObject><contentDesc>测试动态正文</contentDesc><ContentObject><contentStyle>1</contentStyle><mediaList><media><type>2</type><url>https://mmsns.qpic.cn/original</url><thumb>https://mmsns.qpic.cn/thumb</thumb></media></mediaList></ContentObject></TimelineObject>`}}, nil
 }
 func (f *interactionFixture) Like(id uint64) (*moments.Like_Response, error) {
 	f.writes++
@@ -181,12 +186,22 @@ func (f *interactionFixture) Comment(id uint64, text string, typ, reply int32) (
 	}
 	return &moments.Comment_Response{BaseResult: &moments.BaseResult{}, Object: &moments.Moment{Id: id, Username: "fixture-author", CommentUserList: []*moments.CommentInfo{{Content: text}}}}, nil
 }
+func (f *interactionFixture) Unlike(id uint64) (*moments.Unlike_Response, error) {
+	f.writes++
+	return &moments.Unlike_Response{BaseResult: &moments.BaseResult{}}, nil
+}
 func TestPersonalMomentInteraction(t *testing.T) {
 	old := moments.Instance
 	defer func() { moments.Instance = old }()
 	f := &interactionFixture{}
 	moments.Instance = f
 	b := &Bridge{}
+	checkContent := func(m dashboard.Moment) {
+		t.Helper()
+		if m.Content != "测试动态正文" || len(m.Images) != 1 || m.Images[0] != "https://mmsns.qpic.cn/thumb" || len(m.OriginalImages) != 1 || m.OriginalImages[0] != "https://mmsns.qpic.cn/original" || m.AuthorID != "fixture-author" || m.Author != "测试作者" || m.Time == "" || strings.HasPrefix(m.Time, "1970-") {
+			t.Fatal("部分互动回执覆盖了动态正文、配图或作者时间")
+		}
+	}
 	q := control.Command{Operation: "moments-like", ID: "123", Target: "wrong-author"}
 	if _, err := b.interactMoment(q); err == nil || f.writes != 0 {
 		t.Fatal("作者不匹配仍写入")
@@ -196,12 +211,22 @@ func TestPersonalMomentInteraction(t *testing.T) {
 	if err != nil || !m.Liked {
 		t.Fatal("个人主页点赞未生效")
 	}
+	checkContent(m)
 	q.Operation = "moments-comment"
 	q.Content = "测试评论"
 	m, err = b.interactMoment(q)
 	if err != nil || len(m.Comments) != 1 || m.Comments[0].Content != q.Content {
 		t.Fatal("评论回执映射失败")
 	}
+	checkContent(m)
+	q.Operation = "moments-like"
+	f.liked = true
+	m, err = b.interactMoment(q)
+	if err != nil || m.Liked || m.Likes != 0 {
+		t.Fatal("取消点赞回执映射失败")
+	}
+	checkContent(m)
+	f.liked = false
 	q.Operation = "moments-like"
 	f.wrong = true
 	if _, err = b.interactMoment(q); err == nil {

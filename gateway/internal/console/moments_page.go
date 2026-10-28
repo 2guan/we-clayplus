@@ -58,6 +58,9 @@ func (b *Bridge) momentPage(target, cursor string) (dashboard.MomentPage, error)
 			return out, fmt.Errorf("个人朋友圈读取失败")
 		}
 		out.Items = mapMomentItems(r.GetObjectList())
+		if cursor == "" {
+			out.Cover = momentBackground(r.GetBgImageId(), r.GetBgObjectId())
+		}
 		if r.GetBaseResult().GetCode() != 207 {
 			out.NextCursor = momentCursor(r.GetObjectList(), r.GetContinueId(), id)
 		}
@@ -335,5 +338,11 @@ func (b *Bridge) interactMoment(c control.Command) (dashboard.Moment, error) {
 	default:
 		return empty, fmt.Errorf("不支持的互动操作")
 	}
+	// 点赞和评论不会修改正文。操作回执可能只含互动字段（Windows 回执也可能缺失正文），
+	// 沿用本次已校验的详情，避免用部分回执清空文字、配图、作者和发布时间。
+	result.ObjectDescription = obj.GetObjectDescription()
+	result.Username = obj.GetUsername()
+	result.Nickname = obj.GetNickname()
+	result.CreateTime = obj.GetCreateTime()
 	return mapMomentItems([]*moments.Moment{result})[0], nil
 }

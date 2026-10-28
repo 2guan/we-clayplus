@@ -40,6 +40,7 @@ const (
 	ChatroomService_GetMember_FullMethodName          = "/chatroom.ChatroomService/GetMember"
 	ChatroomService_ListMembers_FullMethodName        = "/chatroom.ChatroomService/ListMembers"
 	ChatroomService_GetMembersDetail_FullMethodName   = "/chatroom.ChatroomService/GetMembersDetail"
+	ChatroomService_SetDisplayName_FullMethodName     = "/chatroom.ChatroomService/SetDisplayName"
 )
 
 // ChatroomServiceClient is the client API for ChatroomService service.
@@ -90,6 +91,8 @@ type ChatroomServiceClient interface {
 	ListMembers(ctx context.Context, in *ListMembers_Request, opts ...grpc.CallOption) (*ListMembers_Response, error)
 	// GetMemberDetail 获取群成员详情
 	GetMembersDetail(ctx context.Context, in *GetMemberDetail_Request, opts ...grpc.CallOption) (*GetMemberDetail_Response, error)
+	// SetDisplayName 设置当前账号在群内的显示名
+	SetDisplayName(ctx context.Context, in *SetDisplayName_Request, opts ...grpc.CallOption) (*SetDisplayName_Response, error)
 }
 
 type chatroomServiceClient struct {
@@ -310,6 +313,16 @@ func (c *chatroomServiceClient) GetMembersDetail(ctx context.Context, in *GetMem
 	return out, nil
 }
 
+func (c *chatroomServiceClient) SetDisplayName(ctx context.Context, in *SetDisplayName_Request, opts ...grpc.CallOption) (*SetDisplayName_Response, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetDisplayName_Response)
+	err := c.cc.Invoke(ctx, ChatroomService_SetDisplayName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChatroomServiceServer is the server API for ChatroomService service.
 // All implementations must embed UnimplementedChatroomServiceServer
 // for forward compatibility.
@@ -358,6 +371,8 @@ type ChatroomServiceServer interface {
 	ListMembers(context.Context, *ListMembers_Request) (*ListMembers_Response, error)
 	// GetMemberDetail 获取群成员详情
 	GetMembersDetail(context.Context, *GetMemberDetail_Request) (*GetMemberDetail_Response, error)
+	// SetDisplayName 设置当前账号在群内的显示名
+	SetDisplayName(context.Context, *SetDisplayName_Request) (*SetDisplayName_Response, error)
 	mustEmbedUnimplementedChatroomServiceServer()
 }
 
@@ -430,6 +445,9 @@ func (UnimplementedChatroomServiceServer) ListMembers(context.Context, *ListMemb
 }
 func (UnimplementedChatroomServiceServer) GetMembersDetail(context.Context, *GetMemberDetail_Request) (*GetMemberDetail_Response, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMembersDetail not implemented")
+}
+func (UnimplementedChatroomServiceServer) SetDisplayName(context.Context, *SetDisplayName_Request) (*SetDisplayName_Response, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetDisplayName not implemented")
 }
 func (UnimplementedChatroomServiceServer) mustEmbedUnimplementedChatroomServiceServer() {}
 func (UnimplementedChatroomServiceServer) testEmbeddedByValue()                         {}
@@ -830,6 +848,24 @@ func _ChatroomService_GetMembersDetail_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChatroomService_SetDisplayName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetDisplayName_Request)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChatroomServiceServer).SetDisplayName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChatroomService_SetDisplayName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChatroomServiceServer).SetDisplayName(ctx, req.(*SetDisplayName_Request))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChatroomService_ServiceDesc is the grpc.ServiceDesc for ChatroomService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -920,6 +956,10 @@ var ChatroomService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMembersDetail",
 			Handler:    _ChatroomService_GetMembersDetail_Handler,
+		},
+		{
+			MethodName: "SetDisplayName",
+			Handler:    _ChatroomService_SetDisplayName_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

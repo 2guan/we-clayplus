@@ -48,7 +48,7 @@ func safetyConfig(st State, source, target string) (promptguard.Config, contextc
 	if source == "reply-media" || source == "wechat-proactive" || source == "reply-review" {
 		source = "wechat"
 	}
-	if source == "memory-scan" {
+	if source == "memory-scan" || source == "moment-comment-draft" {
 		source = "analysis"
 	}
 	if source == "music-pick" {

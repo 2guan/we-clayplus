@@ -17,11 +17,12 @@ cfg := gateway.Config{
 err := gateway.Run(ctx, cfg, gateway.WithoutPlugins(), gateway.WithHandlers(handlers))
 ```
 
-首次调用会下载、校验、启动 Mac 模式 core。取消 `ctx` 或关闭应用会释放 gateway 的插件、缓存和 gRPC 连接，core 继续运行并保留微信连接。下次应用启动，按账号目录中的记录核对版本、地址、进程启动标识和令牌后复用；只有微信状态就绪后才触发新的 `OnReady`。业务层应使用新 Client，旧 Client 已关闭。
+首次调用会下载、校验、启动 core，设备类型默认 `mac`；配套支持 `win` 的 core 发布版时，可用 `Core.DeviceType: "win"` 和独立新账号目录选择 Windows 设备信息。取消 `ctx` 或关闭应用会释放 gateway 的插件、缓存和 gRPC 连接，core 继续运行并保留微信连接。下次应用启动，按账号目录中的记录核对版本、地址、设备类型、进程启动标识和令牌后复用；只有微信状态就绪后才触发新的 `OnReady`。业务层应使用新 Client，旧 Client 已关闭。
 
 - 支持 macOS、Linux、Windows；不是开机自启服务，也不会在 core 崩溃后无限重启。
 - 一个 core 仍只允许一个活动事件订阅者，不要同时启动两套 robot。
 - core 有有界的持久化事件重放队列；业务层要落库去重，不能把它当成无限消息归档，也不要对重放历史自动回复。
+- 旧进程记录缺少设备类型时按 `mac` 兼容；类型不匹配时拒绝复用和停止。维护时保持原类型，新 Windows 设备须另用新目录，不能把 Mac 档案改为 `win`。Windows 模式尚未完成真实登录验收。
 - 已有版本/地址不同会报错，不会自动停止或升级在线 core。修改配置前先用原配置调用 `StopCore`。
 - 账号目录也必须保持为启动 core 时的绝对路径。需要迁移目录时，先用原配置显式 `StopCore`，移动目录后再用新路径启动；不要在 core 在线时移动目录，也不要把 `gateway-core.json` 复制到另一套活动目录。新版本会核对记录中的启动路径；旧版记录会先核对运行进程的 `-data` 参数，再补写路径。
 - 没有合法进程记录时，不接管占用端口的程序；首次从旧托管模式切换，要先退出旧应用一次。

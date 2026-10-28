@@ -208,6 +208,27 @@
   min-width: 100px;
 }
 /* 原生 popover 进入顶层，避免被聊天滚动容器裁切；键盘 Escape 和点击外部关闭。 */
+.comment-input input {
+  min-width: 0;
+}
+.moment-draft-button {
+  flex-shrink: 0;
+  gap: 4px;
+}
+.moment .moment-draft-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 5px;
+}
+@media (max-width: 600px) {
+  .comment-input input {
+    font-size: 16px;
+  }
+  .moment-draft-button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
 .person-avatar-button {
   padding: 0;
   align-self: flex-start;

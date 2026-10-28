@@ -9,7 +9,7 @@ gateway 提供 Go 库，应用自行编写 `main`；无需独立 gateway 程序�
 | `WithHandlers(Handlers{...})` | 注册 `OnReady`、`OnMessage`、`OnEvent` |
 | `WithoutPlugins()` | 纯机器人模式，不加载插件、不处理内置管理命令 |
 | `Client` | 回调提供的业务客户端，可保存后主动调用 |
-| `Client.SendText` / `Client.SendCard` | 发文字或联系人名片 |
+| `Client.SendText` / `Client.SendCard` / `Client.SendVideo` | 发文字、联系人名片或自动准备封面与时长的本机 MP4 |
 | `Client.Message` / `Client.Moments` 等 | 13 个 SDK 能力域，包括媒体、联系人、群聊、朋友圈 |
 | `CoreConfig` | 固定版本下载、SHA-256 校验、缓存和子进程管理 |
 | `LoadConfig` | 可选的 TOML 配置读取 |

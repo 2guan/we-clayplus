@@ -45,6 +45,18 @@ func (c Client) Pat(receiver, pattedUsername string) (*Pat_Response, error) {
 	return c.Client.Pat(context.Background(), &Pat_Request{Receiver: receiver, PattedUsername: pattedUsername})
 }
 
+// TranscribeVoice 请求 gateway 转写现有的语音消息。
+func (c Client) TranscribeVoice(ctx context.Context, msg *Message) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	r, err := c.Client.TranscribeVoice(ctx, &TranscribeVoice_Request{Message: msg})
+	if err != nil {
+		return "", err
+	}
+	return r.GetText(), nil
+}
+
 // Download 下载媒体资源（server-stream）。调用方须关闭 reader；流中的错误会在 Read 时返回。
 func (c Client) Download(msg *Message) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -153,6 +165,25 @@ func (s Server) Pat(ctx context.Context, request *Pat_Request) (*Pat_Response, e
 		return nil, status.Error(codes.InvalidArgument, "pat request is required")
 	}
 	return s.Impl.Pat(request.GetReceiver(), request.GetPattedUsername())
+}
+
+// TranscribeVoice 转发给消息能力实现。旧 gateway 不提供此 RPC。
+func (s Server) TranscribeVoice(ctx context.Context, request *TranscribeVoice_Request) (*TranscribeVoice_Response, error) {
+	if s.Impl == nil {
+		return nil, status.Error(codes.Unavailable, "message ability is unavailable")
+	}
+	if request == nil || request.GetMessage() == nil {
+		return nil, status.Error(codes.InvalidArgument, "voice message is required")
+	}
+	transcriber, ok := s.Impl.(VoiceTranscriptionAbility)
+	if !ok {
+		return nil, status.Error(codes.Unimplemented, "voice transcription ability is unavailable")
+	}
+	text, err := transcriber.TranscribeVoice(ctx, request.GetMessage())
+	if err != nil {
+		return nil, err
+	}
+	return &TranscribeVoice_Response{Text: text}, nil
 }
 
 // Download 下载媒体资源（server-stream）

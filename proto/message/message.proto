@@ -22,6 +22,8 @@ service MessageService {
   rpc Download(Download.Request) returns (stream Download.Response);
   // Pat 在指定会话里拍一拍联系人。私聊时两个用户名相同。
   rpc Pat(Pat.Request) returns (Pat.Response);
+  // TranscribeVoice 将已收到的语音消息转为文字；需要配套支持的 core。
+  rpc TranscribeVoice(TranscribeVoice.Request) returns (TranscribeVoice.Response);
 }
 
 // ==================== RPC 消息 ====================
@@ -101,5 +103,14 @@ message Pat {
     string self_message = 2;
     string suffix = 3;
     int64 suffix_version = 4;
+  }
+}
+
+message TranscribeVoice {
+  message Request {
+    Message message = 1; // 包含原始协议 ID 与语音大小的已接收消息
+  }
+  message Response {
+    string text = 1; // 微信返回的转写文本
   }
 }

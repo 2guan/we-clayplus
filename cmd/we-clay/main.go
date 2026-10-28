@@ -22,7 +22,7 @@ import (
 // the independently versioned core binary.
 var version = "dev"
 
-const defaultCoreVersion = "v0.4.6"
+const defaultCoreVersion = "v0.5.0"
 
 type arguments struct {
 	dataDir          string
@@ -32,6 +32,8 @@ type arguments struct {
 	coreAddress      string
 	loginAddress     string
 	dashboardAddress string
+	deviceType       string
+	deviceTypeSet    bool
 	deviceName       string
 	externalPlugins  bool
 	check            bool
@@ -103,6 +105,7 @@ func parseArgs(argv []string) (arguments, error) {
 	fs.StringVar(&a.coreAddress, "core-address", "127.0.0.1:8088", "本机 core gRPC 监听地址")
 	fs.StringVar(&a.loginAddress, "login-address", "127.0.0.1:8201", "本机微信登录页面地址")
 	fs.StringVar(&a.dashboardAddress, "dashboard-address", "127.0.0.1:8208", "本机控制台地址")
+	fs.StringVar(&a.deviceType, "device-type", "mac", "微信设备平台：mac 或 win；已有账号目录须保持原类型")
 	fs.StringVar(&a.deviceName, "device-name", "", "微信显示的设备名称；留空沿用已保存名称")
 	fs.BoolVar(&a.externalPlugins, "external-plugins", false, "显式启用可信外部插件进程")
 	fs.BoolVar(&a.check, "check", false, "只检查授权文件和本机配置，不连接微信")
@@ -112,6 +115,11 @@ func parseArgs(argv []string) (arguments, error) {
 	if err := fs.Parse(argv); err != nil {
 		return a, err
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "device-type" {
+			a.deviceTypeSet = true
+		}
+	})
 	if fs.NArg() != 0 {
 		return a, fmt.Errorf("不支持额外参数：%s", fs.Arg(0))
 	}
@@ -180,6 +188,10 @@ func prepareConfig(a arguments) (gateway.Config, error) {
 		return cfg, errors.New("--data-dir 必须是绝对路径")
 	}
 	base := filepath.Clean(a.dataDir)
+	deviceType, err := installedDeviceType(base, a.deviceType, a.deviceTypeSet)
+	if err != nil {
+		return cfg, err
+	}
 	coreDataDir := a.coreDataDir
 	if coreDataDir == "" {
 		coreDataDir = filepath.Join(base, "core")
@@ -204,11 +216,12 @@ func prepareConfig(a arguments) (gateway.Config, error) {
 			CacheDir:     filepath.Join(base, "core-bin"),
 			DataDir:      coreDataDir,
 			LoginAddress: a.loginAddress,
+			DeviceType:   deviceType,
 			DeviceName:   a.deviceName,
 		},
 		Console: &control.Config{Address: a.dashboardAddress, DataDir: filepath.Join(base, "console")},
 	}
-	cfg, err := cfg.Resolve()
+	cfg, err = cfg.Resolve()
 	if err != nil {
 		return gateway.Config{}, err
 	}

@@ -201,25 +201,41 @@ func momentCover(username string) string {
 		return ""
 	}
 	detail, err := contactapi.Get().Detail([]string{username})
-	if err != nil || detail == nil {
-		return ""
-	}
-	for _, c := range detail.GetContactList() {
-		if c.GetUsername().GetValue() != username {
-			continue
-		}
-		for _, raw := range []string{c.GetAlbumBgImageId(), c.GetSnsUserInfo().GetBgImageId()} {
-			if cover := safeWebURL(raw); cover != "" {
+	if err == nil && detail != nil {
+		for _, c := range detail.GetContactList() {
+			if c.GetUsername().GetValue() != username {
+				continue
+			}
+			if cover := safeWebURL(c.GetAlbumBgImageId()); cover != "" {
+				return cover
+			}
+			if cover := momentBackground(c.GetSnsUserInfo().GetBgImageId(), c.GetSnsUserInfo().GetBgObjectId()); cover != "" {
 				return cover
 			}
 		}
-		if id := c.GetSnsUserInfo().GetBgObjectId(); id != 0 && moments.Instance != nil {
-			r, e := moments.Instance.Detail(id)
-			if e == nil && r != nil && r.GetBaseResult() != nil && r.GetBaseResult().GetCode() == 0 && r.GetObject() != nil {
-				items := mapMomentItems([]*moments.Moment{r.GetObject()})
-				if len(items[0].Images) > 0 {
-					return items[0].Images[0]
-				}
+	}
+	// 自己的联系人详情可能不含 SNS 信息；使用个人页返回的明确封面字段。
+	if contact.Instance != nil && moments.Instance != nil {
+		if self := contact.Instance.GetSelf(); self != nil && self.Username == username {
+			page, err := moments.Instance.UserPage(username, "", 0)
+			if err == nil && page != nil && page.GetBaseResult() != nil && (page.GetBaseResult().GetCode() == 0 || page.GetBaseResult().GetCode() == 207) {
+				return momentBackground(page.GetBgImageId(), page.GetBgObjectId())
+			}
+		}
+	}
+	return ""
+}
+
+func momentBackground(image string, id uint64) string {
+	if cover := safeWebURL(image); cover != "" {
+		return cover
+	}
+	if id != 0 && moments.Instance != nil {
+		r, e := moments.Instance.Detail(id)
+		if e == nil && r != nil && r.GetBaseResult() != nil && r.GetBaseResult().GetCode() == 0 && r.GetObject().GetId() == id {
+			items := mapMomentItems([]*moments.Moment{r.GetObject()})
+			if len(items[0].Images) > 0 {
+				return items[0].Images[0]
 			}
 		}
 	}

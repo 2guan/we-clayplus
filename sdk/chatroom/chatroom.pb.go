@@ -936,6 +936,42 @@ func (*ListMembers) Descriptor() ([]byte, []int) {
 	return file_chatroom_chatroom_proto_rawDescGZIP(), []int{21}
 }
 
+type SetDisplayName struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetDisplayName) Reset() {
+	*x = SetDisplayName{}
+	mi := &file_chatroom_chatroom_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetDisplayName) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetDisplayName) ProtoMessage() {}
+
+func (x *SetDisplayName) ProtoReflect() protoreflect.Message {
+	mi := &file_chatroom_chatroom_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetDisplayName.ProtoReflect.Descriptor instead.
+func (*SetDisplayName) Descriptor() ([]byte, []int) {
+	return file_chatroom_chatroom_proto_rawDescGZIP(), []int{22}
+}
+
 type Create_Request struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Members       []string               `protobuf:"bytes,1,rep,name=members,proto3" json:"members,omitempty"` // 初始成员用户名列表
@@ -945,7 +981,7 @@ type Create_Request struct {
 
 func (x *Create_Request) Reset() {
 	*x = Create_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[22]
+	mi := &file_chatroom_chatroom_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -957,7 +993,7 @@ func (x *Create_Request) String() string {
 func (*Create_Request) ProtoMessage() {}
 
 func (x *Create_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[22]
+	mi := &file_chatroom_chatroom_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -993,7 +1029,7 @@ type Create_Response struct {
 
 func (x *Create_Response) Reset() {
 	*x = Create_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[23]
+	mi := &file_chatroom_chatroom_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1005,7 +1041,7 @@ func (x *Create_Response) String() string {
 func (*Create_Response) ProtoMessage() {}
 
 func (x *Create_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[23]
+	mi := &file_chatroom_chatroom_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1068,7 +1104,7 @@ type FacingCreate_Request struct {
 
 func (x *FacingCreate_Request) Reset() {
 	*x = FacingCreate_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[24]
+	mi := &file_chatroom_chatroom_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +1116,7 @@ func (x *FacingCreate_Request) String() string {
 func (*FacingCreate_Request) ProtoMessage() {}
 
 func (x *FacingCreate_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[24]
+	mi := &file_chatroom_chatroom_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1137,7 +1173,7 @@ type FacingCreate_Member struct {
 
 func (x *FacingCreate_Member) Reset() {
 	*x = FacingCreate_Member{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[25]
+	mi := &file_chatroom_chatroom_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1149,7 +1185,7 @@ func (x *FacingCreate_Member) String() string {
 func (*FacingCreate_Member) ProtoMessage() {}
 
 func (x *FacingCreate_Member) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[25]
+	mi := &file_chatroom_chatroom_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1212,7 +1248,7 @@ type FacingCreate_Response struct {
 
 func (x *FacingCreate_Response) Reset() {
 	*x = FacingCreate_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[26]
+	mi := &file_chatroom_chatroom_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1224,7 +1260,7 @@ func (x *FacingCreate_Response) String() string {
 func (*FacingCreate_Response) ProtoMessage() {}
 
 func (x *FacingCreate_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[26]
+	mi := &file_chatroom_chatroom_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1277,7 +1313,7 @@ type GetInfo_Request struct {
 
 func (x *GetInfo_Request) Reset() {
 	*x = GetInfo_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[27]
+	mi := &file_chatroom_chatroom_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1289,7 +1325,7 @@ func (x *GetInfo_Request) String() string {
 func (*GetInfo_Request) ProtoMessage() {}
 
 func (x *GetInfo_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[27]
+	mi := &file_chatroom_chatroom_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1328,7 +1364,7 @@ type GetInfo_Response struct {
 
 func (x *GetInfo_Response) Reset() {
 	*x = GetInfo_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[28]
+	mi := &file_chatroom_chatroom_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1340,7 +1376,7 @@ func (x *GetInfo_Response) String() string {
 func (*GetInfo_Response) ProtoMessage() {}
 
 func (x *GetInfo_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[28]
+	mi := &file_chatroom_chatroom_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1422,7 +1458,7 @@ type GetMemberDetail_Request struct {
 
 func (x *GetMemberDetail_Request) Reset() {
 	*x = GetMemberDetail_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[29]
+	mi := &file_chatroom_chatroom_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1434,7 +1470,7 @@ func (x *GetMemberDetail_Request) String() string {
 func (*GetMemberDetail_Request) ProtoMessage() {}
 
 func (x *GetMemberDetail_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[29]
+	mi := &file_chatroom_chatroom_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1473,7 +1509,7 @@ type GetMemberDetail_Response struct {
 
 func (x *GetMemberDetail_Response) Reset() {
 	*x = GetMemberDetail_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[30]
+	mi := &file_chatroom_chatroom_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1485,7 +1521,7 @@ func (x *GetMemberDetail_Response) String() string {
 func (*GetMemberDetail_Response) ProtoMessage() {}
 
 func (x *GetMemberDetail_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[30]
+	mi := &file_chatroom_chatroom_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1517,7 +1553,7 @@ type GetQRCode_Request struct {
 
 func (x *GetQRCode_Request) Reset() {
 	*x = GetQRCode_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[31]
+	mi := &file_chatroom_chatroom_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1529,7 +1565,7 @@ func (x *GetQRCode_Request) String() string {
 func (*GetQRCode_Request) ProtoMessage() {}
 
 func (x *GetQRCode_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[31]
+	mi := &file_chatroom_chatroom_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1563,7 +1599,7 @@ type GetQRCode_Response struct {
 
 func (x *GetQRCode_Response) Reset() {
 	*x = GetQRCode_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[32]
+	mi := &file_chatroom_chatroom_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1575,7 +1611,7 @@ func (x *GetQRCode_Response) String() string {
 func (*GetQRCode_Response) ProtoMessage() {}
 
 func (x *GetQRCode_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[32]
+	mi := &file_chatroom_chatroom_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1622,7 +1658,7 @@ type AddMember_Request struct {
 
 func (x *AddMember_Request) Reset() {
 	*x = AddMember_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[33]
+	mi := &file_chatroom_chatroom_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1634,7 +1670,7 @@ func (x *AddMember_Request) String() string {
 func (*AddMember_Request) ProtoMessage() {}
 
 func (x *AddMember_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[33]
+	mi := &file_chatroom_chatroom_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1674,7 +1710,7 @@ type AddMember_Response struct {
 
 func (x *AddMember_Response) Reset() {
 	*x = AddMember_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[34]
+	mi := &file_chatroom_chatroom_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1686,7 +1722,7 @@ func (x *AddMember_Response) String() string {
 func (*AddMember_Response) ProtoMessage() {}
 
 func (x *AddMember_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[34]
+	mi := &file_chatroom_chatroom_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1726,7 +1762,7 @@ type InviteMember_Request struct {
 
 func (x *InviteMember_Request) Reset() {
 	*x = InviteMember_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[35]
+	mi := &file_chatroom_chatroom_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1738,7 +1774,7 @@ func (x *InviteMember_Request) String() string {
 func (*InviteMember_Request) ProtoMessage() {}
 
 func (x *InviteMember_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[35]
+	mi := &file_chatroom_chatroom_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1778,7 +1814,7 @@ type InviteMember_Response struct {
 
 func (x *InviteMember_Response) Reset() {
 	*x = InviteMember_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[36]
+	mi := &file_chatroom_chatroom_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1790,7 +1826,7 @@ func (x *InviteMember_Response) String() string {
 func (*InviteMember_Response) ProtoMessage() {}
 
 func (x *InviteMember_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[36]
+	mi := &file_chatroom_chatroom_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1830,7 +1866,7 @@ type RemoveMember_Request struct {
 
 func (x *RemoveMember_Request) Reset() {
 	*x = RemoveMember_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[37]
+	mi := &file_chatroom_chatroom_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1842,7 +1878,7 @@ func (x *RemoveMember_Request) String() string {
 func (*RemoveMember_Request) ProtoMessage() {}
 
 func (x *RemoveMember_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[37]
+	mi := &file_chatroom_chatroom_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1882,7 +1918,7 @@ type RemoveMember_Response struct {
 
 func (x *RemoveMember_Response) Reset() {
 	*x = RemoveMember_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[38]
+	mi := &file_chatroom_chatroom_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1894,7 +1930,7 @@ func (x *RemoveMember_Response) String() string {
 func (*RemoveMember_Response) ProtoMessage() {}
 
 func (x *RemoveMember_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[38]
+	mi := &file_chatroom_chatroom_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1934,7 +1970,7 @@ type SetName_Request struct {
 
 func (x *SetName_Request) Reset() {
 	*x = SetName_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[39]
+	mi := &file_chatroom_chatroom_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1946,7 +1982,7 @@ func (x *SetName_Request) String() string {
 func (*SetName_Request) ProtoMessage() {}
 
 func (x *SetName_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[39]
+	mi := &file_chatroom_chatroom_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1986,7 +2022,7 @@ type SetName_Response struct {
 
 func (x *SetName_Response) Reset() {
 	*x = SetName_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[40]
+	mi := &file_chatroom_chatroom_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1998,7 +2034,7 @@ func (x *SetName_Response) String() string {
 func (*SetName_Response) ProtoMessage() {}
 
 func (x *SetName_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[40]
+	mi := &file_chatroom_chatroom_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2038,7 +2074,7 @@ type SetAnnouncement_Request struct {
 
 func (x *SetAnnouncement_Request) Reset() {
 	*x = SetAnnouncement_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[41]
+	mi := &file_chatroom_chatroom_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2050,7 +2086,7 @@ func (x *SetAnnouncement_Request) String() string {
 func (*SetAnnouncement_Request) ProtoMessage() {}
 
 func (x *SetAnnouncement_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[41]
+	mi := &file_chatroom_chatroom_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2090,7 +2126,7 @@ type SetAnnouncement_Response struct {
 
 func (x *SetAnnouncement_Response) Reset() {
 	*x = SetAnnouncement_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[42]
+	mi := &file_chatroom_chatroom_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2102,7 +2138,7 @@ func (x *SetAnnouncement_Response) String() string {
 func (*SetAnnouncement_Response) ProtoMessage() {}
 
 func (x *SetAnnouncement_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[42]
+	mi := &file_chatroom_chatroom_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2142,7 +2178,7 @@ type SetRemark_Request struct {
 
 func (x *SetRemark_Request) Reset() {
 	*x = SetRemark_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[43]
+	mi := &file_chatroom_chatroom_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2154,7 +2190,7 @@ func (x *SetRemark_Request) String() string {
 func (*SetRemark_Request) ProtoMessage() {}
 
 func (x *SetRemark_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[43]
+	mi := &file_chatroom_chatroom_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2194,7 +2230,7 @@ type SetRemark_Response struct {
 
 func (x *SetRemark_Response) Reset() {
 	*x = SetRemark_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[44]
+	mi := &file_chatroom_chatroom_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2206,7 +2242,7 @@ func (x *SetRemark_Response) String() string {
 func (*SetRemark_Response) ProtoMessage() {}
 
 func (x *SetRemark_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[44]
+	mi := &file_chatroom_chatroom_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2246,7 +2282,7 @@ type Save_Request struct {
 
 func (x *Save_Request) Reset() {
 	*x = Save_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[45]
+	mi := &file_chatroom_chatroom_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2258,7 +2294,7 @@ func (x *Save_Request) String() string {
 func (*Save_Request) ProtoMessage() {}
 
 func (x *Save_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[45]
+	mi := &file_chatroom_chatroom_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2298,7 +2334,7 @@ type Save_Response struct {
 
 func (x *Save_Response) Reset() {
 	*x = Save_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[46]
+	mi := &file_chatroom_chatroom_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2310,7 +2346,7 @@ func (x *Save_Response) String() string {
 func (*Save_Response) ProtoMessage() {}
 
 func (x *Save_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[46]
+	mi := &file_chatroom_chatroom_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2350,7 +2386,7 @@ type SetAdmin_Request struct {
 
 func (x *SetAdmin_Request) Reset() {
 	*x = SetAdmin_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[47]
+	mi := &file_chatroom_chatroom_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2362,7 +2398,7 @@ func (x *SetAdmin_Request) String() string {
 func (*SetAdmin_Request) ProtoMessage() {}
 
 func (x *SetAdmin_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[47]
+	mi := &file_chatroom_chatroom_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2402,7 +2438,7 @@ type SetAdmin_Response struct {
 
 func (x *SetAdmin_Response) Reset() {
 	*x = SetAdmin_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[48]
+	mi := &file_chatroom_chatroom_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2414,7 +2450,7 @@ func (x *SetAdmin_Response) String() string {
 func (*SetAdmin_Response) ProtoMessage() {}
 
 func (x *SetAdmin_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[48]
+	mi := &file_chatroom_chatroom_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2454,7 +2490,7 @@ type RemoveAdmin_Request struct {
 
 func (x *RemoveAdmin_Request) Reset() {
 	*x = RemoveAdmin_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[49]
+	mi := &file_chatroom_chatroom_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2466,7 +2502,7 @@ func (x *RemoveAdmin_Request) String() string {
 func (*RemoveAdmin_Request) ProtoMessage() {}
 
 func (x *RemoveAdmin_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[49]
+	mi := &file_chatroom_chatroom_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2506,7 +2542,7 @@ type RemoveAdmin_Response struct {
 
 func (x *RemoveAdmin_Response) Reset() {
 	*x = RemoveAdmin_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[50]
+	mi := &file_chatroom_chatroom_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2518,7 +2554,7 @@ func (x *RemoveAdmin_Response) String() string {
 func (*RemoveAdmin_Response) ProtoMessage() {}
 
 func (x *RemoveAdmin_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[50]
+	mi := &file_chatroom_chatroom_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2558,7 +2594,7 @@ type TransferOwner_Request struct {
 
 func (x *TransferOwner_Request) Reset() {
 	*x = TransferOwner_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[51]
+	mi := &file_chatroom_chatroom_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2570,7 +2606,7 @@ func (x *TransferOwner_Request) String() string {
 func (*TransferOwner_Request) ProtoMessage() {}
 
 func (x *TransferOwner_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[51]
+	mi := &file_chatroom_chatroom_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2610,7 +2646,7 @@ type TransferOwner_Response struct {
 
 func (x *TransferOwner_Response) Reset() {
 	*x = TransferOwner_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[52]
+	mi := &file_chatroom_chatroom_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2622,7 +2658,7 @@ func (x *TransferOwner_Response) String() string {
 func (*TransferOwner_Response) ProtoMessage() {}
 
 func (x *TransferOwner_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[52]
+	mi := &file_chatroom_chatroom_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2661,7 +2697,7 @@ type ScanJoin_Request struct {
 
 func (x *ScanJoin_Request) Reset() {
 	*x = ScanJoin_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[53]
+	mi := &file_chatroom_chatroom_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2673,7 +2709,7 @@ func (x *ScanJoin_Request) String() string {
 func (*ScanJoin_Request) ProtoMessage() {}
 
 func (x *ScanJoin_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[53]
+	mi := &file_chatroom_chatroom_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2706,7 +2742,7 @@ type ScanJoin_Response struct {
 
 func (x *ScanJoin_Response) Reset() {
 	*x = ScanJoin_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[54]
+	mi := &file_chatroom_chatroom_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2718,7 +2754,7 @@ func (x *ScanJoin_Response) String() string {
 func (*ScanJoin_Response) ProtoMessage() {}
 
 func (x *ScanJoin_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[54]
+	mi := &file_chatroom_chatroom_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2757,7 +2793,7 @@ type ConsentJoin_Request struct {
 
 func (x *ConsentJoin_Request) Reset() {
 	*x = ConsentJoin_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[55]
+	mi := &file_chatroom_chatroom_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2769,7 +2805,7 @@ func (x *ConsentJoin_Request) String() string {
 func (*ConsentJoin_Request) ProtoMessage() {}
 
 func (x *ConsentJoin_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[55]
+	mi := &file_chatroom_chatroom_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2802,7 +2838,7 @@ type ConsentJoin_Response struct {
 
 func (x *ConsentJoin_Response) Reset() {
 	*x = ConsentJoin_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[56]
+	mi := &file_chatroom_chatroom_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2814,7 +2850,7 @@ func (x *ConsentJoin_Response) String() string {
 func (*ConsentJoin_Response) ProtoMessage() {}
 
 func (x *ConsentJoin_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[56]
+	mi := &file_chatroom_chatroom_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2853,7 +2889,7 @@ type Quit_Request struct {
 
 func (x *Quit_Request) Reset() {
 	*x = Quit_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[57]
+	mi := &file_chatroom_chatroom_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2865,7 +2901,7 @@ func (x *Quit_Request) String() string {
 func (*Quit_Request) ProtoMessage() {}
 
 func (x *Quit_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[57]
+	mi := &file_chatroom_chatroom_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2898,7 +2934,7 @@ type Quit_Response struct {
 
 func (x *Quit_Response) Reset() {
 	*x = Quit_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[58]
+	mi := &file_chatroom_chatroom_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2910,7 +2946,7 @@ func (x *Quit_Response) String() string {
 func (*Quit_Response) ProtoMessage() {}
 
 func (x *Quit_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[58]
+	mi := &file_chatroom_chatroom_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2950,7 +2986,7 @@ type GetMember_Request struct {
 
 func (x *GetMember_Request) Reset() {
 	*x = GetMember_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[59]
+	mi := &file_chatroom_chatroom_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2962,7 +2998,7 @@ func (x *GetMember_Request) String() string {
 func (*GetMember_Request) ProtoMessage() {}
 
 func (x *GetMember_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[59]
+	mi := &file_chatroom_chatroom_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3001,7 +3037,7 @@ type GetMember_Response struct {
 
 func (x *GetMember_Response) Reset() {
 	*x = GetMember_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[60]
+	mi := &file_chatroom_chatroom_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3013,7 +3049,7 @@ func (x *GetMember_Response) String() string {
 func (*GetMember_Response) ProtoMessage() {}
 
 func (x *GetMember_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[60]
+	mi := &file_chatroom_chatroom_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3045,7 +3081,7 @@ type ListMembers_Request struct {
 
 func (x *ListMembers_Request) Reset() {
 	*x = ListMembers_Request{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[61]
+	mi := &file_chatroom_chatroom_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3057,7 +3093,7 @@ func (x *ListMembers_Request) String() string {
 func (*ListMembers_Request) ProtoMessage() {}
 
 func (x *ListMembers_Request) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[61]
+	mi := &file_chatroom_chatroom_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3089,7 +3125,7 @@ type ListMembers_Response struct {
 
 func (x *ListMembers_Response) Reset() {
 	*x = ListMembers_Response{}
-	mi := &file_chatroom_chatroom_proto_msgTypes[62]
+	mi := &file_chatroom_chatroom_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3101,7 +3137,7 @@ func (x *ListMembers_Response) String() string {
 func (*ListMembers_Response) ProtoMessage() {}
 
 func (x *ListMembers_Response) ProtoReflect() protoreflect.Message {
-	mi := &file_chatroom_chatroom_proto_msgTypes[62]
+	mi := &file_chatroom_chatroom_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3122,6 +3158,110 @@ func (x *ListMembers_Response) GetMembers() []*Member {
 		return x.Members
 	}
 	return nil
+}
+
+type SetDisplayName_Request struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Chatroom      string                 `protobuf:"bytes,1,opt,name=chatroom,proto3" json:"chatroom,omitempty"`                          // 群 ID
+	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"` // 当前账号的群内显示名；空字符串表示清除
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetDisplayName_Request) Reset() {
+	*x = SetDisplayName_Request{}
+	mi := &file_chatroom_chatroom_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetDisplayName_Request) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetDisplayName_Request) ProtoMessage() {}
+
+func (x *SetDisplayName_Request) ProtoReflect() protoreflect.Message {
+	mi := &file_chatroom_chatroom_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetDisplayName_Request.ProtoReflect.Descriptor instead.
+func (*SetDisplayName_Request) Descriptor() ([]byte, []int) {
+	return file_chatroom_chatroom_proto_rawDescGZIP(), []int{22, 0}
+}
+
+func (x *SetDisplayName_Request) GetChatroom() string {
+	if x != nil {
+		return x.Chatroom
+	}
+	return ""
+}
+
+func (x *SetDisplayName_Request) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+type SetDisplayName_Response struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          int32                  `protobuf:"varint,1,opt,name=code,proto3" json:"code,omitempty"`      // 状态码（0=成功）
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"` // 提示信息
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetDisplayName_Response) Reset() {
+	*x = SetDisplayName_Response{}
+	mi := &file_chatroom_chatroom_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetDisplayName_Response) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetDisplayName_Response) ProtoMessage() {}
+
+func (x *SetDisplayName_Response) ProtoReflect() protoreflect.Message {
+	mi := &file_chatroom_chatroom_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetDisplayName_Response.ProtoReflect.Descriptor instead.
+func (*SetDisplayName_Response) Descriptor() ([]byte, []int) {
+	return file_chatroom_chatroom_proto_rawDescGZIP(), []int{22, 1}
+}
+
+func (x *SetDisplayName_Response) GetCode() int32 {
+	if x != nil {
+		return x.Code
+	}
+	return 0
+}
+
+func (x *SetDisplayName_Response) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
 }
 
 var File_chatroom_chatroom_proto protoreflect.FileDescriptor
@@ -3300,7 +3440,14 @@ const file_chatroom_chatroom_proto_rawDesc = "" +
 	"\aRequest\x12\x1a\n" +
 	"\bchatroom\x18\x01 \x01(\tR\bchatroom\x1a6\n" +
 	"\bResponse\x12*\n" +
-	"\amembers\x18\x01 \x03(\v2\x10.chatroom.MemberR\amembers2\xa5\f\n" +
+	"\amembers\x18\x01 \x03(\v2\x10.chatroom.MemberR\amembers\"\x94\x01\n" +
+	"\x0eSetDisplayName\x1aH\n" +
+	"\aRequest\x12\x1a\n" +
+	"\bchatroom\x18\x01 \x01(\tR\bchatroom\x12!\n" +
+	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x1a8\n" +
+	"\bResponse\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xfc\f\n" +
 	"\x0fChatroomService\x12=\n" +
 	"\x06Create\x12\x18.chatroom.Create.Request\x1a\x19.chatroom.Create.Response\x12O\n" +
 	"\fFacingCreate\x12\x1e.chatroom.FacingCreate.Request\x1a\x1f.chatroom.FacingCreate.Response\x12@\n" +
@@ -3322,7 +3469,8 @@ const file_chatroom_chatroom_proto_rawDesc = "" +
 	"\vConsentJoin\x12\x1d.chatroom.ConsentJoin.Request\x1a\x1e.chatroom.ConsentJoin.Response\x12F\n" +
 	"\tGetMember\x12\x1b.chatroom.GetMember.Request\x1a\x1c.chatroom.GetMember.Response\x12L\n" +
 	"\vListMembers\x12\x1d.chatroom.ListMembers.Request\x1a\x1e.chatroom.ListMembers.Response\x12Y\n" +
-	"\x10GetMembersDetail\x12!.chatroom.GetMemberDetail.Request\x1a\".chatroom.GetMemberDetail.ResponseB)Z'github.com/we-clay/we-clay/sdk/chatroomb\x06proto3"
+	"\x10GetMembersDetail\x12!.chatroom.GetMemberDetail.Request\x1a\".chatroom.GetMemberDetail.Response\x12U\n" +
+	"\x0eSetDisplayName\x12 .chatroom.SetDisplayName.Request\x1a!.chatroom.SetDisplayName.ResponseB)Z'github.com/we-clay/we-clay/sdk/chatroomb\x06proto3"
 
 var (
 	file_chatroom_chatroom_proto_rawDescOnce sync.Once
@@ -3336,7 +3484,7 @@ func file_chatroom_chatroom_proto_rawDescGZIP() []byte {
 	return file_chatroom_chatroom_proto_rawDescData
 }
 
-var file_chatroom_chatroom_proto_msgTypes = make([]protoimpl.MessageInfo, 63)
+var file_chatroom_chatroom_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_chatroom_chatroom_proto_goTypes = []any{
 	(*Member)(nil),                   // 0: chatroom.Member
 	(*OperateResponse)(nil),          // 1: chatroom.OperateResponse
@@ -3360,101 +3508,106 @@ var file_chatroom_chatroom_proto_goTypes = []any{
 	(*Quit)(nil),                     // 19: chatroom.Quit
 	(*GetMember)(nil),                // 20: chatroom.GetMember
 	(*ListMembers)(nil),              // 21: chatroom.ListMembers
-	(*Create_Request)(nil),           // 22: chatroom.Create.Request
-	(*Create_Response)(nil),          // 23: chatroom.Create.Response
-	(*FacingCreate_Request)(nil),     // 24: chatroom.FacingCreate.Request
-	(*FacingCreate_Member)(nil),      // 25: chatroom.FacingCreate.Member
-	(*FacingCreate_Response)(nil),    // 26: chatroom.FacingCreate.Response
-	(*GetInfo_Request)(nil),          // 27: chatroom.GetInfo.Request
-	(*GetInfo_Response)(nil),         // 28: chatroom.GetInfo.Response
-	(*GetMemberDetail_Request)(nil),  // 29: chatroom.GetMemberDetail.Request
-	(*GetMemberDetail_Response)(nil), // 30: chatroom.GetMemberDetail.Response
-	(*GetQRCode_Request)(nil),        // 31: chatroom.GetQRCode.Request
-	(*GetQRCode_Response)(nil),       // 32: chatroom.GetQRCode.Response
-	(*AddMember_Request)(nil),        // 33: chatroom.AddMember.Request
-	(*AddMember_Response)(nil),       // 34: chatroom.AddMember.Response
-	(*InviteMember_Request)(nil),     // 35: chatroom.InviteMember.Request
-	(*InviteMember_Response)(nil),    // 36: chatroom.InviteMember.Response
-	(*RemoveMember_Request)(nil),     // 37: chatroom.RemoveMember.Request
-	(*RemoveMember_Response)(nil),    // 38: chatroom.RemoveMember.Response
-	(*SetName_Request)(nil),          // 39: chatroom.SetName.Request
-	(*SetName_Response)(nil),         // 40: chatroom.SetName.Response
-	(*SetAnnouncement_Request)(nil),  // 41: chatroom.SetAnnouncement.Request
-	(*SetAnnouncement_Response)(nil), // 42: chatroom.SetAnnouncement.Response
-	(*SetRemark_Request)(nil),        // 43: chatroom.SetRemark.Request
-	(*SetRemark_Response)(nil),       // 44: chatroom.SetRemark.Response
-	(*Save_Request)(nil),             // 45: chatroom.Save.Request
-	(*Save_Response)(nil),            // 46: chatroom.Save.Response
-	(*SetAdmin_Request)(nil),         // 47: chatroom.SetAdmin.Request
-	(*SetAdmin_Response)(nil),        // 48: chatroom.SetAdmin.Response
-	(*RemoveAdmin_Request)(nil),      // 49: chatroom.RemoveAdmin.Request
-	(*RemoveAdmin_Response)(nil),     // 50: chatroom.RemoveAdmin.Response
-	(*TransferOwner_Request)(nil),    // 51: chatroom.TransferOwner.Request
-	(*TransferOwner_Response)(nil),   // 52: chatroom.TransferOwner.Response
-	(*ScanJoin_Request)(nil),         // 53: chatroom.ScanJoin.Request
-	(*ScanJoin_Response)(nil),        // 54: chatroom.ScanJoin.Response
-	(*ConsentJoin_Request)(nil),      // 55: chatroom.ConsentJoin.Request
-	(*ConsentJoin_Response)(nil),     // 56: chatroom.ConsentJoin.Response
-	(*Quit_Request)(nil),             // 57: chatroom.Quit.Request
-	(*Quit_Response)(nil),            // 58: chatroom.Quit.Response
-	(*GetMember_Request)(nil),        // 59: chatroom.GetMember.Request
-	(*GetMember_Response)(nil),       // 60: chatroom.GetMember.Response
-	(*ListMembers_Request)(nil),      // 61: chatroom.ListMembers.Request
-	(*ListMembers_Response)(nil),     // 62: chatroom.ListMembers.Response
+	(*SetDisplayName)(nil),           // 22: chatroom.SetDisplayName
+	(*Create_Request)(nil),           // 23: chatroom.Create.Request
+	(*Create_Response)(nil),          // 24: chatroom.Create.Response
+	(*FacingCreate_Request)(nil),     // 25: chatroom.FacingCreate.Request
+	(*FacingCreate_Member)(nil),      // 26: chatroom.FacingCreate.Member
+	(*FacingCreate_Response)(nil),    // 27: chatroom.FacingCreate.Response
+	(*GetInfo_Request)(nil),          // 28: chatroom.GetInfo.Request
+	(*GetInfo_Response)(nil),         // 29: chatroom.GetInfo.Response
+	(*GetMemberDetail_Request)(nil),  // 30: chatroom.GetMemberDetail.Request
+	(*GetMemberDetail_Response)(nil), // 31: chatroom.GetMemberDetail.Response
+	(*GetQRCode_Request)(nil),        // 32: chatroom.GetQRCode.Request
+	(*GetQRCode_Response)(nil),       // 33: chatroom.GetQRCode.Response
+	(*AddMember_Request)(nil),        // 34: chatroom.AddMember.Request
+	(*AddMember_Response)(nil),       // 35: chatroom.AddMember.Response
+	(*InviteMember_Request)(nil),     // 36: chatroom.InviteMember.Request
+	(*InviteMember_Response)(nil),    // 37: chatroom.InviteMember.Response
+	(*RemoveMember_Request)(nil),     // 38: chatroom.RemoveMember.Request
+	(*RemoveMember_Response)(nil),    // 39: chatroom.RemoveMember.Response
+	(*SetName_Request)(nil),          // 40: chatroom.SetName.Request
+	(*SetName_Response)(nil),         // 41: chatroom.SetName.Response
+	(*SetAnnouncement_Request)(nil),  // 42: chatroom.SetAnnouncement.Request
+	(*SetAnnouncement_Response)(nil), // 43: chatroom.SetAnnouncement.Response
+	(*SetRemark_Request)(nil),        // 44: chatroom.SetRemark.Request
+	(*SetRemark_Response)(nil),       // 45: chatroom.SetRemark.Response
+	(*Save_Request)(nil),             // 46: chatroom.Save.Request
+	(*Save_Response)(nil),            // 47: chatroom.Save.Response
+	(*SetAdmin_Request)(nil),         // 48: chatroom.SetAdmin.Request
+	(*SetAdmin_Response)(nil),        // 49: chatroom.SetAdmin.Response
+	(*RemoveAdmin_Request)(nil),      // 50: chatroom.RemoveAdmin.Request
+	(*RemoveAdmin_Response)(nil),     // 51: chatroom.RemoveAdmin.Response
+	(*TransferOwner_Request)(nil),    // 52: chatroom.TransferOwner.Request
+	(*TransferOwner_Response)(nil),   // 53: chatroom.TransferOwner.Response
+	(*ScanJoin_Request)(nil),         // 54: chatroom.ScanJoin.Request
+	(*ScanJoin_Response)(nil),        // 55: chatroom.ScanJoin.Response
+	(*ConsentJoin_Request)(nil),      // 56: chatroom.ConsentJoin.Request
+	(*ConsentJoin_Response)(nil),     // 57: chatroom.ConsentJoin.Response
+	(*Quit_Request)(nil),             // 58: chatroom.Quit.Request
+	(*Quit_Response)(nil),            // 59: chatroom.Quit.Response
+	(*GetMember_Request)(nil),        // 60: chatroom.GetMember.Request
+	(*GetMember_Response)(nil),       // 61: chatroom.GetMember.Response
+	(*ListMembers_Request)(nil),      // 62: chatroom.ListMembers.Request
+	(*ListMembers_Response)(nil),     // 63: chatroom.ListMembers.Response
+	(*SetDisplayName_Request)(nil),   // 64: chatroom.SetDisplayName.Request
+	(*SetDisplayName_Response)(nil),  // 65: chatroom.SetDisplayName.Response
 }
 var file_chatroom_chatroom_proto_depIdxs = []int32{
 	0,  // 0: chatroom.Create.Response.members:type_name -> chatroom.Member
-	25, // 1: chatroom.FacingCreate.Response.members:type_name -> chatroom.FacingCreate.Member
+	26, // 1: chatroom.FacingCreate.Response.members:type_name -> chatroom.FacingCreate.Member
 	0,  // 2: chatroom.GetMemberDetail.Response.members:type_name -> chatroom.Member
 	0,  // 3: chatroom.AddMember.Response.members:type_name -> chatroom.Member
 	0,  // 4: chatroom.InviteMember.Response.members:type_name -> chatroom.Member
 	0,  // 5: chatroom.RemoveMember.Response.members:type_name -> chatroom.Member
 	0,  // 6: chatroom.GetMember.Response.member:type_name -> chatroom.Member
 	0,  // 7: chatroom.ListMembers.Response.members:type_name -> chatroom.Member
-	22, // 8: chatroom.ChatroomService.Create:input_type -> chatroom.Create.Request
-	24, // 9: chatroom.ChatroomService.FacingCreate:input_type -> chatroom.FacingCreate.Request
-	27, // 10: chatroom.ChatroomService.GetInfo:input_type -> chatroom.GetInfo.Request
-	31, // 11: chatroom.ChatroomService.GetQRCode:input_type -> chatroom.GetQRCode.Request
-	33, // 12: chatroom.ChatroomService.AddMember:input_type -> chatroom.AddMember.Request
-	35, // 13: chatroom.ChatroomService.InviteMember:input_type -> chatroom.InviteMember.Request
-	37, // 14: chatroom.ChatroomService.RemoveMember:input_type -> chatroom.RemoveMember.Request
-	39, // 15: chatroom.ChatroomService.SetName:input_type -> chatroom.SetName.Request
-	41, // 16: chatroom.ChatroomService.SetAnnouncement:input_type -> chatroom.SetAnnouncement.Request
-	43, // 17: chatroom.ChatroomService.SetRemark:input_type -> chatroom.SetRemark.Request
-	45, // 18: chatroom.ChatroomService.Save:input_type -> chatroom.Save.Request
-	47, // 19: chatroom.ChatroomService.SetAdmin:input_type -> chatroom.SetAdmin.Request
-	49, // 20: chatroom.ChatroomService.RemoveAdmin:input_type -> chatroom.RemoveAdmin.Request
-	51, // 21: chatroom.ChatroomService.TransferOwner:input_type -> chatroom.TransferOwner.Request
-	57, // 22: chatroom.ChatroomService.Quit:input_type -> chatroom.Quit.Request
-	53, // 23: chatroom.ChatroomService.ScanJoin:input_type -> chatroom.ScanJoin.Request
-	53, // 24: chatroom.ChatroomService.ScanJoinEnterprise:input_type -> chatroom.ScanJoin.Request
-	55, // 25: chatroom.ChatroomService.ConsentJoin:input_type -> chatroom.ConsentJoin.Request
-	59, // 26: chatroom.ChatroomService.GetMember:input_type -> chatroom.GetMember.Request
-	61, // 27: chatroom.ChatroomService.ListMembers:input_type -> chatroom.ListMembers.Request
-	29, // 28: chatroom.ChatroomService.GetMembersDetail:input_type -> chatroom.GetMemberDetail.Request
-	23, // 29: chatroom.ChatroomService.Create:output_type -> chatroom.Create.Response
-	26, // 30: chatroom.ChatroomService.FacingCreate:output_type -> chatroom.FacingCreate.Response
-	28, // 31: chatroom.ChatroomService.GetInfo:output_type -> chatroom.GetInfo.Response
-	32, // 32: chatroom.ChatroomService.GetQRCode:output_type -> chatroom.GetQRCode.Response
-	34, // 33: chatroom.ChatroomService.AddMember:output_type -> chatroom.AddMember.Response
-	36, // 34: chatroom.ChatroomService.InviteMember:output_type -> chatroom.InviteMember.Response
-	38, // 35: chatroom.ChatroomService.RemoveMember:output_type -> chatroom.RemoveMember.Response
-	40, // 36: chatroom.ChatroomService.SetName:output_type -> chatroom.SetName.Response
-	42, // 37: chatroom.ChatroomService.SetAnnouncement:output_type -> chatroom.SetAnnouncement.Response
-	44, // 38: chatroom.ChatroomService.SetRemark:output_type -> chatroom.SetRemark.Response
-	46, // 39: chatroom.ChatroomService.Save:output_type -> chatroom.Save.Response
-	48, // 40: chatroom.ChatroomService.SetAdmin:output_type -> chatroom.SetAdmin.Response
-	50, // 41: chatroom.ChatroomService.RemoveAdmin:output_type -> chatroom.RemoveAdmin.Response
-	52, // 42: chatroom.ChatroomService.TransferOwner:output_type -> chatroom.TransferOwner.Response
-	58, // 43: chatroom.ChatroomService.Quit:output_type -> chatroom.Quit.Response
-	54, // 44: chatroom.ChatroomService.ScanJoin:output_type -> chatroom.ScanJoin.Response
-	54, // 45: chatroom.ChatroomService.ScanJoinEnterprise:output_type -> chatroom.ScanJoin.Response
-	56, // 46: chatroom.ChatroomService.ConsentJoin:output_type -> chatroom.ConsentJoin.Response
-	60, // 47: chatroom.ChatroomService.GetMember:output_type -> chatroom.GetMember.Response
-	62, // 48: chatroom.ChatroomService.ListMembers:output_type -> chatroom.ListMembers.Response
-	30, // 49: chatroom.ChatroomService.GetMembersDetail:output_type -> chatroom.GetMemberDetail.Response
-	29, // [29:50] is the sub-list for method output_type
-	8,  // [8:29] is the sub-list for method input_type
+	23, // 8: chatroom.ChatroomService.Create:input_type -> chatroom.Create.Request
+	25, // 9: chatroom.ChatroomService.FacingCreate:input_type -> chatroom.FacingCreate.Request
+	28, // 10: chatroom.ChatroomService.GetInfo:input_type -> chatroom.GetInfo.Request
+	32, // 11: chatroom.ChatroomService.GetQRCode:input_type -> chatroom.GetQRCode.Request
+	34, // 12: chatroom.ChatroomService.AddMember:input_type -> chatroom.AddMember.Request
+	36, // 13: chatroom.ChatroomService.InviteMember:input_type -> chatroom.InviteMember.Request
+	38, // 14: chatroom.ChatroomService.RemoveMember:input_type -> chatroom.RemoveMember.Request
+	40, // 15: chatroom.ChatroomService.SetName:input_type -> chatroom.SetName.Request
+	42, // 16: chatroom.ChatroomService.SetAnnouncement:input_type -> chatroom.SetAnnouncement.Request
+	44, // 17: chatroom.ChatroomService.SetRemark:input_type -> chatroom.SetRemark.Request
+	46, // 18: chatroom.ChatroomService.Save:input_type -> chatroom.Save.Request
+	48, // 19: chatroom.ChatroomService.SetAdmin:input_type -> chatroom.SetAdmin.Request
+	50, // 20: chatroom.ChatroomService.RemoveAdmin:input_type -> chatroom.RemoveAdmin.Request
+	52, // 21: chatroom.ChatroomService.TransferOwner:input_type -> chatroom.TransferOwner.Request
+	58, // 22: chatroom.ChatroomService.Quit:input_type -> chatroom.Quit.Request
+	54, // 23: chatroom.ChatroomService.ScanJoin:input_type -> chatroom.ScanJoin.Request
+	54, // 24: chatroom.ChatroomService.ScanJoinEnterprise:input_type -> chatroom.ScanJoin.Request
+	56, // 25: chatroom.ChatroomService.ConsentJoin:input_type -> chatroom.ConsentJoin.Request
+	60, // 26: chatroom.ChatroomService.GetMember:input_type -> chatroom.GetMember.Request
+	62, // 27: chatroom.ChatroomService.ListMembers:input_type -> chatroom.ListMembers.Request
+	30, // 28: chatroom.ChatroomService.GetMembersDetail:input_type -> chatroom.GetMemberDetail.Request
+	64, // 29: chatroom.ChatroomService.SetDisplayName:input_type -> chatroom.SetDisplayName.Request
+	24, // 30: chatroom.ChatroomService.Create:output_type -> chatroom.Create.Response
+	27, // 31: chatroom.ChatroomService.FacingCreate:output_type -> chatroom.FacingCreate.Response
+	29, // 32: chatroom.ChatroomService.GetInfo:output_type -> chatroom.GetInfo.Response
+	33, // 33: chatroom.ChatroomService.GetQRCode:output_type -> chatroom.GetQRCode.Response
+	35, // 34: chatroom.ChatroomService.AddMember:output_type -> chatroom.AddMember.Response
+	37, // 35: chatroom.ChatroomService.InviteMember:output_type -> chatroom.InviteMember.Response
+	39, // 36: chatroom.ChatroomService.RemoveMember:output_type -> chatroom.RemoveMember.Response
+	41, // 37: chatroom.ChatroomService.SetName:output_type -> chatroom.SetName.Response
+	43, // 38: chatroom.ChatroomService.SetAnnouncement:output_type -> chatroom.SetAnnouncement.Response
+	45, // 39: chatroom.ChatroomService.SetRemark:output_type -> chatroom.SetRemark.Response
+	47, // 40: chatroom.ChatroomService.Save:output_type -> chatroom.Save.Response
+	49, // 41: chatroom.ChatroomService.SetAdmin:output_type -> chatroom.SetAdmin.Response
+	51, // 42: chatroom.ChatroomService.RemoveAdmin:output_type -> chatroom.RemoveAdmin.Response
+	53, // 43: chatroom.ChatroomService.TransferOwner:output_type -> chatroom.TransferOwner.Response
+	59, // 44: chatroom.ChatroomService.Quit:output_type -> chatroom.Quit.Response
+	55, // 45: chatroom.ChatroomService.ScanJoin:output_type -> chatroom.ScanJoin.Response
+	55, // 46: chatroom.ChatroomService.ScanJoinEnterprise:output_type -> chatroom.ScanJoin.Response
+	57, // 47: chatroom.ChatroomService.ConsentJoin:output_type -> chatroom.ConsentJoin.Response
+	61, // 48: chatroom.ChatroomService.GetMember:output_type -> chatroom.GetMember.Response
+	63, // 49: chatroom.ChatroomService.ListMembers:output_type -> chatroom.ListMembers.Response
+	31, // 50: chatroom.ChatroomService.GetMembersDetail:output_type -> chatroom.GetMemberDetail.Response
+	65, // 51: chatroom.ChatroomService.SetDisplayName:output_type -> chatroom.SetDisplayName.Response
+	30, // [30:52] is the sub-list for method output_type
+	8,  // [8:30] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -3471,7 +3624,7 @@ func file_chatroom_chatroom_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_chatroom_chatroom_proto_rawDesc), len(file_chatroom_chatroom_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   63,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

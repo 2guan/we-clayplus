@@ -123,3 +123,14 @@ var AIBackendOperations = map[string]bool{
 	"cdn.UploadImage": true, "cdn.UploadVideo": true, "cdn.DownloadImage": true, "cdn.DownloadVideo": true, "cdn.UploadMomentsImage": true, "cdn.DownloadVideoCover": true,
 	"report.StartTyping": true, "report.StopTyping": true,
 }
+
+// AIDeferredOperations 已接通 SDK，但尚无受控的 AI 任务适配；不向模型暴露。
+// 语音转写和收藏单项操作仍待真实账号验证。
+var AIDeferredOperations = map[string]bool{
+	"message.TranscribeVoice":  true,
+	"chatroom.SetDisplayName":  true,
+	"favor.GetItem":            true,
+	"favor.Delete":             true,
+	"cdn.UploadMomentsVideo":   true,
+	"cdn.DownloadMomentsVideo": true,
+}

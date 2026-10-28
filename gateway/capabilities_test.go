@@ -29,6 +29,12 @@ func TestEveryCapabilityListedAndPlaceholdersMakeNoRequest(t *testing.T) {
 	finished := errors.New("fixture complete")
 	err = gateway.Run(context.Background(), cfg, gateway.WithoutPlugins(), gateway.WithHandlers(gateway.Handlers{OnReady: func(_ context.Context, c *gateway.Client) error {
 		value := reflect.ValueOf(c).Elem()
+		// 这两个能力保留在目录与插件 RPC 中，但直接 Client 以可选扩展提供，
+		// 以免给已有 Ability 实现增加必需方法。
+		optionalDirect := map[string]string{
+			"message.TranscribeVoice": "TranscribeVoice",
+			"chatroom.SetDisplayName": "SetDisplayName",
+		}
 		for domain, entry := range catalog {
 			field := strings.ToUpper(domain[:1]) + domain[1:]
 			if domain == "cdn" {
@@ -39,16 +45,21 @@ func TestEveryCapabilityListedAndPlaceholdersMakeNoRequest(t *testing.T) {
 				return fmt.Errorf("missing domain %s", domain)
 			}
 			listed := map[string]bool{}
+			optionalCount := 0
 			for _, name := range append(append([]string{}, entry.Enabled...), entry.Placeholder...) {
 				if listed[name] {
 					return fmt.Errorf("duplicate %s.%s", domain, name)
 				}
 				listed[name] = true
 				if !ability.MethodByName(name).IsValid() {
-					return fmt.Errorf("missing method %s.%s", domain, name)
+					mapped, ok := optionalDirect[domain+"."+name]
+					if !ok || !reflect.ValueOf(c).MethodByName(mapped).IsValid() {
+						return fmt.Errorf("missing method %s.%s", domain, name)
+					}
+					optionalCount++
 				}
 			}
-			if len(listed) != ability.NumMethod() {
+			if len(listed) != ability.NumMethod()+optionalCount {
 				return fmt.Errorf("unlisted methods in %s", domain)
 			}
 			for _, name := range entry.Placeholder {

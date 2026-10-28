@@ -36,17 +36,13 @@ func (w remote) GetItem(favId int32) (*GetFavItemResponse, error) {
 	return &GetFavItemResponse{Items: resp.GetObjects()}, nil
 }
 
-// BatchGetItems 批量获取收藏项（gRPC 模式逐个查询聚合）
+// BatchGetItems 通过 core 的批量协议一次查询收藏项。
 func (w remote) BatchGetItems(favIds []int32) (*BatchGetFavItemsResponse, error) {
-	items := make([]*FavorItem, 0, len(favIds))
-	for _, favId := range favIds {
-		resp, err := w.GetItem(favId)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, resp.Items...)
+	var resp BatchGetFavItemsResponse
+	if err := api.GetCore().Post("/api/favor/items/batch-get").Body(map[string]any{"ids": favIds}).DoProto(&resp); err != nil {
+		return nil, err
 	}
-	return &BatchGetFavItemsResponse{Objects: items}, nil
+	return &resp, nil
 }
 
 // Delete 删除收藏项
@@ -58,18 +54,13 @@ func (w remote) Delete(favId int32) (*DeleteFavItemResponse, error) {
 	return &DeleteFavItemResponse{Results: resp.GetResults()}, nil
 }
 
-// BatchDelete 批量删除收藏项（gRPC 模式逐个删除聚合）
+// BatchDelete 通过 core 的批量协议一次删除收藏项。
 func (w remote) BatchDelete(favIds []int32) (*BatchDeleteFavItemsResponse, error) {
-	results := make([]*DeleteResult, 0, len(favIds))
-	for _, favId := range favIds {
-		resp, err := w.Delete(favId)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, resp.Results...)
+	var resp BatchDeleteFavItemsResponse
+	if err := api.GetCore().Post("/api/favor/items/batch-delete").Body(map[string]any{"ids": favIds}).DoProto(&resp); err != nil {
+		return nil, err
 	}
-	count := uint32(len(results))
-	return &BatchDeleteFavItemsResponse{Count: &count, Results: results}, nil
+	return &resp, nil
 }
 
 // Sync 同步收藏列表

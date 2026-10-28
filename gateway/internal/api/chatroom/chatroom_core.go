@@ -123,6 +123,15 @@ func (w remote) SetName(chatroomID, name string) (*OperateResponse, error) {
 	return &resp, nil
 }
 
+// SetDisplayName 设置当前账号在群内的显示名 PUT /api/chatroom/display-name/{chatroom}
+func (w remote) SetDisplayName(chatroomID, displayName string) (*OperateResponse, error) {
+	var resp OperateResponse
+	if err := api.GetCore().Put(fmt.Sprintf("/api/chatroom/display-name/%s", url.PathEscape(chatroomID))).Body(map[string]string{"display_name": displayName}).DoProto(&resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // SetAnnouncement 设置群公告 PUT /api/chatroom/announcement/{chatroom}
 func (w remote) SetAnnouncement(chatroomID, content string) (*SetAnnouncementResponse, error) {
 	var resp SetAnnouncementResponse

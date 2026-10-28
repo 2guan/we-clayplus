@@ -364,3 +364,122 @@ func TestPackedGroupNameReceiptRequiresReadback(t *testing.T) {
 		t.Fatal("must perform one write and one read per call")
 	}
 }
+
+func TestSetCurrentGroupDisplayNameAcrossCoreAndPlugin(t *testing.T) {
+	const room = "test-room@chatroom"
+	var writes, reads atomic.Int32
+	var reply atomic.Int32
+	self := &displayNameSelf{}
+	self.self.Store(&contact.SelfInfo{Username: "test-self"})
+	previousContact := contact.Instance
+	contact.Instance = self
+	t.Cleanup(func() { contact.Instance = previousContact })
+	withCore(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/chatroom/members/"+room {
+			reads.Add(1)
+			if r.Method != "GET" {
+				t.Errorf("wrong member readback method: %s", r.Method)
+			}
+			switch reply.Load() {
+			case 1:
+				// 清空成功时，微信的成员回包可能不带 display_name 字段。
+				io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"chatroom":"test-room@chatroom","result":{"count":1,"list":[{"username":"test-self"}]}}}`)
+			case 3:
+				io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"chatroom":"test-room@chatroom","result":{"count":1,"list":[{"username":"test-self","display_name":"旧昵称"}]}}}`)
+			case 5:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				io.WriteString(w, `{"code":-1,"message":"readback unavailable"}`)
+			case 8:
+				self.self.Store(&contact.SelfInfo{Username: "changed-self"})
+				io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"chatroom":"test-room@chatroom","result":{"count":1,"list":[{"username":"test-self","display_name":"群内昵称"}]}}}`)
+			case 9:
+				io.WriteString(w, `{"code":0,"data":{"base_response":{"code":0},"chatroom":"test-room@chatroom","result":{"count":1,"list":[{"username":"test-self"}]}}}`)
+			default:
+				t.Errorf("unexpected member readback in mode %d", reply.Load())
+			}
+			return
+		}
+		writes.Add(1)
+		if r.Method != "PUT" || r.URL.Path != "/api/chatroom/display-name/"+room {
+			t.Errorf("wrong display-name route: %s %s", r.Method, r.URL.Path)
+		}
+		var q map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil || len(q) != 1 {
+			t.Errorf("wrong display-name body: %v", err)
+		}
+		if _, ok := q["display_name"]; !ok {
+			t.Error("missing explicit display_name")
+		}
+		switch reply.Load() {
+		case 0:
+			if q["display_name"] != "群内昵称" {
+				t.Error("new display name changed")
+			}
+			io.WriteString(w, `{"code":0,"data":{"code":0,"result":{"count":1,"code":0}}}`)
+		case 1:
+			if q["display_name"] != "" {
+				t.Error("empty display name changed")
+			}
+			io.WriteString(w, `{"code":0,"data":{"code":0,"result":{"count":1}}}`)
+		case 2:
+			io.WriteString(w, `{"code":0,"data":{"code":0,"result":{"count":1,"code":-9}}}`)
+		case 3, 5, 6, 8, 9:
+			io.WriteString(w, `{"code":0,"data":{"code":0,"result":{"count":1}}}`)
+		case 4:
+			io.WriteString(w, `{"code":0,"data":{"code":-3,"result":{"count":1,"code":0}}}`)
+		case 7:
+			io.WriteString(w, `{"code":0,"data":{"code":0,"result":{"count":0}}}`)
+		}
+	})
+
+	// 直接调用 gateway 能力。
+	result, err := chatroom.Instance.(chatroom.DisplayNameAbility).SetDisplayName(room, "群内昵称")
+	if err != nil || result.GetCode() != 0 {
+		t.Fatalf("direct set display name: %v", err)
+	}
+
+	// 插件 SDK 经过本地 gRPC，清空名称也必须保留显式空字符串。
+	lis := bufconn.Listen(1 << 20)
+	server := grpc.NewServer()
+	chatroom.RegisterChatroomServiceServer(server, &chatroom.Server{Impl: chatroom.Instance})
+	go server.Serve(lis)
+	t.Cleanup(func() { server.Stop(); lis.Close() })
+	conn, err := grpc.NewClient("passthrough:///chatroom-display-test", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return lis.Dial() }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	plugin := chatroom.Client{Client: chatroom.NewChatroomServiceClient(conn)}
+	reply.Store(1)
+	result, err = plugin.SetDisplayName(room, "")
+	if err != nil || result.GetCode() != 0 {
+		t.Fatalf("plugin clear display name: %v", err)
+	}
+
+	// 写请求只发送一次；内层失败、读回不匹配或读回失败均不能返回成功。
+	for mode := int32(2); mode <= 9; mode++ {
+		reply.Store(mode)
+		if mode == 6 {
+			self.self.Store(nil)
+		} else if mode == 7 || mode == 9 {
+			self.self.Store(&contact.SelfInfo{Username: "test-self"})
+		}
+		before := writes.Load()
+		if result, err = plugin.SetDisplayName(room, "群内昵称"); err == nil || result != nil {
+			t.Fatalf("mode %d accepted unconfirmed operation: %v", mode, err)
+		}
+		if writes.Load() != before+1 {
+			t.Fatalf("mode %d retried write", mode)
+		}
+	}
+	if writes.Load() != 10 || reads.Load() != 5 {
+		t.Fatalf("transport calls = %d writes and %d reads, want 10 and 5", writes.Load(), reads.Load())
+	}
+}
+
+type displayNameSelf struct {
+	contact.Ability
+	self atomic.Pointer[contact.SelfInfo]
+}
+
+func (s *displayNameSelf) GetSelf() *contact.SelfInfo { return s.self.Load() }

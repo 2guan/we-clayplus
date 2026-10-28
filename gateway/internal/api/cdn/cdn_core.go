@@ -97,7 +97,7 @@ func (w remote) DownloadVideo(fileID, fileAesKey string) (io.ReadCloser, error) 
 	return io.NopCloser(bytes.NewReader(raw)), nil
 }
 
-// DownloadSnsVideo CDN 下载朋友圈视频
-func (w remote) DownloadSnsVideo(videoURL string, encKey uint64) ([]byte, error) {
-	return api.GetCore().Get("/api/cdn/download/moments/video").Query("url", videoURL, "key", encKey).Do()
+// DownloadMomentsVideo CDN 下载朋友圈视频
+func (w remote) DownloadMomentsVideo(videoURL string, encKey uint64) ([]byte, error) {
+	return api.GetCore().Get("/api/cdn/download/moments/video").Query("url", videoURL, "key", encKey).DoBinary()
 }

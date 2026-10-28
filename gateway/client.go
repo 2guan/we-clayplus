@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	sdkroot "github.com/we-clay/we-clay/sdk"
+	"github.com/we-clay/we-clay/sdk/chatroom"
 	"github.com/we-clay/we-clay/sdk/contact"
 	"github.com/we-clay/we-clay/sdk/message"
 )
@@ -49,6 +50,30 @@ func (c *Client) SendText(receiver, content string) (*message.Send_Response, err
 // Pat 在私聊中拍一拍指定微信 ID。群聊请调用 Message.Pat(roomID, memberID)。
 func (c *Client) Pat(username string) (*message.Pat_Response, error) {
 	return c.Message.Pat(username, username)
+}
+
+// TranscribeVoice 请求将已经收到的微信语音转成文字，不发送聊天消息。
+// 作为可选扩展提供，旧的 message.Ability 实现无需新增方法。
+func (c *Client) TranscribeVoice(ctx context.Context, msg *message.Message) (string, error) {
+	return clientCall(c.state, "message.TranscribeVoice", func() (string, error) {
+		ability, ok := message.Instance.(message.VoiceTranscriptionAbility)
+		if !ok {
+			return "", sdkroot.NotImplemented("message.TranscribeVoice")
+		}
+		return ability.TranscribeVoice(ctx, msg)
+	})
+}
+
+// SetDisplayName 设置当前账号在指定群里的显示名；空字符串表示清除。
+// 作为可选扩展提供，旧的 chatroom.Ability 实现无需新增方法。
+func (c *Client) SetDisplayName(room, displayName string) (*chatroom.SetDisplayName_Response, error) {
+	return clientCall(c.state, "chatroom.SetDisplayName", func() (*chatroom.SetDisplayName_Response, error) {
+		ability, ok := chatroom.Instance.(chatroom.DisplayNameAbility)
+		if !ok {
+			return nil, sdkroot.NotImplemented("chatroom.SetDisplayName")
+		}
+		return ability.SetDisplayName(room, displayName)
+	})
 }
 
 func clientCall[T any](s *clientState, name string, fn func() (T, error)) (value T, err error) {

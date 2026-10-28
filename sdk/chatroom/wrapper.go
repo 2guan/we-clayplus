@@ -2,6 +2,9 @@ package chatroom
 
 import (
 	"context"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Client 实现 Ability 接口，通过 gRPC 调用远程群聊服务
@@ -94,6 +97,14 @@ func (c Client) SetName(chatroom, name string) (*SetName_Response, error) {
 	return c.Client.SetName(context.Background(), &SetName_Request{
 		Chatroom: chatroom,
 		Name:     name,
+	})
+}
+
+// SetDisplayName 设置当前账号在群内的显示名。
+func (c Client) SetDisplayName(chatroom, displayName string) (*SetDisplayName_Response, error) {
+	return c.Client.SetDisplayName(context.Background(), &SetDisplayName_Request{
+		Chatroom:    chatroom,
+		DisplayName: displayName,
 	})
 }
 
@@ -226,6 +237,18 @@ func (s Server) RemoveMember(ctx context.Context, request *RemoveMember_Request)
 // SetName 设置群名称
 func (s Server) SetName(ctx context.Context, request *SetName_Request) (*SetName_Response, error) {
 	return s.Impl.SetName(request.Chatroom, request.Name)
+}
+
+// SetDisplayName 设置当前账号在群内的显示名。
+func (s Server) SetDisplayName(ctx context.Context, request *SetDisplayName_Request) (*SetDisplayName_Response, error) {
+	if request == nil {
+		return nil, status.Error(codes.InvalidArgument, "group display name request is required")
+	}
+	setter, ok := s.Impl.(DisplayNameAbility)
+	if !ok {
+		return nil, status.Error(codes.Unimplemented, "group display name ability is unavailable")
+	}
+	return setter.SetDisplayName(request.Chatroom, request.DisplayName)
 }
 
 // SetAnnouncement 设置群公告

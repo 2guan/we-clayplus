@@ -9,7 +9,6 @@ import (
 	sdk "github.com/we-clay/we-clay/sdk/cdn"
 
 	cdnapi "github.com/we-clay/we-clay/gateway/internal/api/cdn"
-	sdkroot "github.com/we-clay/we-clay/sdk"
 )
 
 // ability CDN 能力实现
@@ -80,7 +79,21 @@ func (a ability) UploadVideo(receiver string, thumb []byte, reader io.Reader, du
 
 // UploadMomentsVideo CDN 上传朋友圈视频
 func (a ability) UploadMomentsVideo(videoData, thumbData []byte) (*sdk.UploadMomentsVideo_Response, error) {
-	return nil, sdkroot.NotImplemented("cdn.UploadMomentsVideo")
+	if len(videoData) == 0 || len(videoData) > 40<<20 || len(thumbData) == 0 || len(thumbData) > 8<<20 {
+		return nil, errors.New("朋友圈视频须为 1 字节至 40 MiB，封面须为 1 字节至 8 MiB")
+	}
+	resp, err := a.api.UploadMomentsVideo(videoData, thumbData)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.GetFileUrl() == "" || resp.GetThumbUrl() == "" || resp.GetFileId() == "" || resp.GetFileKey() == "" {
+		return nil, errors.New("朋友圈视频上传回执不完整，结果未确认，请勿自动重试")
+	}
+	var result sdk.UploadMomentsVideo_Response
+	if err := api.TransformProto(resp, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // DownloadImage CDN 下载高清图片
@@ -100,5 +113,5 @@ func (a ability) DownloadVideo(fileID, fileAesKey string) (io.ReadCloser, error)
 
 // DownloadMomentsVideo CDN 下载朋友圈视频
 func (a ability) DownloadMomentsVideo(videoURL string, encKey uint64) ([]byte, error) {
-	return nil, sdkroot.NotImplemented("cdn.DownloadMomentsVideo")
+	return a.api.DownloadMomentsVideo(videoURL, encKey)
 }

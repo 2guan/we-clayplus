@@ -315,6 +315,28 @@ func (w remote) DownloadVoice(receiver, fileId, aesKey string, totalSize, voiceL
 	return &resp, nil
 }
 
+// TranscribeVoice 使用 core 的语音转写路由，ID 以十进制字符串发送以保持 uint64 精度。
+func (w remote) TranscribeVoice(ctx context.Context, input VoiceTranscribeInput) (string, error) {
+	if ctx == nil {
+		return "", errors.New("语音转写需要 context")
+	}
+	var response struct {
+		Text *string `json:"text"`
+	}
+	err := w.core().Post("/api/message/transcribe/voice").WithContext(ctx).Body(map[string]any{
+		"msg_id": input.MessageID, "new_id": strconv.FormatUint(input.NewID, 10),
+		"size": input.Size, "voice_format": input.Format,
+		"chatroom_id": input.ChatroomID, "buffer_id": input.BufferID,
+	}).DoJson(&response)
+	if err != nil {
+		return "", err
+	}
+	if response.Text == nil {
+		return "", errors.New("core 语音转写回执缺少文本")
+	}
+	return *response.Text, nil
+}
+
 const (
 	maxAttachmentDownloadSize = 1 << 30
 	maxCDNCiphertextSize      = maxAttachmentDownloadSize + 16 // PKCS#7 末块可比明文多 16 字节

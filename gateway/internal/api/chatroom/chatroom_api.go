@@ -23,6 +23,8 @@ type ChatroomService interface {
 	RemoveMember(chatroomID string, members []string) (*RemoveChatroomMemberResponse, error)
 	// SetName 设置群名称
 	SetName(chatroomID, name string) (*OperateResponse, error)
+	// SetDisplayName 设置当前账号在群内的显示名
+	SetDisplayName(chatroomID, displayName string) (*OperateResponse, error)
 	// SetAnnouncement 设置群公告
 	SetAnnouncement(chatroomID, content string) (*SetAnnouncementResponse, error)
 	// SetRemark 设置群备注

@@ -11,6 +11,7 @@ import {
   Plus,
   Smiley,
   X,
+  Sparkle,
 } from "@phosphor-icons/react";
 import type { Contact, Moment, PageProps } from "./types";
 import { Avatar, Empty, Modal } from "./ui";
@@ -227,8 +228,19 @@ export function Moments(props: PageProps & { author?: string }) {
         </p>
       )}
       <Feed
+        key={`${state.account.id}:${author || ""}`}
         items={page.items}
         onPreview={setPreview}
+        onDraft={
+          props.user.role === "admin"
+            ? (id, signal) =>
+                request<{ text: string; warnings: string[] }>(
+                  "/api/moments/draft",
+                  { id },
+                  signal,
+                )
+            : undefined
+        }
         onAct={async (kind, id, content) => {
           try {
             const updated = await request<Moment>("/api/moments/interact", {
@@ -294,13 +306,24 @@ function Feed({
   items,
   onPreview,
   onAct,
+  onDraft,
 }: {
   items: Moment[];
   onPreview: (src: string) => void;
   onAct?: (kind: string, id: string, content?: string) => Promise<void>;
+  onDraft?: (
+    id: string,
+    signal: AbortSignal,
+  ) => Promise<{ text: string; warnings: string[] }>;
 }) {
   const [comments, setComments] = useState<Record<string, string>>({}),
     [busy, setBusy] = useState("");
+  const [drafting, setDrafting] = useState("");
+  const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
+  const edits = useRef<Record<string, number>>({});
+  const fields = useRef<Record<string, HTMLInputElement | null>>({});
+  const controller = useRef<AbortController | null>(null);
+  useEffect(() => () => controller.current?.abort(), []);
   return (
     <div className="moment-feed">
       {items.map((m) => (
@@ -358,7 +381,7 @@ function Feed({
                   aria-label={m.liked ? "取消赞" : "赞"}
                   aria-pressed={m.liked}
                   title={m.liked ? "取消赞" : "赞"}
-                  disabled={!!busy}
+                  disabled={!!busy || drafting === m.id}
                   onClick={async () => {
                     setBusy(m.id);
                     try {
@@ -397,35 +420,113 @@ function Feed({
               </div>
             )}
             {onAct && (
-              <form
-                className="comment-input"
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  setBusy(m.id);
-                  try {
-                    await onAct("moment-comment", m.id, comments[m.id]);
-                    setComments({ ...comments, [m.id]: "" });
-                  } catch {
-                  } finally {
-                    setBusy("");
-                  }
-                }}
-              >
-                <input
-                  aria-label={`评论 ${m.author} 的动态`}
-                  placeholder="评论…"
-                  value={comments[m.id] || ""}
-                  onChange={(e) =>
-                    setComments({ ...comments, [m.id]: e.target.value })
-                  }
-                />
-                <button
-                  className="button small"
-                  disabled={!!busy || !comments[m.id]?.trim()}
+              <>
+                <form
+                  className="comment-input"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (busy || drafting === m.id || !comments[m.id]?.trim())
+                      return;
+                    setBusy(m.id);
+                    try {
+                      await onAct("moment-comment", m.id, comments[m.id]);
+                      setComments((previous) => ({ ...previous, [m.id]: "" }));
+                    } catch {
+                    } finally {
+                      setBusy("");
+                    }
+                  }}
                 >
-                  发送
-                </button>
-              </form>
+                  <input
+                    ref={(el) => {
+                      fields.current[m.id] = el;
+                    }}
+                    aria-label={`评论 ${m.author} 的动态`}
+                    placeholder="评论…"
+                    value={comments[m.id] || ""}
+                    onChange={(e) => {
+                    const value = e.target.value;
+                      edits.current[m.id] = (edits.current[m.id] || 0) + 1;
+                      setComments((previous) => ({
+                        ...previous,
+                      [m.id]: value,
+                      }));
+                    }}
+                  />
+                  <button
+                    className="button small"
+                    disabled={
+                      !!busy || drafting === m.id || !comments[m.id]?.trim()
+                    }
+                  >
+                    发送
+                  </button>
+                  {onDraft && (
+                    <button
+                      type="button"
+                      className="button small moment-draft-button"
+                      aria-label={`AI生成${m.author}的留言草稿`}
+                    title="阅读动态、缩略图、已有评论和相关记忆，生成留言草稿"
+                      aria-busy={drafting === m.id}
+                      disabled={!!busy || !!drafting}
+                      onClick={async () => {
+                        if (controller.current) return;
+                        const current = new AbortController();
+                        controller.current = current;
+                        const revision = edits.current[m.id] || 0;
+                        setDrafting(m.id);
+                        setDraftNotes((previous) => ({
+                          ...previous,
+                          [m.id]: "",
+                        }));
+                        try {
+                          const result = await onDraft(m.id, current.signal);
+                          if (current.signal.aborted) return;
+                          if ((edits.current[m.id] || 0) !== revision) {
+                            setDraftNotes((previous) => ({
+                              ...previous,
+                              [m.id]: "已保留你编辑的留言，AI草稿未覆盖。",
+                            }));
+                          } else {
+                            setComments((previous) => ({
+                              ...previous,
+                              [m.id]: result.text,
+                            }));
+                            setDraftNotes((previous) => ({
+                              ...previous,
+                              [m.id]:
+                                result.warnings?.join("；") ||
+                                "草稿已填入，确认后再发送。",
+                            }));
+                            fields.current[m.id]?.focus();
+                          }
+                        } catch (error) {
+                          if (!current.signal.aborted)
+                            setDraftNotes((previous) => ({
+                              ...previous,
+                              [m.id]: (error as Error).message,
+                            }));
+                        } finally {
+                          if (!current.signal.aborted) setDrafting("");
+                          controller.current = null;
+                        }
+                      }}
+                    >
+                      {drafting === m.id ? (
+                        <span className="loader" aria-hidden="true" />
+                      ) : (
+                        <Sparkle size={15} aria-hidden="true" />
+                      )}
+                      AI
+                    </button>
+                  )}
+                </form>
+                {draftNotes[m.id] && (
+                  <p className="moment-draft-note" role="status">
+                    {draftNotes[m.id]}
+                  </p>
+                )}
+              </>
             )}
           </div>
         </article>
@@ -823,9 +924,11 @@ export function PersonPopover(
                 <p>
                   {self
                     ? "我"
-                    : c?.enterprise ? "企业微信联系人" : c?.kind === "friend"
-                      ? "微信好友"
-                      : "未确认好友关系"}
+                    : c?.enterprise
+                      ? "企业微信联系人"
+                      : c?.kind === "friend"
+                        ? "微信好友"
+                        : "未确认好友关系"}
                 </p>
               </div>
             </header>
@@ -855,29 +958,82 @@ export function PersonPopover(
                 </>
               )}
             </dl>
-            {c?.kind === "friend" && !self && (editingRemark ? (
-              <form className="form-stack" onSubmit={async e => {
-                e.preventDefault(); if(remarkBusy) return; setRemarkBusy(true);
-                try { await props.act({kind:"remark",target:person.id,content:remarkDraft}); setDetail({...c,remark:remarkDraft}); setEditingRemark(false); props.notify("备注已保存"); }
-                catch(e) { props.notify((e as Error).message); } finally {setRemarkBusy(false);}
-              }}>
-                <label>备注名称<input autoFocus value={remarkDraft} onChange={e=>setRemarkDraft(e.target.value)}/></label>
-                <div className="actions"><button type="button" className="button small" disabled={remarkBusy} onClick={()=>setEditingRemark(false)}>取消</button><button className="button primary small" disabled={remarkBusy}>{remarkBusy?"保存中…":"保存备注"}</button></div>
-              </form>
-            ) : <button className="button small" onClick={()=>{setRemarkDraft(c.remark||"");setEditingRemark(true)}}>设置备注</button>)}
-            {!c?.enterprise && <button
-              className="person-moments"
-              disabled={!person.id}
-              onClick={() => setShowMoments(true)}
-            >
-              <span>朋友圈</span>
-              <span className="person-recent">
-                {recent.map((src, i) => (
-                  <img key={i} src={photo(src)} alt="近期朋友圈" />
-                ))}
-              </span>
-              <span>›</span>
-            </button>}
+            {c?.kind === "friend" &&
+              !self &&
+              (editingRemark ? (
+                <form
+                  className="form-stack"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (remarkBusy) return;
+                    setRemarkBusy(true);
+                    try {
+                      await props.act({
+                        kind: "remark",
+                        target: person.id,
+                        content: remarkDraft,
+                      });
+                      setDetail({ ...c, remark: remarkDraft });
+                      setEditingRemark(false);
+                      props.notify("备注已保存");
+                    } catch (e) {
+                      props.notify((e as Error).message);
+                    } finally {
+                      setRemarkBusy(false);
+                    }
+                  }}
+                >
+                  <label>
+                    备注名称
+                    <input
+                      autoFocus
+                      value={remarkDraft}
+                      onChange={(e) => setRemarkDraft(e.target.value)}
+                    />
+                  </label>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="button small"
+                      disabled={remarkBusy}
+                      onClick={() => setEditingRemark(false)}
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="button primary small"
+                      disabled={remarkBusy}
+                    >
+                      {remarkBusy ? "保存中…" : "保存备注"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  className="button small"
+                  onClick={() => {
+                    setRemarkDraft(c.remark || "");
+                    setEditingRemark(true);
+                  }}
+                >
+                  设置备注
+                </button>
+              ))}
+            {!c?.enterprise && (
+              <button
+                className="person-moments"
+                disabled={!person.id}
+                onClick={() => setShowMoments(true)}
+              >
+                <span>朋友圈</span>
+                <span className="person-recent">
+                  {recent.map((src, i) => (
+                    <img key={i} src={photo(src)} alt="近期朋友圈" />
+                  ))}
+                </span>
+                <span>›</span>
+              </button>
+            )}
             {c?.kind === "friend" && (
               <button className="button primary" onClick={() => onChat(c)}>
                 发送消息

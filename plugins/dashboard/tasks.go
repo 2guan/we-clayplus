@@ -118,7 +118,7 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	for _, im := range q.Images {
 		data, e := base64.StdEncoding.DecodeString(im.Data)
 		totalImages += len(data)
-		if q.Kind != "insight" || e != nil || len(data) == 0 || totalImages > 12<<20 || len(im.Label) > 200 || !slices.Contains([]string{"image/jpeg", "image/png", "image/gif", "image/webp"}, im.MIME) || http.DetectContentType(data) != im.MIME {
+		if (q.Kind != "insight" && q.Source != "moment-comment-draft") || e != nil || len(data) == 0 || totalImages > 12<<20 || len(im.Label) > 200 || !slices.Contains([]string{"image/jpeg", "image/png", "image/gif", "image/webp"}, im.MIME) || http.DetectContentType(data) != im.MIME {
 			return "", fmt.Errorf("分析缩略图无效或总量超过 12 MB，请减少朋友圈条数")
 		}
 	}
@@ -171,6 +171,10 @@ func (s *Server) queueTaskRetry(q ai.Request, insight *InsightInfo, retryOf stri
 	}
 	if q.Source == "music-pick" {
 		t.Name = "点歌推荐"
+	}
+	if q.Source == "moment-comment-draft" {
+		t.Name = "朋友圈留言草稿"
+		t.Input = "朋友圈资料与相关记忆仅用于本次留言草稿，不在任务列表保存原文"
 	}
 	if q.Conversation != nil {
 		t.ReplyTo = q.Conversation.Current.ID
@@ -321,6 +325,9 @@ regenerate:
 		if len(q.Images) > 0 {
 			capability = "vision"
 		}
+	}
+	if q.Source == "moment-comment-draft" && len(q.Images) > 0 {
+		capability = "vision"
 	}
 	modelID := q.Model
 	if modelID == "" {
@@ -671,6 +678,10 @@ regenerate:
 	}
 	if sourceErr := s.validateReportTask(id, q); sourceErr != nil {
 		err = sourceErr
+		result = ai.Result{}
+	}
+	if err == nil && q.Source == "moment-comment-draft" && (silent || strings.TrimSpace(result.Text) == "" || len(result.Text) > 6000 || len(result.ToolCalls) > 0 || len(result.Data) > 0) {
+		err = fmt.Errorf("模型未返回有效的留言草稿，请重试")
 		result = ai.Result{}
 	}
 	generated := err == nil

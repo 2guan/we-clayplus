@@ -22,6 +22,7 @@ type CoreConfig struct {
 	OSS                 *OSSConfig    `toml:"oss"`                    // 非 nil 时从私有 OSS 下载；不回退 GitHub。
 	Repository          string        `toml:"repository"`             // 默认 we-clay/core-release。
 	Version             string        `toml:"version"`
+	DeviceType          string        `toml:"device_type"`       // 微信设备平台：mac（默认）或 win；与宿主系统无关。
 	DeviceName          string        `toml:"device_name"`       // 可选：启动 core 时设置显示名称；留空沿用保存值。
 	KeepAlive           bool          `toml:"keep_alive"`        // 独立运行：Run 退出保留 core，后续 Run 复用。
 	CacheDir            string        `toml:"cache_dir"`         // 默认 ./runtime/core-bin，按仓库/版本/平台隔离。
@@ -51,6 +52,9 @@ func (c CoreConfig) Resolve() (CoreConfig, error) {
 	c.DownloadAuthBaseURL = strings.TrimRight(c.DownloadAuthBaseURL, "/")
 	if c.Repository == "" {
 		c.Repository = "we-clay/core-release"
+	}
+	if c.DeviceType == "" {
+		c.DeviceType = "mac"
 	}
 	if c.CacheDir == "" {
 		c.CacheDir = "./runtime/core-bin"
@@ -118,6 +122,9 @@ func (c CoreConfig) Validate() error {
 	}
 	if !envPattern.MatchString(c.GitHubTokenEnv) {
 		return fmt.Errorf("core.github_token_env 不是有效环境变量名")
+	}
+	if c.DeviceType != "mac" && c.DeviceType != "win" {
+		return fmt.Errorf("core.device_type 必须为 mac 或 win")
 	}
 	if c.Stage != "auto" && c.Stage != "login" && c.Stage != "resume" {
 		return fmt.Errorf("core.stage 必须为 auto、login 或 resume")

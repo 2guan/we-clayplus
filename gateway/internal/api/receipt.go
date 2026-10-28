@@ -60,8 +60,8 @@ func validateReceipt(result proto.Message, path string, allowed []int32) error {
 		// core 的备注/保存接口会验证 packed 命令状态并读回；该状态属于
 		// protobuf unknown 字段，经过 core 的 JSON 转换后不再出现。只在这些
 		// 已核实的路由接受 count=1，不能要求一个已被序列化丢弃的 scalar code。
-		// 群名在 chatroom 远程适配中补充只读核对后才返回成功。
-		verified := strings.HasPrefix(path, "/api/contacts/remark/") || strings.HasPrefix(path, "/api/chatroom/remark/") || strings.HasPrefix(path, "/api/chatroom/contact-list/") || strings.HasPrefix(path, "/api/chatroom/name/")
+		// 群名和当前账号的群内显示名在适配层补充只读核对后才返回成功。
+		verified := strings.HasPrefix(path, "/api/contacts/remark/") || strings.HasPrefix(path, "/api/chatroom/remark/") || strings.HasPrefix(path, "/api/chatroom/contact-list/") || strings.HasPrefix(path, "/api/chatroom/name/") || strings.HasPrefix(path, "/api/chatroom/display-name/")
 		count := r.Descriptor().Fields().ByName("count")
 		if verified && count != nil && r.Has(count) && r.Get(count).Uint() == 1 {
 			return nil

@@ -3,6 +3,7 @@ param(
     [string]$KeyFile,
     [string]$DataDir = (Join-Path $env:LOCALAPPDATA 'we-clay'),
     [string]$CoreDataDir,
+    [string]$DeviceType,
     [string]$DeviceName,
     [string]$CoreVersion,
     [string]$CoreAddress,
@@ -199,11 +200,18 @@ if ($Restart -and $NoRun) { Fail 'Restart 与 NoRun 不能同时使用' }
 $existingInstall = Test-Path -LiteralPath (Join-Path $DataDir 'installed-version.txt') -PathType Leaf
 if ($Restart -and -not $existingInstall) { Fail 'Restart 只用于已有安装；首次安装请直接运行安装脚本' }
 # 旧安装可能尚未保存 core-version.txt；该场景必须按原默认值核验旧进程。
-$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.4.6' }
+$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.5.0' }
 $oldCoreVersion = Read-Setting (Join-Path $DataDir 'core-version.txt') $coreVersionFallback
 $oldCoreAddress = Read-Setting (Join-Path $DataDir 'core-address.txt') '127.0.0.1:8088'
 $oldLoginAddress = Read-Setting (Join-Path $DataDir 'login-address.txt') '127.0.0.1:8201'
 $oldDashboardAddress = Read-Setting (Join-Path $DataDir 'dashboard-address.txt') '127.0.0.1:8208'
+$oldDeviceType = Read-Setting (Join-Path $DataDir 'device-type.txt') 'mac'
+if ($oldDeviceType -cne 'mac' -and $oldDeviceType -cne 'win') { Fail '已保存的设备类型必须为 mac 或 win' }
+if (-not $PSBoundParameters.ContainsKey('DeviceType')) { $DeviceType = $oldDeviceType }
+if ($DeviceType -cne 'mac' -and $DeviceType -cne 'win') { Fail 'DeviceType 必须为 mac 或 win' }
+if ($existingInstall -and $DeviceType -cne $oldDeviceType) {
+    Fail '已有安装不能切换设备类型；请为 Windows 设备使用独立新安装目录和账号目录'
+}
 if ($PreviousCoreVersion) { $oldCoreVersion = $PreviousCoreVersion }
 if ($PreviousCoreAddress) { $oldCoreAddress = $PreviousCoreAddress }
 if ($PreviousLoginAddress) { $oldLoginAddress = $PreviousLoginAddress }
@@ -325,7 +333,7 @@ if ($needStop) {
     try {
         Write-PrivateFile $candidateLicenseFile ($key + "`n")
         $prepareArgs = @('--prepare-core', '--data-dir', $DataDir, '--core-data-dir', $oldCoreDataDir,
-            '--core-version', $CoreVersion, '--core-address', $CoreAddress,
+            '--core-version', $CoreVersion, '--device-type', $DeviceType, '--core-address', $CoreAddress,
             '--login-address', $LoginAddress, '--dashboard-address', $DashboardAddress,
             '--license-file', $candidateLicenseFile)
         & $destination @prepareArgs
@@ -338,7 +346,7 @@ if ($needStop) {
     }
     Write-Host '正在核验并停止旧独立 core...'
     $stopArgs = @('--stop-core', '--data-dir', $DataDir, '--core-data-dir', $oldCoreDataDir,
-        '--core-version', $oldCoreVersion, '--core-address', $oldCoreAddress,
+        '--core-version', $oldCoreVersion, '--device-type', $oldDeviceType, '--core-address', $oldCoreAddress,
         '--login-address', $oldLoginAddress, '--dashboard-address', $oldDashboardAddress)
     & $destination @stopArgs
     if ($LASTEXITCODE -ne 0) { Fail '未能确认并停止旧 core；原授权与配置未修改，请核对旧版本和地址' }
@@ -358,7 +366,7 @@ $root = Split-Path -Parent $PSCommandPath
 $version = [IO.File]::ReadAllText((Join-Path $root 'installed-version.txt')).Trim()
 if ($version -notmatch '^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$') { throw '安装版本文件无效' }
 $arguments = @('--data-dir', $root, '--license-file', (Join-Path $root 'secrets\license.key'))
-foreach ($setting in @('core-version', 'core-address', 'login-address', 'dashboard-address')) {
+foreach ($setting in @('core-version', 'device-type', 'core-address', 'login-address', 'dashboard-address')) {
     $settingFile = Join-Path $root "$setting.txt"
     if (Test-Path -LiteralPath $settingFile -PathType Leaf) {
         $arguments += @("--$setting", [IO.File]::ReadAllText($settingFile).Trim())
@@ -389,6 +397,7 @@ if ($KeyFile -or -not (Test-Path -LiteralPath $licenseFile)) {
 }
 $key = $null
 Write-AtomicText (Join-Path $DataDir 'core-version.txt') "$CoreVersion`n"
+Write-AtomicText (Join-Path $DataDir 'device-type.txt') "$DeviceType`n"
 Write-AtomicText (Join-Path $DataDir 'core-address.txt') "$CoreAddress`n"
 Write-AtomicText (Join-Path $DataDir 'login-address.txt') "$LoginAddress`n"
 Write-AtomicText (Join-Path $DataDir 'dashboard-address.txt') "$DashboardAddress`n"

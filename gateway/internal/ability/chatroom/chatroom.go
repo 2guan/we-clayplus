@@ -316,6 +316,54 @@ func (a *ability) SetName(chatroom, name string) (*sdk.SetName_Response, error) 
 	return &sdk.SetName_Response{Code: resp.GetCode(), Message: string(resp.GetResult().GetMessage())}, nil
 }
 
+func (a *ability) SetDisplayName(chatroom, displayName string) (*sdk.SetDisplayName_Response, error) {
+	selfID := ""
+	if contact.Instance != nil {
+		selfID = contact.Instance.GetSelf().GetUsername()
+	}
+	resp, err := a.api.SetDisplayName(chatroom, displayName)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.Code == nil || resp.Result == nil {
+		return nil, fmt.Errorf("群内显示名修改回执不完整，结果未确认，请勿自动重试")
+	}
+	if resp.GetCode() != 0 || (resp.Result.Code != nil && resp.GetResult().GetCode() != 0) {
+		return nil, fmt.Errorf("群内显示名修改失败：%d/%d", resp.GetCode(), resp.GetResult().GetCode())
+	}
+	if resp.Result.Code == nil {
+		if resp.Result.Count == nil || resp.Result.GetCount() != 1 {
+			return nil, fmt.Errorf("群内显示名修改回执缺少命令状态，结果未确认，请勿自动重试")
+		}
+		// packed 命令状态经 core JSON 转换后可能只剩 count；从 core 读回当前账号的群成员资料确认。
+		if selfID == "" || contact.Instance == nil || contact.Instance.GetSelf().GetUsername() != selfID {
+			return nil, fmt.Errorf("群内显示名修改回执缺少命令状态，当前账号未知，结果未确认，请勿自动重试")
+		}
+		members, err := a.api.ListMembers(chatroom)
+		if err != nil {
+			return nil, fmt.Errorf("群内显示名修改回执已收到，但读回失败，结果未确认，请勿自动重试: %w", err)
+		}
+		if members == nil || members.GetResult() == nil || (members.GetChatroom() != "" && members.GetChatroom() != chatroom) {
+			return nil, fmt.Errorf("群内显示名修改回执已收到，但成员读回不完整，结果未确认，请勿自动重试")
+		}
+		if contact.Instance == nil || contact.Instance.GetSelf().GetUsername() != selfID {
+			return nil, fmt.Errorf("群内显示名修改回执已收到，但当前账号已变化，结果未确认，请勿自动重试")
+		}
+		confirmed := false
+		for _, member := range members.GetResult().GetList() {
+			// 微信在清空后可能省略 optional display_name；字段缺失表示没有群内覆盖名。
+			if member != nil && member.GetUsername() == selfID && member.GetDisplayName() == displayName {
+				confirmed = true
+				break
+			}
+		}
+		if !confirmed {
+			return nil, fmt.Errorf("群内显示名修改回执已收到，但成员读回不匹配，结果未确认，请勿自动重试")
+		}
+	}
+	return &sdk.SetDisplayName_Response{Code: resp.GetCode(), Message: string(resp.GetResult().GetMessage())}, nil
+}
+
 func (a *ability) SetAnnouncement(chatroom, content string) (*sdk.SetAnnouncement_Response, error) {
 	resp, err := a.api.SetAnnouncement(chatroom, content)
 	if err != nil {
