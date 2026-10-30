@@ -78,7 +78,7 @@ func initialState(mock bool) State {
 		s.Messages = append(s.Messages, Message{ID: fmt.Sprintf("mock-other-%d", i), Target: s.Contacts[i].ID, Sender: s.Contacts[i].Name, Content: previews[i], Kind: "text", Source: "wechat", Status: "sent", Time: s.Contacts[i].Time})
 	}
 	s.Moments = []Moment{
-		{AuthorID: "mock-contact-1", ID: "mock-moment-1", Author: "林间", Avatar: "林", Content: "周末留给山野，也留一点时间给自己。", Images: []string{"/sample-landscape.svg"}, Likes: 6, Time: time.Now().Add(-2 * time.Hour).Format(time.RFC3339), Comments: []Comment{{"许清", "这样的天气，真适合出门。"}}},
+		{AuthorID: "mock-contact-1", ID: "mock-moment-1", Author: "林间", Avatar: "林", Content: "周末留给山野，也留一点时间给自己。", Images: []string{"/sample-landscape.svg"}, Likes: 6, Time: time.Now().Add(-2 * time.Hour).Format(time.RFC3339), Comments: []Comment{{ID: "1", AuthorID: "mock-contact-2", Author: "许清", Content: "这样的天气，真适合出门。"}}},
 		{AuthorID: "mock-contact-5", ID: "mock-moment-2", Author: "陈序", Avatar: "陈", Content: "读到一句话：生活的答案，常常藏在认真度过的日常里。", Images: []string{}, Liked: true, Likes: 3, Time: time.Now().Add(-5 * time.Hour).Format(time.RFC3339), Comments: []Comment{}},
 	}
 	for i := 13; i >= 0; i-- {

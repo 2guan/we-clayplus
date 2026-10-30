@@ -141,7 +141,7 @@ func (a *actionSession) find(raw string) (any, error) {
 				continue
 			}
 			var q FriendRequest
-			if json.Unmarshal([]byte(raw), &q) != nil {
+			if json.Unmarshal([]byte(raw), &q) != nil || q.Dismissed || q.Status != "" && q.Status != "pending" && q.Status != "scheduled" {
 				continue
 			}
 			created, err := time.Parse(time.RFC3339, q.Created)

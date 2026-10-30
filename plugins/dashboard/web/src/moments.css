@@ -39,11 +39,25 @@
 .moment-toolbar .icon-button:hover {
   background: #0004;
 }
+.moment-entry { position: relative; }
+.moment-notifications-list { display: grid; gap: 10px; margin-bottom: 18px; }
+.moment-notifications-list > button { width: 100%; min-height: 44px; text-align: left; background: var(--panel); color: inherit; cursor: pointer; display: block; white-space: normal; padding: 12px; border: 1px solid var(--border); border-radius: 6px; overflow-wrap: anywhere; }
+.moment-notifications-list > button.is-unread { border-left: 3px solid var(--accent); }
+.moment-notifications-list p { margin: 7px 0; }
+.moment-notifications-list blockquote { margin: 8px 0; padding-left: 10px; border-left: 2px solid var(--border); color: var(--muted); }
+.moment-notifications-list small { color: var(--muted); }
+.moment-comment-reply { margin-left: 8px; padding: 3px 6px; min-height: 24px; color: var(--accent); background: transparent; font-size: 12px; }
+.moment-comment-reply:disabled { color: var(--muted); cursor: default; }
+.moment-reply-target { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-top: 8px; background: var(--input); border-left: 2px solid var(--accent); border-radius: 4px; font-size: 12px; }
+.moment-reply-target > div { flex: 1; min-width: 0; }
+.moment-reply-target p { margin: 3px 0 0; color: var(--muted); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 767px) { .moment-comment-reply, .moment-reply-target .icon-button { min-height: 44px; min-width: 44px; } }
 .moment-unread {
   position: absolute;
   top: -3px;
   right: -2px;
   background: #e64b4b;
+  color: #fff;
   border-radius: 20px;
   min-width: 16px;
   padding: 1px 4px;
@@ -416,3 +430,11 @@
     min-height: 44px;
   }
 }
+
+.moment-notifications-list > button:hover { background: var(--hover); }
+.moment-notifications-list > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.moment-random-controls { margin: 16px 0 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.moment-random-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.moment-random-controls p { margin: 10px 0 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+@media (max-width: 767px) { .moment-random-buttons .button, .moment-random-buttons a { min-height: 44px; } .moment-random-buttons a { display: inline-flex; align-items: center; } }

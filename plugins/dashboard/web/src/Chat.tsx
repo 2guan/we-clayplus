@@ -48,6 +48,7 @@ import { mergeFileMessages } from "./fileMessages";
 import { compareContacts, matchesContact } from "./contactSearch";
 import { ConversationScroller } from "./ConversationScroller";
 import { ImageDescription } from "./ImageDescription";
+import { useMomentUnread } from "./useMomentUnread";
 
 function useScrollActivity() {
   const [scrolling, setScrolling] = useState(false);
@@ -132,6 +133,7 @@ export default function Chat(props: PageProps) {
   const [details, setDetails] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   const [moments, setMoments] = useState(false);
+  const momentReminder = useMomentUnread(state.account.id, state.account.status === "online" || state.mock);
   const [person, setPerson] = useState<{
     id: string;
     name: string;
@@ -532,8 +534,9 @@ export default function Chat(props: PageProps) {
             />
           )}
         </button>
-        <button onClick={() => setMoments(true)} aria-label="朋友圈">
+        <button className="moment-entry" onClick={() => setMoments(true)} aria-label="朋友圈" title={momentReminder.error ? `朋友圈提醒暂不可用：${momentReminder.error}` : "朋友圈"}>
           <Aperture size={23} />
+          {momentReminder.unread > 0 && <span className="moment-unread" aria-label={`${momentReminder.unread} 条朋友圈未读提醒`}>{momentReminder.unread > 99 ? "99+" : momentReminder.unread}</span>}
         </button>
         <button
           className="wechat-focus-toggle"
@@ -565,11 +568,13 @@ export default function Chat(props: PageProps) {
             </button>
           </div>
           <button
-            className="icon-button"
+            className="icon-button moment-entry"
             onClick={() => setMoments(true)}
             aria-label="打开朋友圈"
+            title={momentReminder.error ? `朋友圈提醒暂不可用：${momentReminder.error}` : "打开朋友圈"}
           >
             <Aperture size={22} />
+            {momentReminder.unread > 0 && <span className="moment-unread" aria-label={`${momentReminder.unread} 条朋友圈未读提醒`}>{momentReminder.unread > 99 ? "99+" : momentReminder.unread}</span>}
           </button>
         </div>
         <div className="search compact">
@@ -796,10 +801,10 @@ export default function Chat(props: PageProps) {
                     <div className="message-time">{dateTime(m.time)}</div>
                   )}
                   {m.kind === "system" ? (
-                    <div className="system-message">{m.content}{m.interaction && <small className="interaction-detail">
+                    <div className="system-message">{m.content}{m.interaction && m.interaction.kind !== "pat" && <details className="interaction-detail"><summary>互动详情{!m.interaction.verified && " · 参与者未核实"}</summary><small>
                       {m.interaction.actor_name || "未知成员"}（{m.interaction.actor_id || "身份未知"}） → {m.interaction.all ? "全体成员" : `${m.interaction.target_name || "未知成员"}（${m.interaction.target_id || "身份未知"}）`}
                       {!m.interaction.verified && " · 关系未核实"}
-                    </small>}</div>
+                    </small></details>}</div>
                   ) : (
                     <div className={`message ${m.self ? "self" : ""} ${m.status.startsWith("revoked") ? "message-revoked" : ""}`}>
                       <button

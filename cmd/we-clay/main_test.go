@@ -9,12 +9,12 @@ import (
 	"testing"
 )
 
-func TestNewInstallDefaultsToCoreV050AndMac(t *testing.T) {
+func TestNewInstallDefaultsToCoreV052AndMac(t *testing.T) {
 	a, err := parseArgs(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.coreVersion != "v0.5.0" || a.deviceType != "mac" {
+	if a.coreVersion != "v0.5.2" || a.deviceType != "mac" {
 		t.Fatalf("new installation defaults changed: core=%q device=%q", a.coreVersion, a.deviceType)
 	}
 }

@@ -142,6 +142,7 @@ func (w remote) Upload(reader io.Reader) (*UploadResponse, error) {
 func (w remote) Sync(syncKey []byte) (*SyncResponse, error) {
 	var resp SyncResponse
 	if err := api.GetCore().Post("/api/moments/sync").
+		Body(struct{}{}).
 		Query("key", base64.StdEncoding.EncodeToString(syncKey)).
 		DoProto(&resp); err != nil {
 		return nil, err

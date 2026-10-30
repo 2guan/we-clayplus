@@ -30,47 +30,59 @@ import (
 var assets embed.FS
 
 type Server struct {
-	imageMu         sync.Mutex
-	imageWake       chan struct{}
-	imageChanged    chan struct{}
-	imageCancel     context.CancelFunc
-	attachmentMu    sync.Mutex // 大文件逐个落盘；普通文字与媒体发送不持有此锁。
-	newsCache       toolbox.NewsCache
-	cacheMu         sync.Mutex
-	reportMu        sync.Mutex
-	reportCacheMu   sync.Mutex // ponytail: 单实例串行补取缓存；并发量增加时改为按联系人加锁。
-	resendMu        sync.Mutex // 重发互斥，避免重复点击产生多次发送。
-	momentPublishMu sync.Mutex // 合并人工重复点击，避免并行发布。
-	businessMu      sync.Mutex
-	gameStartMu     sync.Mutex // 海龟汤与互动插件只在预留新局时共用短锁。
-	playMu          sync.Mutex
-	playWorkers     map[string]bool
-	soupMu          sync.Mutex
-	soupWorkers     map[string]bool
-	businessSlots   chan struct{}
-	businessPending chan struct{}
-	cfg             control.Config
-	host            control.Host
-	store           *store
-	ctx             context.Context
-	cancel          context.CancelFunc
-	http            *http.Server
-	address         string
-	authMu          sync.Mutex
-	setupMu         sync.Mutex
-	sessions        map[string]session
-	attempts        map[string]attempt
-	eventMu         sync.Mutex
-	subscribers     map[chan struct{}]struct{}
-	replyBatchMu    sync.Mutex
-	replyBatches    map[string]*groupReplyBatch
-	taskMu          sync.Mutex
-	taskCancel      map[string]context.CancelFunc
-	taskWaiting     map[string]bool
-	taskWake        chan struct{}
-	streamMu        sync.Mutex
-	taskStreams     map[string]*taskStream
-	workers         sync.WaitGroup
+	friendMu                    sync.Mutex
+	friendWorkers               map[string]bool
+	friendProcessing            map[string]bool
+	momentReplyStarted          time.Time
+	momentRandomMu              sync.Mutex
+	momentRandomJob             *momentRandomJob
+	momentRandomCancel          context.CancelFunc
+	momentInteractionMu         sync.Mutex
+	momentNotificationMu        sync.Mutex
+	momentNotificationAccountID string
+	momentNotificationEpoch     uint64
+	momentNotificationChecked   time.Time
+	imageMu                     sync.Mutex
+	imageWake                   chan struct{}
+	imageChanged                chan struct{}
+	imageCancel                 context.CancelFunc
+	attachmentMu                sync.Mutex // 大文件逐个落盘；普通文字与媒体发送不持有此锁。
+	newsCache                   toolbox.NewsCache
+	cacheMu                     sync.Mutex
+	reportMu                    sync.Mutex
+	reportCacheMu               sync.Mutex // ponytail: 单实例串行补取缓存；并发量增加时改为按联系人加锁。
+	resendMu                    sync.Mutex // 重发互斥，避免重复点击产生多次发送。
+	momentPublishMu             sync.Mutex // 合并人工重复点击，避免并行发布。
+	businessMu                  sync.Mutex
+	gameStartMu                 sync.Mutex // 海龟汤与互动插件只在预留新局时共用短锁。
+	playMu                      sync.Mutex
+	playWorkers                 map[string]bool
+	soupMu                      sync.Mutex
+	soupWorkers                 map[string]bool
+	businessSlots               chan struct{}
+	businessPending             chan struct{}
+	cfg                         control.Config
+	host                        control.Host
+	store                       *store
+	ctx                         context.Context
+	cancel                      context.CancelFunc
+	http                        *http.Server
+	address                     string
+	authMu                      sync.Mutex
+	setupMu                     sync.Mutex
+	sessions                    map[string]session
+	attempts                    map[string]attempt
+	eventMu                     sync.Mutex
+	subscribers                 map[chan struct{}]struct{}
+	replyBatchMu                sync.Mutex
+	replyBatches                map[string]*groupReplyBatch
+	taskMu                      sync.Mutex
+	taskCancel                  map[string]context.CancelFunc
+	taskWaiting                 map[string]bool
+	taskWake                    chan struct{}
+	streamMu                    sync.Mutex
+	taskStreams                 map[string]*taskStream
+	workers                     sync.WaitGroup
 }
 
 // Start 在微信登录前启动。Mock 仅允许回环监听，杜绝意外将演示免登录界面暴露出去。
@@ -93,6 +105,7 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 	}
 	ctx, cancel := context.WithCancel(parent)
 	s := &Server{businessSlots: make(chan struct{}, 4), businessPending: make(chan struct{}, 64), cfg: cfg, host: host, store: st, ctx: ctx, cancel: cancel, sessions: map[string]session{}, attempts: map[string]attempt{}, subscribers: map[chan struct{}]struct{}{}, taskCancel: map[string]context.CancelFunc{}, taskStreams: map[string]*taskStream{}}
+	s.momentReplyStarted = time.Now()
 	s.imageWake, s.imageChanged = make(chan struct{}, 1), make(chan struct{})
 	s.taskWaiting, s.taskWake = map[string]bool{}, make(chan struct{})
 	if host != nil {
@@ -170,6 +183,10 @@ func Start(parent context.Context, cfg control.Config, host control.Host) (*Serv
 	}
 	s.workers.Add(1)
 	go s.scheduler()
+	if !cfg.Disabled && !cfg.Mock {
+		s.workers.Add(1)
+		go s.momentReplyWorker()
+	}
 	s.workers.Add(1)
 	go s.imageAnalysisWorker(cfg.Mock)
 	return s, nil
@@ -235,11 +252,17 @@ func (s *Server) Handler() http.Handler {
 			s.roomAPI(w, r)
 		case "/api/person":
 			s.personAPI(w, r)
+		case "/api/friend-requests":
+			s.friendRequestsAPI(w, r, u)
+		case "/api/moments/random":
+			s.momentRandomAPI(w, r, u)
 		case "/api/moments/interact":
 			s.momentInteractionAPI(w, r)
 		case "/api/moments/draft":
 			s.momentDraftAPI(w, r, u)
-		case "/api/moments", "/api/moments/notifications", "/api/moments/cover":
+		case "/api/moments/notifications/read":
+			s.momentNotificationsAPI(w, r)
+		case "/api/moments", "/api/moments/notifications", "/api/moments/cover", "/api/moments/unread":
 			s.momentsAPI(w, r, u)
 		case "/api/payments":
 			s.paymentAPI(w, r, u)
@@ -608,6 +631,11 @@ func addLog(v *State, level, component, text string) {
 }
 func (s *Server) SetAccount(a Account) error {
 	if previous := s.store.snapshot(); previous.Account.ID != "" && a.ID != "" && previous.Account.ID != a.ID {
+		s.momentRandomMu.Lock()
+		if s.momentRandomCancel != nil {
+			s.momentRandomCancel()
+		}
+		s.momentRandomMu.Unlock()
 		s.imageMu.Lock()
 		if s.imageCancel != nil {
 			s.imageCancel()
@@ -698,6 +726,9 @@ func (s *Server) SetContacts(contacts []Contact) error {
 
 // Record 在 ACK 之前持久化去重记录；生成任务异步执行，不阻塞微信事件流。
 func (s *Server) Record(m Message) error {
+	if handled, err := s.RecordMomentStatus(m, m.Content); handled {
+		return err
+	}
 	account := s.store.snapshot().Account.ID
 	if !m.Self && m.SenderID == "" {
 		for _, c := range s.store.snapshot().Contacts {

@@ -22,7 +22,7 @@ import (
 // the independently versioned core binary.
 var version = "dev"
 
-const defaultCoreVersion = "v0.5.0"
+const defaultCoreVersion = "v0.5.2"
 
 type arguments struct {
 	dataDir          string

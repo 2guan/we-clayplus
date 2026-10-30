@@ -1,0 +1,25 @@
+syntax = "proto3";
+package api.moments;
+option go_package = "github.com/we-clay/we-clay/gateway/internal/api/moments;momentsapi";
+
+// 朋友圈同步命令46的通知信封，只保留展示和去重所需的协议字段。
+message ActionNotification {
+  uint64 id = 1;
+  uint64 parent_id = 2;
+  NotificationAction current_action = 3;
+  NotificationAction refer_action = 4;
+}
+message NotificationAction {
+  string sender = 1;
+  string receiver = 2;
+  string sender_nickname = 3;
+  string receiver_nickname = 4;
+  uint32 type = 5;
+  uint32 source = 6;
+  uint32 create_time = 7;
+  string content = 8;
+  int32 reply_comment_id = 9;
+  int32 comment_id = 10;
+  uint64 reply_comment_id2 = 12;
+  uint64 comment_id2 = 13;
+}

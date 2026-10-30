@@ -12,12 +12,15 @@ import {
   Smiley,
   X,
   Sparkle,
+  ChatCircle,
+  Stop,
 } from "@phosphor-icons/react";
 import type { Contact, Moment, PageProps } from "./types";
 import { Avatar, Empty, Modal } from "./ui";
 import { dateTime, readFile, request } from "./api";
 import { EmojiPicker } from "./ChatTools";
 import "./moments.css";
+import { useMomentUnread } from "./useMomentUnread";
 
 type MomentPage = {
   items: Moment[];
@@ -25,7 +28,14 @@ type MomentPage = {
   notice?: string;
   cover?: string;
   next_cursor?: string;
+  notifications?: { id: string; moment_id: string; actor: string; kind: string; created: number; content: string; original?: string; read: boolean }[];
 };
+type ReplyComment = Moment["comments"][number];
+const replyParams = (reply?: ReplyComment) => reply
+  ? { reply_comment_id: Number(reply.id), reply_author_id: reply.author_id }
+  : {};
+const draftComment = (id: string, signal: AbortSignal, reply?: ReplyComment) =>
+  request<{ text: string; warnings: string[] }>("/api/moments/draft", { id, ...replyParams(reply) }, signal);
 const photo = (src: string) =>
   /^https?:\/\//.test(src)
     ? `/api/wechat-image?url=${encodeURIComponent(src)}`
@@ -57,6 +67,7 @@ function Thumb({ src, onClick }: { src: string; onClick: () => void }) {
 }
 export function Moments(props: PageProps & { author?: string }) {
   const { state, notify, author } = props;
+  const reminders = useMomentUnread(state.account.id, state.account.status === "online" || state.mock);
   const [page, setPage] = useState<MomentPage>({
     items: author
       ? state.moments.filter((m) => m.author_id === author)
@@ -187,8 +198,8 @@ export function Moments(props: PageProps & { author?: string }) {
                 onClick={() => setNotifications(true)}
               >
                 <Bell size={20} />
-                {page.unread > 0 && (
-                  <span className="moment-unread">{page.unread}</span>
+                {reminders.unread > 0 && (
+                  <span className="moment-unread">{reminders.unread > 99 ? "99+" : reminders.unread}</span>
                 )}
               </button>
               <button
@@ -222,6 +233,7 @@ export function Moments(props: PageProps & { author?: string }) {
           />
         </div>
       </div>
+      {!author && props.user.role === "admin" && <MomentRandomControls key={state.account.id} settings={state.settings} onDone={() => void load()} />}
       {error && (
         <p role="alert" className="form-error">
           {error}
@@ -233,21 +245,17 @@ export function Moments(props: PageProps & { author?: string }) {
         onPreview={setPreview}
         onDraft={
           props.user.role === "admin"
-            ? (id, signal) =>
-                request<{ text: string; warnings: string[] }>(
-                  "/api/moments/draft",
-                  { id },
-                  signal,
-                )
+            ? draftComment
             : undefined
         }
-        onAct={async (kind, id, content) => {
+        onAct={async (kind, id, content, reply) => {
           try {
             const updated = await request<Moment>("/api/moments/interact", {
               kind,
               id,
               content: content || "",
               target: author || "",
+              ...replyParams(reply),
             });
             // 仅更新操作的动态，不回到第一页，不打断已加载的历史列表。
             setPage((p) => ({
@@ -289,7 +297,7 @@ export function Moments(props: PageProps & { author?: string }) {
         />
       )}
       {notifications && (
-        <Notifications onClose={() => setNotifications(false)} />
+        <Notifications key={state.account.id} {...props} onClose={() => setNotifications(false)} />
       )}
       <Modal
         open={!!preview}
@@ -310,16 +318,19 @@ function Feed({
 }: {
   items: Moment[];
   onPreview: (src: string) => void;
-  onAct?: (kind: string, id: string, content?: string) => Promise<void>;
+  onAct?: (kind: string, id: string, content?: string, reply?: ReplyComment) => Promise<void>;
   onDraft?: (
     id: string,
     signal: AbortSignal,
+    reply?: ReplyComment,
   ) => Promise<{ text: string; warnings: string[] }>;
 }) {
   const [comments, setComments] = useState<Record<string, string>>({}),
     [busy, setBusy] = useState("");
   const [drafting, setDrafting] = useState("");
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
+  const [replying, setReplying] = useState<Record<string, ReplyComment | undefined>>({});
+  const posting = useRef(false);
   const edits = useRef<Record<string, number>>({});
   const fields = useRef<Record<string, HTMLInputElement | null>>({});
   const controller = useRef<AbortController | null>(null);
@@ -413,26 +424,46 @@ function Feed({
               <div className="comments">
                 {m.comments.map((c, i) => (
                   <p key={i}>
-                    <strong>{c.author}：</strong>
+                    <strong>{c.author}{(c.reply_to || c.reply_to_id) && <>回复{c.reply_to || "未知用户"}</>}：</strong>
                     {c.content}
+                    {onAct && <button type="button" className="moment-comment-reply"
+                      aria-label={`回复${c.author}的评论：${c.content}`}
+                      disabled={!!busy || !!drafting || !c.id || !c.author_id}
+                      title={!c.id || !c.author_id ? "微信未返回可回复的评论编号或作者" : "回复这条评论"}
+                      onClick={() => {
+                        edits.current[m.id] = (edits.current[m.id] || 0) + 1;
+                        setReplying((previous) => ({ ...previous, [m.id]: c }));
+                        fields.current[m.id]?.focus();
+                      }}>回复</button>}
                   </p>
                 ))}
               </div>
             )}
             {onAct && (
               <>
+                {replying[m.id] && <div className="moment-reply-target" role="status">
+                  <div><strong>回复 {replying[m.id]!.author}</strong><p>{replying[m.id]!.content}</p></div>
+                  <button type="button" className="icon-button" aria-label={`取消回复${replying[m.id]!.author}`} disabled={!!busy}
+                    onClick={() => {
+                      edits.current[m.id] = (edits.current[m.id] || 0) + 1;
+                      setReplying((previous) => ({ ...previous, [m.id]: undefined }));
+                    }}><X size={16} /></button>
+                </div>}
                 <form
                   className="comment-input"
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    if (busy || drafting === m.id || !comments[m.id]?.trim())
+                    if (posting.current || busy || drafting === m.id || !comments[m.id]?.trim())
                       return;
+                    posting.current = true;
                     setBusy(m.id);
                     try {
-                      await onAct("moment-comment", m.id, comments[m.id]);
+                      await onAct("moment-comment", m.id, comments[m.id], replying[m.id]);
                       setComments((previous) => ({ ...previous, [m.id]: "" }));
+                      setReplying((previous) => ({ ...previous, [m.id]: undefined }));
                     } catch {
                     } finally {
+                      posting.current = false;
                       setBusy("");
                     }
                   }}
@@ -441,8 +472,8 @@ function Feed({
                     ref={(el) => {
                       fields.current[m.id] = el;
                     }}
-                    aria-label={`评论 ${m.author} 的动态`}
-                    placeholder="评论…"
+                    aria-label={replying[m.id] ? `回复 ${replying[m.id]!.author} 的评论` : `评论 ${m.author} 的动态`}
+                    placeholder={replying[m.id] ? `回复 ${replying[m.id]!.author}…` : "评论…"}
                     value={comments[m.id] || ""}
                     onChange={(e) => {
                     const value = e.target.value;
@@ -480,7 +511,7 @@ function Feed({
                           [m.id]: "",
                         }));
                         try {
-                          const result = await onDraft(m.id, current.signal);
+                          const result = await onDraft(m.id, current.signal, replying[m.id]);
                           if (current.signal.aborted) return;
                           if ((edits.current[m.id] || 0) !== revision) {
                             setDraftNotes((previous) => ({
@@ -534,51 +565,132 @@ function Feed({
     </div>
   );
 }
-function Notifications({ onClose }: { onClose: () => void }) {
-  const [page, setPage] = useState<MomentPage>(),
-    [error, setError] = useState(""),
-    [preview, setPreview] = useState("");
+type RandomMomentJob = {
+  id: string; kind: "like" | "comment" | "reply"; status: string;
+  total: number; checked: number; sent: number; skipped: number; message: string;
+};
+function MomentRandomControls({ settings, onDone }: { settings: PageProps["state"]["settings"]; onDone: () => void }) {
+  const [job, setJob] = useState<RandomMomentJob>();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  const lastStatus = useRef("");
+  const revision = useRef(0);
+  const done = useRef(onDone);
+  done.current = onDone;
   useEffect(() => {
-    let active = true;
-    request<MomentPage>("/api/moments/notifications")
-      .then((p) => {
-        if (active) setPage(p);
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      });
-    return () => {
-      active = false;
-    };
+    mounted.current = true;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const version=revision.current;
+        const result = await request<RandomMomentJob>("/api/moments/random", undefined, controller.signal);
+        if (controller.signal.aborted || version!==revision.current) return;
+        setJob(result);
+        setError("");
+        if (lastStatus.current === "running" && result.status !== "running") done.current();
+        lastStatus.current = result.status;
+      } catch (e) { if (!controller.signal.aborted) setError((e as Error).message); }
+      if (!controller.signal.aborted) timer = setTimeout(poll, 2000);
+    }
+    void poll();
+    return () => { mounted.current = false; controller.abort(); clearTimeout(timer); };
   }, []);
+  async function run(body: { kind?: string; stop?: string }) {
+    if (busy) return;
+    revision.current++;
+    setBusy(true); setError("");
+    try {
+      const result = await request<RandomMomentJob>("/api/moments/random", body);
+      if (mounted.current) { setJob(result); lastStatus.current = result.status; }
+    } catch (e) { if (mounted.current) setError((e as Error).message); }
+    finally { if (mounted.current) setBusy(false); }
+  }
+  const running = job?.status === "running";
+  return <section className="moment-random-controls" aria-label="朋友圈随机互动">
+    <div className="moment-random-buttons">
+      <button type="button" className="button" disabled={busy || running} onClick={() => void run({ kind: "like" })}><ThumbsUp size={17} />随机点赞</button>
+      <button type="button" className="button" disabled={busy || running} onClick={() => void run({ kind: "comment" })}><ChatCircle size={17} />随机评论</button>
+      {running && <button type="button" className="button" disabled={busy} onClick={() => void run({ stop: job.id })}><Stop size={16} />停止</button>}
+      <a className="text-link" href="#models?tab=global">互动设置</a>
+    </div>
+    <p className="muted">最近 {Number(settings["moments.lookback_hours"] ?? 24)} 小时 · 点赞 {Number(settings["moments.like_probability"] ?? 80)}% · 评论 {Number(settings["moments.comment_probability"] ?? 50)}% · 评论间隔 {Number(settings["moments.comment_interval_min"] ?? 15)}–{Number(settings["moments.comment_interval_max"] ?? 30)} 秒</p>
+    {job?.id && <p role="status">{job.kind === "like" ? "随机点赞" : job.kind === "reply" ? "回应朋友圈回复" : "随机评论"} · {job.message} · 已检查 {job.checked}/{job.total}，成功 {job.sent}，跳过 {job.skipped}</p>}
+    {error && <p role="alert" className="form-error">{error}</p>}
+  </section>;
+}
+
+function Notifications({ onClose, ...props }: PageProps & { onClose: () => void }) {
+  const [page, setPage] = useState<MomentPage>();
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Moment>();
+  const [loading, setLoading] = useState("");
+  const [preview, setPreview] = useState("");
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    request<MomentPage>("/api/moments/notifications", undefined, controller.signal)
+      .then((p) => { if (!controller.signal.aborted) setPage(p); })
+      .catch((e) => { if (!controller.signal.aborted) setError(e.message); });
+    return () => { controller.abort(); pending.current?.abort(); };
+  }, []);
+  async function openNotification(item: NonNullable<MomentPage["notifications"]>[number]) {
+    if (pending.current) return;
+    const controller = new AbortController();
+    pending.current = controller;
+    setLoading(item.id);
+    setError("");
+    try {
+      const moment = await request<Moment>(`/api/moments/notifications?id=${encodeURIComponent(item.id)}`, undefined, controller.signal);
+      if (controller.signal.aborted) return;
+      setSelected(moment);
+      if (!item.read) {
+        const result = await request<{ unread: number }>("/api/moments/notifications/read", { ids: [item.id] }, controller.signal);
+        if (controller.signal.aborted) return;
+        setPage((p) => p && ({ ...p, unread: result.unread, notifications: p.notifications?.map((n) => n.id === item.id ? { ...n, read: true } : n) }));
+        window.dispatchEvent(new CustomEvent("weclay:moment-unread", { detail: { account: props.state.account.id, unread: result.unread } }));
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) setError((e as Error).message);
+    } finally {
+      if (!controller.signal.aborted) setLoading("");
+      if (pending.current === controller) pending.current = null;
+    }
+  }
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="朋友圈消息"
-      description="微信互动提醒关联的动态"
-    >
+    <Modal open onClose={onClose} title="朋友圈消息" description="点击一条互动消息查看对应动态，并将该条标为已读">
       {!page && !error && <p role="status">正在读取互动提醒…</p>}
       {error && <p role="alert">{error}</p>}
-      {page && (
-        <>
-          <p className="muted">{page.notice}</p>
-          <Feed items={page.items} onPreview={setPreview} />
-          {!page.items.length && (
-            <Empty
-              title={
-                page.unread ? `${page.unread} 条提醒暂无详情` : "暂无互动提醒"
-              }
-            />
-          )}
-        </>
-      )}
-      <Modal
-        open={!!preview}
-        onClose={() => setPreview("")}
-        title="动态配图"
-        description="查看原图"
-      >
+      {page && <>
+        {page.notice && <p className="muted">{page.notice}</p>}
+        <div className="moment-notifications-list">
+          {page.notifications?.map((item) => <button type="button" key={item.id}
+            className={item.read ? "" : "is-unread"} disabled={!!loading}
+            onClick={() => void openNotification(item)}>
+            <strong>{item.actor || "微信用户"}{item.kind === "like" ? `赞了你的${item.original ? "评论" : "朋友圈"}` : item.original ? "回复了你的评论" : "评论了你的朋友圈"}</strong>
+            {item.content && <p>{item.content}</p>}
+            {item.original && <blockquote>{item.original}</blockquote>}
+            <small>{dateTime(new Date(item.created * 1000).toISOString())} · {item.read ? "已读" : "未读"}{loading === item.id ? " · 正在打开…" : ""}</small>
+          </button>)}
+        </div>
+        {!page.notifications?.length && <Empty title={page.unread ? `${page.unread} 条提醒暂无详情` : "暂无互动提醒"} />}
+      </>}
+      <Modal open={!!selected} onClose={() => setSelected(undefined)} title="互动消息详情" description="该条提醒对应的朋友圈">
+        {error && <p role="alert">{error}</p>}
+        {selected && <Feed key={selected.id} items={[selected]} onPreview={setPreview}
+          onDraft={props.user.role === "admin" ? draftComment : undefined}
+          onAct={async (kind, id, content, reply) => {
+            try {
+              const updated = await request<Moment>("/api/moments/interact", { kind, id, content: content || "", target: "", ...replyParams(reply) });
+              setSelected((previous) => previous?.id === id ? updated : previous);
+            } catch (error) {
+              props.notify((error as Error).message);
+              throw error;
+            }
+          }} />}
+      </Modal>
+      <Modal open={!!preview} onClose={() => setPreview("")} title="动态配图" description="查看原图">
         <img className="lightbox" src={preview} alt="动态配图" />
       </Modal>
     </Modal>

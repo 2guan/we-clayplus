@@ -61,7 +61,7 @@ export type Message = {
   publisher?: string;
   mentions?: string[];
   mention_all?: boolean;
-  interaction?: { kind: string; actor_id?: string; actor_name?: string; target_id?: string; target_name?: string; all?: boolean; related_id?: string; verified: boolean };
+  interaction?: { kind: string; template?: string; actor_id?: string; actor_name?: string; target_id?: string; target_name?: string; all?: boolean; related_id?: string; verified: boolean };
   sender_id?: string;
   sender_avatar?: string;
   id: string;
@@ -92,7 +92,7 @@ export type Moment = {
   liked: boolean;
   likes: number;
   time: string;
-  comments: { author: string; content: string }[];
+  comments: { id?: string; author: string; content: string; author_id?: string; reply_to?: string; reply_to_id?: string }[];
 };
 export type Vendor = {
   id: string;

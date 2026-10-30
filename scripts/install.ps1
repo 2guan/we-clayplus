@@ -200,7 +200,7 @@ if ($Restart -and $NoRun) { Fail 'Restart 与 NoRun 不能同时使用' }
 $existingInstall = Test-Path -LiteralPath (Join-Path $DataDir 'installed-version.txt') -PathType Leaf
 if ($Restart -and -not $existingInstall) { Fail 'Restart 只用于已有安装；首次安装请直接运行安装脚本' }
 # 旧安装可能尚未保存 core-version.txt；该场景必须按原默认值核验旧进程。
-$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.5.0' }
+$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.5.2' }
 $oldCoreVersion = Read-Setting (Join-Path $DataDir 'core-version.txt') $coreVersionFallback
 $oldCoreAddress = Read-Setting (Join-Path $DataDir 'core-address.txt') '127.0.0.1:8088'
 $oldLoginAddress = Read-Setting (Join-Path $DataDir 'login-address.txt') '127.0.0.1:8201'

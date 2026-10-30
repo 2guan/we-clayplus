@@ -9,6 +9,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 	"github.com/we-clay/we-clay/plugins/playroom"
 	"github.com/we-clay/we-clay/plugins/toolbox"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -45,7 +46,7 @@ func businessGroups() []Group {
 		case "welcome":
 			fields = append(fields, entry("message", "消息内容", "支持 {name} 和 {group}；只处理真实系统入群通知。", "欢迎加入，一起轻松交流。"), number("delay_seconds", "发送延迟（秒）", "等待后重新检查开关、名单与账号。", 2, 0, 60))
 		case "auto_accept":
-			fields = append(fields, entry("keyword", "附言关键词", "非空时要求好友申请附言包含此文字。", ""), entry("scenes", "允许来源场景", "逗号分隔数字，留空允许所有合法场景。", ""), number("delay_seconds", "处理延迟（秒）", "票据仅在内存中使用，不保存到执行记录。", 10, 0, 60))
+			fields = append(fields, entry("keyword", "附言关键词", "非空时要求好友申请附言包含此文字。", ""), entry("scenes", "允许来源场景", "逗号分隔数字，留空允许所有合法场景。", ""), number("delay_seconds", "处理延迟（秒）", "申请到达后等待此时长；凭据加密保存在本地，不返回网页或写入日志。", 10, 0, 86400))
 		case "digest":
 			fields = append(fields, number("days", "默认范围（天）", "摘要读取指定会话的原始归档。", 1, 1, 365), number("max_messages", "消息数量", "超过上限取最近记录；模型容量不足会明确报错。", 200, 1, 20000), entry("prompt", "摘要要求", "复用默认对话流水线和提示词防护。", "请总结讨论重点、已作决定和待办，保留信息来源，不编造事实。"))
 		case "news":
@@ -94,6 +95,13 @@ func validateBusinessSetting(group, key string, value any) error {
 	}
 	text, _ := value.(string)
 	switch key {
+	case "delay_seconds":
+		if group == "auto_accept" {
+			n, ok := value.(float64)
+			if !ok || n != math.Trunc(n) {
+				return fmt.Errorf("自动通过延迟必须是整数秒")
+			}
+		}
 	case "app_id":
 		if group == "music" {
 			_, e := toolbox.MusicAppID(text)

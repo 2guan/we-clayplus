@@ -62,14 +62,13 @@ func (a ability) UserPage(username, firstPageMd5 string, maxId uint64) (*sdk.Use
 		ObjectCount:           resp.GetObjectCount(),
 		ObjectList:            mapMoments(resp.GetObjectList()),
 		ObjectTotalCount:      resp.GetObjectTotalCount(),
+		SnsUserInfo:           mapSnsUserInfo(resp.GetSnsUserInfo()),
 		NewRequestTime:        resp.GetNewRequestTime(),
 		ObjectCountForSameMd5: resp.GetObjectCountForSameMd5(),
 		ServerConfig:          mapServerConfig(resp.GetServerConfig()),
 		LimitedId:             resp.GetLimitedId(),
 		ContinueId:            resp.GetContinueId(),
 		ReturnTips:            resp.GetReturnTips(),
-		BgImageId:             resp.GetSnsUserInfo().GetBgImageId(),
-		BgObjectId:            resp.GetSnsUserInfo().GetBgObjectId(),
 	}, nil
 }
 
@@ -240,6 +239,16 @@ func mapServerConfig(config *momentsapi.ServerConfig) *sdk.ServerConfig {
 		PostMentionLimit:      config.GetPostMentionLimit(),
 		CopyAndPasteWordLimit: config.GetCopyAndPasteWordLimit(),
 	}
+}
+
+func mapSnsUserInfo(values []*messageapi.SnsUserInfo) []*sdk.SnsUserInfo {
+	result := make([]*sdk.SnsUserInfo, 0, len(values))
+	for _, value := range values {
+		if value != nil {
+			result = append(result, &sdk.SnsUserInfo{Flag: value.GetFlag(), BgImageId: value.GetBgImageId(), BgObjectId: value.GetBgObjectId(), FlagExtend: value.GetFlagExtend()})
+		}
+	}
+	return result
 }
 
 func mapBufferURL(url *momentsapi.BufferUrl) *sdk.BufferUrl {

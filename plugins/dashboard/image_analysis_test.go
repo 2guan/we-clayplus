@@ -168,6 +168,64 @@ func TestImageDescriptionFailureCanRetryWithoutSendingReply(t *testing.T) {
 	}
 }
 
+func TestImageDescriptionInheritedReplyMode(t *testing.T) {
+	for _, kind := range []string{"friend", "group"} {
+		for _, source := range []string{"ai", "manual", "wechat"} {
+			t.Run(kind+"/"+source, func(t *testing.T) {
+				var calls atomic.Int32
+				s, m, sends := imageAnalysisFixture(t, func(w http.ResponseWriter, r *http.Request) {
+					calls.Add(1)
+					captionResult(w, "桌上有一杯红茶。")
+				})
+				if kind == "friend" {
+					m.Target = "fixture-description-friend"
+				}
+				m.Self, m.Source, m.ImageGenerated = source != "wechat", source, source == "ai"
+				replyRegressionCheck(t, s.store.change(func(st *State) error {
+					st.Contacts[0].ID, st.Contacts[0].Kind, st.Contacts[0].Mode = m.Target, kind, "paused"
+					st.Settings["reply.default_"+kind] = "自动"
+					st.Overrides[m.Target] = map[string]any{"probability": float64(0)}
+					st.Messages = []Message{m}
+					return nil
+				}))
+				st := s.store.snapshot()
+				if !st.Contacts[0].ModeInherited || st.Contacts[0].Mode != "auto" {
+					t.Fatal("测试会话没有继承自动模式")
+				}
+				if source == "ai" {
+					s.scheduleImageAnalysis(m)
+				} else {
+					replyRegressionCheck(t, s.retryImageAnalysis(m.Target, m.ID))
+				}
+				done := waitImageDescription(t, s, m, "completed")
+				if done.ImageAnalysis.Description != "桌上有一杯红茶。" || calls.Load() != 1 || sends.Load() != 0 || !strings.Contains(contextMessage(s.store.snapshot(), done).Text, "桌上有一杯红茶") {
+					t.Fatal("没有保存并注入描述，或额外发送了回复", done, calls.Load(), sends.Load())
+				}
+				// 校验不能将有效模式写回数据库，默认切成人工后须立即生效。
+				replyRegressionCheck(t, s.store.change(func(st *State) error {
+					if st.Contacts[0].Mode != "paused" {
+						t.Error("识图污染了继承设置", st.Contacts[0].Mode)
+					}
+					st.Settings["reply.default_"+kind] = "人工"
+					return nil
+				}))
+				if err := s.retryImageAnalysis(m.Target, m.ID); err == nil {
+					t.Fatal("默认切成人工后仍允许识图")
+				}
+				// 默认恢复自动，显式暂停仍应优先。
+				replyRegressionCheck(t, s.store.change(func(st *State) error {
+					st.Settings["reply.default_"+kind] = "自动"
+					st.Overrides[m.Target]["mode"] = "paused"
+					return nil
+				}))
+				if err := s.retryImageAnalysis(m.Target, m.ID); err == nil {
+					t.Fatal("显式暂停的会话仍允许识图")
+				}
+			})
+		}
+	}
+}
+
 func TestImageDescriptionScopesAndRevokedEvidence(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once

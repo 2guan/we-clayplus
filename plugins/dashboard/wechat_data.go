@@ -5,6 +5,7 @@ package dashboard
 
 import (
 	"encoding/xml"
+	"errors"
 	"sort"
 	"strings"
 )
@@ -91,6 +92,30 @@ func isConversationStatus(content string) bool {
 func (s *Server) SetMomentCover(cover string) error {
 	err := s.store.change(func(v *State) error { v.Account.MomentCover = cover; return nil })
 	if err == nil {
+		s.notify()
+	}
+	return err
+}
+
+// AccountIdentity 返回活动账号与当前代次，供异步资料读取在写回时核对归属。
+func (s *Server) AccountIdentity() (string, uint64) {
+	s.store.mu.RLock()
+	defer s.store.mu.RUnlock()
+	return s.store.state.Account.ID, s.store.accountEpoch
+}
+
+// SetMomentCoverForAccount 拒绝账号切换前启动的读取，不以空值清除已知封面。
+func (s *Server) SetMomentCoverForAccount(account string, epoch uint64, cover string) error {
+	err := s.store.change(func(v *State) error {
+		if account == "" || v.Account.ID != account || s.store.accountEpoch != epoch {
+			return errors.New("朋友圈封面读取已过期：账号会话已更新")
+		}
+		if cover != "" {
+			v.Account.MomentCover = cover
+		}
+		return nil
+	})
+	if err == nil && cover != "" {
 		s.notify()
 	}
 	return err

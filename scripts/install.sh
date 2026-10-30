@@ -143,7 +143,7 @@ existing_install=0
 [[ -f "$data_dir/installed-version.txt" ]] && existing_install=1
 (( !restart || existing_install )) || fail '--restart 只用于已有安装；首次安装请直接运行安装脚本'
 # 旧安装可能尚未保存 core-version.txt；该场景必须按原默认值核验旧进程。
-core_version_fallback='v0.5.0'
+core_version_fallback='v0.5.2'
 if ((existing_install)); then core_version_fallback='v0.4.5'; fi
 old_core_version=$(read_setting "$data_dir/core-version.txt" "$core_version_fallback")
 old_core_address=$(read_setting "$data_dir/core-address.txt" '127.0.0.1:8088')

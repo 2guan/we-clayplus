@@ -8,17 +8,19 @@ import (
 	"fmt"
 	"github.com/we-clay/we-clay/sdk/control"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// MomentPage 中的未读数量由微信返回，不把每条历史评论冒充新提醒。
+// MomentPage 的未读数按真实互动通知及已读进度计算，不把历史评论冒充新提醒。
 type MomentPage struct {
-	Cover      string   `json:"cover,omitempty"`
-	NextCursor string   `json:"next_cursor"`
-	Items      []Moment `json:"items"`
-	Unread     uint32   `json:"unread"`
-	Notice     string   `json:"notice,omitempty"`
+	Cover         string               `json:"cover,omitempty"`
+	NextCursor    string               `json:"next_cursor"`
+	Items         []Moment             `json:"items"`
+	Unread        uint32               `json:"unread"`
+	Notice        string               `json:"notice,omitempty"`
+	Notifications []MomentNotification `json:"notifications,omitempty"`
 }
 type MomentPost struct {
 	Content   string   `json:"content"`
@@ -27,7 +29,33 @@ type MomentPost struct {
 	WithUsers []string `json:"with_users"`
 }
 
+// MomentReply 只引用当前动态内的原评论，昵称与正文均由服务端核实。
+type MomentReply struct {
+	CommentID int32  `json:"reply_comment_id,omitempty"`
+	AuthorID  string `json:"reply_author_id,omitempty"`
+}
+
+func (q MomentReply) valid() bool {
+	return q.CommentID == 0 && q.AuthorID == "" || q.CommentID > 0 && q.AuthorID != ""
+}
+
+func momentReplyTarget(m Moment, q MomentReply) (Comment, error) {
+	if !q.valid() || q.CommentID <= 0 {
+		return Comment{}, fmt.Errorf("回复评论编号或作者无效")
+	}
+	for _, comment := range m.Comments {
+		if comment.ID == fmt.Sprint(q.CommentID) && comment.AuthorID == q.AuthorID {
+			return comment, nil
+		}
+	}
+	return Comment{}, fmt.Errorf("所选评论已不可用或作者不匹配，请刷新后重新选择；未改为普通留言")
+}
+
 func (s *Server) momentsAPI(w http.ResponseWriter, r *http.Request, u User) {
+	if r.URL.Path == "/api/moments/unread" || r.URL.Path == "/api/moments/notifications" {
+		s.momentNotificationsAPI(w, r)
+		return
+	}
 	// 真实只读请求无需复制整份消息归档，减少首屏与预加载的内存开销。
 	var state State
 	if s.cfg.Mock || r.Method != http.MethodGet {
@@ -36,6 +64,14 @@ func (s *Server) momentsAPI(w http.ResponseWriter, r *http.Request, u User) {
 	if r.Method == http.MethodGet {
 		target, cursor := r.URL.Query().Get("target"), r.URL.Query().Get("cursor")
 		operation := "moments-page"
+		w.Header().Set("Cache-Control", "no-store")
+		if r.URL.Path == "/api/moments/unread" {
+			if s.cfg.Mock {
+				writeJSON(w, 200, map[string]uint32{"unread": 0})
+				return
+			}
+			operation, target, cursor = "moments-unread", "", ""
+		}
 		if r.URL.Path == "/api/moments/cover" {
 			if s.cfg.Mock {
 				writeJSON(w, 200, map[string]string{"cover": state.Account.MomentCover})
@@ -69,6 +105,16 @@ func (s *Server) momentsAPI(w http.ResponseWriter, r *http.Request, u User) {
 		if err != nil {
 			writeError(w, 502, err.Error())
 			return
+		}
+		if page, ok := result.(MomentPage); ok && target == "" {
+			account, _ := s.momentNotificationAccount()
+			s.momentNotificationMu.Lock()
+			v, e := s.loadMomentNotifications(account)
+			s.momentNotificationMu.Unlock()
+			if e == nil {
+				page.Unread = notificationUnread(v)
+			}
+			result = page
 		}
 		writeJSON(w, 200, result)
 		return
@@ -207,11 +253,14 @@ func (s *Server) personAPI(w http.ResponseWriter, r *http.Request) {
 
 // momentInteractionAPI 为时间线和个人主页提供同一套互动接口；请求不能携带任意宿主命令。
 func (s *Server) momentInteractionAPI(w http.ResponseWriter, r *http.Request) {
+	s.momentInteractionMu.Lock()
+	defer s.momentInteractionMu.Unlock()
 	if r.Method != http.MethodPost {
 		writeError(w, 405, "请求方法不支持")
 		return
 	}
 	var q struct {
+		MomentReply
 		ID      string `json:"id"`
 		Target  string `json:"target"`
 		Kind    string `json:"kind"`
@@ -222,6 +271,10 @@ func (s *Server) momentInteractionAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	if q.Kind != "moment-like" && q.Kind != "moment-comment" {
 		writeError(w, 400, "不支持的互动操作")
+		return
+	}
+	if !q.MomentReply.valid() || q.Kind != "moment-comment" && q.CommentID != 0 {
+		writeError(w, 400, "回复评论编号或作者无效")
 		return
 	}
 	if q.Kind == "moment-comment" && (strings.TrimSpace(q.Content) == "" || len(q.Content) > 6000) {
@@ -250,7 +303,24 @@ func (s *Server) momentInteractionAPI(w http.ResponseWriter, r *http.Request) {
 							m.LikeUsers = people
 						}
 					} else {
-						m.Comments = append(m.Comments, Comment{st.Account.Name, q.Content})
+						nextID := int64(1)
+						for _, original := range m.Comments {
+							if id, err := strconv.ParseInt(original.ID, 10, 32); err == nil && id >= nextID {
+								nextID = id + 1
+							}
+						}
+						if nextID > 2147483647 {
+							return fmt.Errorf("脱机评论编号已用尽")
+						}
+						comment := Comment{ID: fmt.Sprint(nextID), AuthorID: st.Account.ID, Author: st.Account.Name, Content: q.Content}
+						if q.CommentID > 0 {
+							original, err := momentReplyTarget(*m, q.MomentReply)
+							if err != nil {
+								return err
+							}
+							comment.ReplyToID, comment.ReplyTo = original.AuthorID, original.Author
+						}
+						m.Comments = append(m.Comments, comment)
 					}
 					item = *m
 					return nil
@@ -274,7 +344,8 @@ func (s *Server) momentInteractionAPI(w http.ResponseWriter, r *http.Request) {
 	if q.Kind == "moment-comment" {
 		operation = "moments-comment"
 	}
-	result, err := s.host.Execute(r.Context(), control.Command{Operation: operation, Target: q.Target, ID: q.ID, Content: q.Content})
+	params, _ := json.Marshal(q.MomentReply)
+	result, err := s.host.Execute(r.Context(), control.Command{Operation: operation, Target: q.Target, ID: q.ID, Content: q.Content, Params: params})
 	if err != nil {
 		writeError(w, 502, err.Error())
 		return

@@ -1,0 +1,125 @@
+.friend-request-settings-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 20px;
+}
+.friend-request-settings-summary h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+.friend-request-settings-summary p {
+  margin: 0;
+  line-height: 1.6;
+}
+.friend-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.friend-request-panel {
+  padding: 20px;
+}
+.friend-request-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.friend-request-filters input {
+  flex: 1;
+  min-width: 200px;
+}
+.friend-request-list {
+  display: grid;
+  gap: 14px;
+}
+.friend-request-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.friend-request-body {
+  flex: 1;
+  min-width: 0;
+}
+.friend-request-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.friend-request-body p {
+  margin: 8px 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.friend-request-comment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+.friend-request-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+.friend-request-detail {
+  overflow-wrap: anywhere;
+}
+.friend-request-detail dl {
+  margin: 16px 0;
+}
+.friend-request-detail dt {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.friend-request-detail dt small {
+  display: block;
+  font-size: 10px;
+  margin-top: 3px;
+}
+.friend-request-detail dd {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+@media (max-width: 767px) {
+  .friend-request-settings-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+  .friend-request-panel {
+    padding: 14px;
+  }
+  .friend-request-card {
+    padding: 14px;
+    gap: 10px;
+  }
+  .friend-request-filters input {
+    width: 100%;
+    font-size: 16px;
+  }
+  .friend-request-filters select {
+    font-size: 16px;
+  }
+  .friend-request-actions .button,
+  .friend-request-pagination .button {
+    min-height: 44px;
+  }
+}
+
+.friend-request-dismiss { margin-left:auto; flex-shrink:0; }
+.friend-request-undo { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+@media(max-width:767px) { .friend-request-dismiss, .friend-request-undo button { min-width:44px; min-height:44px; } }

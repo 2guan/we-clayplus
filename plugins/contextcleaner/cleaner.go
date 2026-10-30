@@ -35,6 +35,7 @@ type Message struct {
 
 // Interaction 只承载协议明确提供的参与者，未知身份不从展示文字推断。
 type Interaction struct {
+	Template   string `json:"template,omitempty"` // 协议原始展示模板，避免昵称尚未同步时永久丢失占位符。
 	Kind       string `json:"kind"`
 	ActorID    string `json:"actor_id,omitempty"`
 	ActorName  string `json:"actor_name,omitempty"`
@@ -161,6 +162,14 @@ var nonReplyDecision = regexp.MustCompile(`我(?:就|先|还是|这次|也)?不(
 
 var toolCallMarkup = regexp.MustCompile(`(?i)<(?:tool_calls?|function(?:_call)?|parameter)(?:[=\s>])|<\|tool_calls?[^|]*\|>`)
 var inlineCode = regexp.MustCompile("`[^`]*`")
+
+var mediaContextLabel = regexp.MustCompile(`\[(?:收到图片|本人发送图片|已发送·AI生成图片（不代表真实拍摄或现实经历）)；(?:尚未完成识图，不能推断画面|正在识图，不能推断画面|识图失败，画面内容未知|模型识图描述，仅供参考)\]`)
+
+// MediaContextText 识别宿主的内部图片记录，不能作为聊天正文或语音外发。
+// 即使被包在引用或代码中，也不允许透传生成提示词。
+func MediaContextText(text string) bool {
+	return mediaContextLabel.MatchString(text) || strings.Contains(text, "生成意图（不代表实际画面）：")
+}
 
 // ToolCallText 识别模型把内部调用协议写成正文的情况；代码示例与引用不执行，
 // 也不据此丢弃。实际工具调用仍只能来自供应商的结构化 tool_calls 字段。

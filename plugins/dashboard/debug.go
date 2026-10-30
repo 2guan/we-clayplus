@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/we-clay/we-clay/plugins/internal/debuglog"
@@ -94,7 +95,17 @@ func (h debugHost) Execute(ctx context.Context, command control.Command) (any, e
 	result, err := h.Host.Execute(ctx, command)
 	fields["status"] = "succeeded"
 	if err != nil {
-		fields["status"], fields["error"] = "failed", err.Error()
+		publicError := err.Error()
+		if command.Operation == "friend-verify" || command.Operation == "ai-action" && command.ID == "contact.VerifyFriend" {
+			var q struct{ V1, V2 string }
+			_ = json.Unmarshal(command.Params, &q)
+			for _, ticket := range []string{q.V1, q.V2} {
+				if ticket != "" {
+					publicError = strings.ReplaceAll(publicError, ticket, "[验证凭据已隐藏]")
+				}
+			}
+		}
+		fields["status"], fields["error"] = "failed", publicError
 	}
 	// 不复制原始回执和 Params；实际返回值仍完整交给原有调用链。
 	h.s.debugRecord(st.Account.ID, st.AccountEpoch, command.Target, "系统操作结果", fields)

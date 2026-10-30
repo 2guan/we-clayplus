@@ -1739,6 +1739,8 @@ td code {
   color: var(--muted);
   font-size: 10px;
   padding: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .composer {
   background: var(--panel);
@@ -4817,6 +4819,8 @@ button.workspace { width: 100%; }
 .memory-check { display: flex !important; align-items: center; gap: 10px; }
 .memory-check input { width: 18px; height: 18px; flex: none; }
 .interaction-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.interaction-detail summary { cursor: pointer; min-height: 24px; padding: 3px; }
+@media (max-width: 767px) { .interaction-detail summary { min-height: 44px; padding: 10px 3px; } }
 @media (max-width: 1100px) { .memory-list { grid-template-columns: minmax(0,1fr); } }
 @media (max-width: 700px) {
   .memory-page { gap: 16px; }

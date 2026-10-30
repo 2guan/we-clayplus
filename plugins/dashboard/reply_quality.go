@@ -20,6 +20,9 @@ type replyProtocolError struct{ reason string }
 func (e replyProtocolError) Error() string { return e.reason }
 
 func replyQualityError(text string, conversation *ai.Conversation) error {
+	if contextcleaner.MediaContextText(text) {
+		return replyProtocolError{"模型把内部图片记录或生成意图写成聊天正文，未发送；识图状态和生成提示词只能内部参考。需要发图时使用本轮开放的 image 标签，不能把图片记录当作附件或正文"}
+	}
 	if contextcleaner.ToolCallText(text) {
 		return replyProtocolError{"模型把工具调用协议写成正文，未发送；请按本轮已开放的媒体输出协议或自然正文回复，不能编造 image_gen 等函数或输出 tool_call/function/parameter 标签"}
 	}

@@ -158,12 +158,16 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 		return api.GetCore().Get("/api/cdn/download/video/cover").WithContext(ctx).Query("id", q.ID, "key", q.Key).DoBinary()
 	case "friend-verify":
 		var q struct {
-			V1    string `json:"v1"`
-			V2    string `json:"v2"`
-			Scene int    `json:"scene"`
+			V1      string `json:"v1"`
+			V2      string `json:"v2"`
+			Scene   int    `json:"scene"`
+			Account string `json:"account"`
 		}
 		if json.Unmarshal(c.Params, &q) != nil || q.V1 == "" || q.V2 == "" || q.Scene < 0 || q.Scene > 1000 {
 			return nil, fmt.Errorf("好友验证参数无效")
+		}
+		if q.Account != "" && (contact.Instance == nil || contact.Instance.GetSelf() == nil || contact.Instance.GetSelf().Username != q.Account) {
+			return nil, fmt.Errorf("微信账号已切换，未通过好友申请")
 		}
 		return nil, contact.Instance.VerifyFriend(q.V1, q.V2, q.Scene)
 	case "message-file":
@@ -334,11 +338,15 @@ func (b *Bridge) Execute(ctx context.Context, c control.Command) (any, error) {
 				target = self.Username
 			}
 		}
-		return map[string]string{"cover": momentCover(target)}, nil
+		cover, err := b.loadMomentCover(target)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"cover": cover}, nil
 	case "moments-page":
 		return b.momentPage(c.Target, c.ID)
-	case "moments-notifications":
-		return b.momentNotifications()
+	case "moments-notification-sync":
+		return b.syncMomentNotifications(c.Params)
 	case "moments-publish":
 		return b.publishMoment(c.Params)
 	case "moment-refresh":
@@ -410,29 +418,26 @@ func (b *Bridge) Online() error {
 func (b *Bridge) Record(m *message.Message) error {
 	// 状态同步只有会话游标，没有用户发出的文字，不进入聊天归档和 AI。
 	if m.GetType().GetCode() == 51 {
+		if contact.Instance != nil && b.Dashboard != nil {
+			if self := contact.Instance.GetSelf(); self != nil && m.GetSender().GetUsername() == self.Username && m.GetReceiver().GetUsername() == self.Username {
+				_, err := b.Dashboard.RecordMomentStatus(dashboard.Message{Kind: "status", Source: "wechat", Self: true, SenderID: self.Username, Target: self.Username}, m.GetContent())
+				return err
+			}
+		}
 		return nil
 	}
 	self := contact.Instance.GetSelf()
 	if self == nil {
 		return nil
 	}
-	// 验证票据仅在内存中传给受规则约束的插件，不进入公共聊天归档。
+	// 原始申请由专用入口加密存储，资料与完整附言不进入普通聊天归档。
 	if m.GetType().GetCode() == 37 {
-		var v struct {
-			XMLName   xml.Name `xml:"msg"`
-			Applicant string   `xml:"fromusername,attr"`
-			V1        string   `xml:"encryptusername,attr"`
-			V2        string   `xml:"ticket,attr"`
-			Comment   string   `xml:"content,attr"`
-			Scene     int      `xml:"scene,attr"`
-		}
-		if len(m.GetContent()) > 64<<10 || xml.Unmarshal([]byte(m.GetContent()), &v) != nil {
-			return nil // 不重放格式不受支持的系统事件，也不把票据写入日志。
-		}
-		if v.Applicant == "" || v.V1 == "" || v.V2 == "" || v.Scene < 0 || v.Scene > 1000 {
+		q, err := parseFriendRequest(m)
+		if err != nil {
 			return nil
 		}
-		return b.Dashboard.HandleFriend(dashboard.FriendRequest{ID: strconv.FormatUint(uint64(m.GetId()), 10), Applicant: v.Applicant, Comment: v.Comment, V1: v.V1, V2: v.V2, Scene: v.Scene})
+		q.CapturedAccount = self.Username
+		return b.Dashboard.HandleFriend(q)
 	}
 	own := m.GetSender().GetUsername() == self.Username
 	target := m.GetSender().GetUsername()
@@ -544,6 +549,9 @@ func (b *Bridge) Record(m *message.Message) error {
 			record.Content = raw
 			return b.Dashboard.Record(record)
 		}
+	}
+	if handled, err := b.Dashboard.RecordMomentStatus(record, raw); handled {
+		return err
 	}
 	record, keep := dashboard.ParseWechatMessage(record, raw)
 	if !keep {

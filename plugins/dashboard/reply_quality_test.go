@@ -43,6 +43,67 @@ func TestReplyControlPartsCannotReachAnySend(t *testing.T) {
 	}
 }
 
+func TestInternalImageRecordsCannotReachAnySend(t *testing.T) {
+	s, m, sends := retryFixture(t, func(w http.ResponseWriter, r *http.Request) { t.Error("不应请求模型") })
+	q, err := s.refreshReplyContext(replyRequest(s.store.snapshot(), m))
+	replyRegressionCheck(t, err)
+	replyRegressionCheck(t, s.store.change(func(st *State) error { st.Settings["reply.max_parts"] = float64(5); return nil }))
+	for _, text := range []string{
+		"[已发送·AI生成图片（不代表真实拍摄或现实经历）；尚未完成识图，不能推断画面]\n生成意图（不代表实际画面）：一只猫坐在窗边",
+		"正常开头\n\n[本人发送图片；正在识图，不能推断画面]",
+		"[收到图片；模型识图描述，仅供参考] 一只猫",
+		"[本人发送图片；识图失败，画面内容未知]",
+		"<voice>生成意图（不代表实际画面）：一只猫</voice>",
+		"<reply ref=\"m1234abcd\" mode=\"quote\">生成意图（不代表实际画面）：一只猫</reply>",
+		"```text\n生成意图（不代表实际画面）：一只猫\n```",
+	} {
+		if err := replyPlanError(s.store.snapshot(), q, ai.Result{Text: text}); err == nil || !strings.Contains(err.Error(), "内部图片记录") {
+			t.Fatalf("内部记录未被拦截：%v", err)
+		}
+		for _, evidence := range []*ai.Request{&q, nil} {
+			if err := s.deliverReplyEvidence(context.Background(), m.Target, text, "text", nil, evidence); err == nil {
+				t.Fatal("发送入口放行了内部记录")
+			}
+		}
+	}
+	if sends.Load() != 0 {
+		t.Fatal("校验前发生了发送", sends.Load())
+	}
+}
+
+func TestInternalImageRecordRetry(t *testing.T) {
+	for _, recover := range []bool{true, false} {
+		t.Run(fmt.Sprint(recover), func(t *testing.T) {
+			var calls atomic.Int32
+			s, m, sends := retryFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				answer := "[已发送·AI生成图片（不代表真实拍摄或现实经历）；尚未完成识图，不能推断画面]\n生成意图（不代表实际画面）：一只猫坐在窗边"
+				if calls.Add(1) > 1 && recover {
+					answer = "换个角度看看。"
+				}
+				captionResult(w, answer)
+			})
+			task := retrySubmit(t, s, m)
+			if calls.Load() != 2 || task.AutoRetries != 1 {
+				t.Fatal("未重试一次", task, calls.Load())
+			}
+			if recover {
+				if task.Status != "completed" || task.Result != "换个角度看看。" || sends.Load() != 1 {
+					t.Fatal("没有只发送纠正后的回复", task, sends.Load())
+				}
+			} else if task.Status != "failed" || !task.ReplyRetryable || sends.Load() != 0 || !strings.Contains(task.Error, "内部图片记录") {
+				t.Fatal("异常内容外发或未开放人工重试", task, sends.Load())
+			}
+			found := false
+			for _, log := range s.store.snapshot().Logs {
+				found = found || strings.Contains(log.Message, "内部图片记录") && strings.Contains(log.Message, "未发送")
+			}
+			if !found {
+				t.Fatal("没有记录拦截原因")
+			}
+		})
+	}
+}
+
 func fragmentedReplyFixture() string {
 	var text strings.Builder
 	text.WriteString("这是一段无关的开头。\n")
@@ -124,6 +185,8 @@ func TestReplyQuality(t *testing.T) {
 		{"tilde-code", "~~~\n" + code.String() + "~~~", false},
 		{"separator", strings.Repeat("-", 100) + "\n分隔线", false},
 		{"tool-only", "", false},
+		{"ordinary-image-text", "这张图里有一只猫，换个角度再试试。", false},
+		{"image-protocol", `<image prompt="一只猫坐在窗边" ref="last"/>`, false},
 		{"planning", "I notice the current message is for another participant, so I should stay quiet.\n\nI will not interrupt.", true},
 		{"planning-zh", "当前消息是在问另一个人，我应该保持沉默。", true},
 		{"planning-nonreply", "那俩表情是发给你看的，又没@我，我就不凑热闹了", true},

@@ -70,6 +70,21 @@ func TestAIWriteBindsCurrentWechatMessageAndDefaultsToConfirmation(t *testing.T)
 	}
 }
 
+func TestAIMessageToolCannotSendInternalImageRecord(t *testing.T) {
+	s, a, calls, _ := actionFixture(t)
+	bindCurrentWriteMessage(t, a, writeGuardMessage(a))
+	raw, err := json.Marshal(map[string]string{"content": "生成意图（不代表实际画面）：一只猫坐在窗边"})
+	replyRegressionCheck(t, err)
+	_, err = a.execute(context.Background(), ai.ToolCall{Name: "message__Send", Arguments: string(raw)})
+	if err == nil || !strings.Contains(err.Error(), "内部图片记录") || calls.Load() != 0 {
+		t.Fatal("工具路径允许外发内部记录", err, calls.Load())
+	}
+	rows, err := s.actionRecords("", a.task)
+	if err != nil || len(rows) != 0 {
+		t.Fatal("内部记录进入了待确认发送", rows, err)
+	}
+}
+
 func TestAIWriteApprovalRejectsChangedCurrentMessage(t *testing.T) {
 	for name, change := range map[string]func(*Message){
 		"sender": func(m *Message) { m.SenderID = "another-member" },

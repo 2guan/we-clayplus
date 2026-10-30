@@ -94,8 +94,12 @@ type Moment struct {
 	Comments       []Comment    `json:"comments"`
 }
 type Comment struct {
-	Author  string `json:"author"`
-	Content string `json:"content"`
+	ID        string `json:"id,omitempty"` // core 当前支持的 32 位评论编号；64 位编号不截断冒充。
+	AuthorID  string `json:"author_id,omitempty"`
+	Author    string `json:"author"`
+	ReplyToID string `json:"reply_to_id,omitempty"`
+	ReplyTo   string `json:"reply_to,omitempty"`
+	Content   string `json:"content"`
 }
 type Plugin struct {
 	ID          string   `json:"id"`

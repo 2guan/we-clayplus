@@ -79,6 +79,14 @@ func Schema() []Group {
 			number("summary_after", "旧版摘要阈值（停用）", "仅兼容旧配置，不触发任务。", 80, 20, 1000),
 			number("retention", "近期对话最长回看天数", "限制普通对话选取范围；仍受上下文条数和 Token 预算限制。长期记忆使用各条目自身的有效期。", 3000, 1, 3000),
 		}},
+		{"moments", "朋友圈随机互动", "仅点击朋友圈按钮时执行；按发布时间从新到旧处理，跳过本人的动态及已完成互动。", "models", true, "下次任务", []Field{
+			number("like_probability", "随机点赞概率 (%)", "每条未点赞动态独立抽取；已点赞不会重复或取消。", 80, 0, 100),
+			flag("reply_enabled", "对方回复后按概率回应", "只处理启用后收到的、明确回复本人评论的互动提醒；每条只判定一次，使用随机评论概率和间隔。", true),
+			number("comment_probability", "随机评论概率 (%)", "每条本人尚未评论的动态独立抽取；AI 生成后直接发送。", 50, 0, 100),
+			number("lookback_hours", "点赞评论追溯时间 (小时)", "按朋友圈发布时间筛选最近范围，默认 24 小时；只读取微信允许查看的动态。", 24, 1, 8760),
+			number("comment_interval_min", "评论最短间隔 (秒)", "两次评论发送之间随机等待，最短值不能大于最长值。", 15, 1, 3600),
+			number("comment_interval_max", "评论最长间隔 (秒)", "默认 15–30 秒；生成和读取耗时可能使实际间隔更长。", 30, 1, 3600),
+		}},
 		{"routing", "模型与预算", "各能力独立选择路由，未配置价格时不显示虚构费用。", "models", true, "下次请求", []Field{
 			entry("chat", "对话默认模型 ID", "留空按模型列表中启用且支持对话的顺序选择。", ""),
 			entry("vision", "识图默认模型 ID", "需要模型声明 vision 能力。", ""),
@@ -194,7 +202,7 @@ func Schema() []Group {
 	groups = append(groups, safetyGroups()...)
 	groups = append(groups, businessGroups()...)
 	// 尚未接通执行器的字段也提供完整表单，但明确标注仅预览；真实模式拒绝修改它们。
-	live := strings.Fields("attachments.max_file_mb reply.skip_other_mentions reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.enabled memory.direct_enabled memory.scan_enabled memory.timezone memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer logging.level security.session_hours security.login_attempts")
+	live := strings.Fields("moments.like_probability moments.comment_probability moments.lookback_hours moments.comment_interval_min moments.comment_interval_max moments.reply_enabled attachments.max_file_mb reply.skip_other_mentions reply.list_mode reply.blacklist reply.default_friend reply.default_group vision.auto audio.auto reply.max_parts reply.interval_ms reply.voice_enabled reply.image_enabled reply.emoji_enabled tts.reply video_generation.size video_generation.seconds video_generation.style routing.video_generation reply.probability tts.design image.quality image.aspect image.resolution reply.enabled reply.targets reply.private reply.keywords reply.cooldown reply.quiet memory.enabled memory.direct_enabled memory.scan_enabled memory.timezone memory.messages memory.tokens memory.retention routing.chat routing.vision routing.audio routing.video routing.tts routing.image routing.timeout routing.concurrency routing.daily_calls routing.max_output insight.max_output routing.fallback vision.max_mb tts.voice tts.speed tts.max_chars image.size image.style brand.name brand.subtitle brand.footer logging.level security.session_hours security.login_attempts")
 	for i := range groups {
 		for j := range groups[i].Fields {
 			groups[i].Fields[j].Preview = groups[i].Area != "plugins" && !slices.Contains(live, groups[i].ID+"."+groups[i].Fields[j].Key)
@@ -220,6 +228,11 @@ func validateSettings(group string, values map[string]any) error {
 			continue
 		}
 		for key, value := range values {
+			if group == "moments" && key != "reply_enabled" {
+				if n, ok := value.(float64); !ok || n != math.Trunc(n) {
+					return fmt.Errorf("朋友圈随机互动参数必须为整数")
+				}
+			}
 			if group == "attachments" && key == "max_file_mb" {
 				if n, ok := value.(float64); !ok || n != math.Trunc(n) {
 					return fmt.Errorf("文件大小上限必须是整数 MB")

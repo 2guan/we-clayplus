@@ -36,7 +36,7 @@ func (f *pageFixture) Detail(id uint64) (*moments.Detail_Response, error) {
 	f.details = append(f.details, id)
 	return &moments.Detail_Response{BaseResult: &moments.BaseResult{}, Object: &moments.Moment{Id: id, ObjectDescription: `<TimelineObject><contentDesc>互动动态</contentDesc></TimelineObject>`, CommentUserList: []*moments.CommentInfo{{Nickname: "测试好友", Content: "评论"}}}}, nil
 }
-func TestPersonalPageAndNotifications(t *testing.T) {
+func TestPersonalPageRead(t *testing.T) {
 	previous := moments.Instance
 	f := &pageFixture{}
 	moments.Instance = f
@@ -49,10 +49,7 @@ func TestPersonalPageAndNotifications(t *testing.T) {
 	if _, err = b.momentPage("fixture", "bad"); err == nil {
 		t.Fatal("接受非法游标")
 	}
-	page, err = b.momentNotifications()
-	if err != nil || page.Unread != 2 || len(page.Items) != 2 || len(f.details) != 2 || page.Items[0].Comments[0].Content != "评论" {
-		t.Fatalf("提醒未去重或丢失内容: %v", err)
-	}
+
 }
 func TestPostXMLSafeTextAndMedia(t *testing.T) {
 	obj := postObject{Username: "fixture", Content: `正文 </contentDesc><private>1</private> &`, ContentObject: postContent{Style: 1, Media: []postMedia{{ID: "18446744073709551614", Type: 2, URL: postURL{"https://mmsns.qpic.cn/a?x=1&y=2", 1}, Size: postSize{400, 300, 1234}}}}}

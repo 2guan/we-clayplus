@@ -95,12 +95,17 @@ func (s *Server) queueImageAnalysis(account string, epoch uint64, target, id str
 		if v.Account.ID != account || s.store.accountEpoch != epoch {
 			return fmt.Errorf("账号已切换，停止识图入队")
 		}
+		// 写事务保留原始继承值；权限校验须与页面快照使用同一有效模式，
+		// 只解析联系人副本，不能把“跟随默认”持久化成固定的自动模式。
+		current := *v
+		current.Contacts = append([]Contact(nil), v.Contacts...)
+		resolveReplyModes(&current)
 		for i := range v.Messages {
 			item := &v.Messages[i]
 			if item.ID != id || item.Target != target {
 				continue
 			}
-			if !s.imageAnalysisAllowed(*v, *item) {
+			if !s.imageAnalysisAllowed(current, *item) {
 				return fmt.Errorf("图片或会话已不可用于识图")
 			}
 			if item.ImageAnalysis != nil && (item.ImageAnalysis.Status == "pending" || item.ImageAnalysis.Status == "running" || !retry) {

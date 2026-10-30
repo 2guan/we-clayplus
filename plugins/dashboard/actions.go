@@ -215,6 +215,18 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 			if q.Revision != v.ConfigRevision {
 				return fmt.Errorf("配置已发生变化，请刷新后重试")
 			}
+			if q.Group == "moments" {
+				min, max := v.Settings["moments.comment_interval_min"].(float64), v.Settings["moments.comment_interval_max"].(float64)
+				if n, ok := q.Values["comment_interval_min"].(float64); ok {
+					min = n
+				}
+				if n, ok := q.Values["comment_interval_max"].(float64); ok {
+					max = n
+				}
+				if min > max {
+					return fmt.Errorf("评论最短间隔不能大于最长间隔")
+				}
+			}
 			v.ConfigRevision++
 			before := map[string]any{}
 			for k, value := range q.Values {
@@ -581,7 +593,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request, u User) {
 						if strings.TrimSpace(q.Content) == "" {
 							return fmt.Errorf("请输入评论内容")
 						}
-						m.Comments = append(m.Comments, Comment{v.Account.Name, q.Content})
+						m.Comments = append(m.Comments, Comment{Author: v.Account.Name, Content: q.Content})
 					}
 					return nil
 				}

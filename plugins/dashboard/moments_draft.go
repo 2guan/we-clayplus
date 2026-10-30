@@ -26,9 +26,14 @@ func (s *Server) momentDraftAPI(w http.ResponseWriter, r *http.Request, u User) 
 		return
 	}
 	var input struct {
+		MomentReply
 		ID string `json:"id"`
 	}
 	if !decode(w, r, &input) {
+		return
+	}
+	if !input.MomentReply.valid() {
+		writeError(w, 400, "回复评论编号或作者无效")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
@@ -39,19 +44,34 @@ func (s *Server) momentDraftAPI(w http.ResponseWriter, r *http.Request, u User) 
 		writeError(w, 400, err.Error())
 		return
 	}
-	q, warnings, err := s.momentDraftRequest(ctx, st, m)
+	var reply []Comment
+	if input.CommentID > 0 {
+		original, err := momentReplyTarget(m, input.MomentReply)
+		if err != nil {
+			writeError(w, 400, err.Error())
+			return
+		}
+		reply = append(reply, original)
+	}
+	text, warnings, err := s.generateMomentDraft(ctx, st, m, reply...)
 	if err != nil {
-		writeError(w, 400, err.Error())
+		writeError(w, 502, err.Error())
 		return
 	}
+	writeJSON(w, 200, map[string]any{"text": text, "warnings": warnings})
+}
+
+func (s *Server) generateMomentDraft(ctx context.Context, st State, m Moment, reply ...Comment) (string, []string, error) {
+	q, warnings, err := s.momentDraftRequest(ctx, st, m, reply...)
+	if err != nil {
+		return "", warnings, err
+	}
 	if ctx.Err() != nil {
-		writeError(w, 408, "草稿请求已取消")
-		return
+		return "", warnings, fmt.Errorf("草稿请求已取消")
 	}
 	id, err := s.queue(q)
 	if err != nil {
-		writeError(w, 400, err.Error())
-		return
+		return "", warnings, err
 	}
 	defer func() {
 		s.taskMu.Lock()
@@ -65,8 +85,7 @@ func (s *Server) momentDraftAPI(w http.ResponseWriter, r *http.Request, u User) 
 	for {
 		select {
 		case <-ctx.Done():
-			writeError(w, 504, "草稿生成已取消或超时，请重试")
-			return
+			return "", warnings, fmt.Errorf("草稿生成已取消或超时，请重试")
 		case <-tick.C:
 			// 只读当前任务，不在轮询中复制整份聊天归档。
 			s.store.mu.Lock()
@@ -81,20 +100,17 @@ func (s *Server) momentDraftAPI(w http.ResponseWriter, r *http.Request, u User) 
 			}
 			s.store.mu.Unlock()
 			if !valid {
-				writeError(w, 409, "账号已切换，草稿已丢弃")
-				return
+				return "", warnings, fmt.Errorf("账号已切换，草稿已丢弃")
 			}
 			switch job.Status {
 			case "completed":
-				writeJSON(w, 200, map[string]any{"text": job.Result, "warnings": warnings})
-				return
+				return job.Result, warnings, nil
 			case "failed", "cancelled", "interrupted", "deleted", "":
 				message := job.Error
 				if message == "" {
 					message = "草稿生成已停止，请重试"
 				}
-				writeError(w, 502, message)
-				return
+				return "", warnings, fmt.Errorf("%s", message)
 			}
 		}
 	}
@@ -133,9 +149,13 @@ func (s *Server) momentDraftSource(ctx context.Context, st State, id string) (Mo
 	return result.Moment, nil
 }
 
-func (s *Server) momentDraftRequest(ctx context.Context, st State, m Moment) (ai.Request, []string, error) {
-	q := ai.Request{Kind: "chat", Source: "moment-comment-draft", AccountID: st.Account.ID, AccountEpoch: st.AccountEpoch, Target: m.AuthorID, NoTools: true, System: momentDraftRules}
-	persona, _ := st.Overrides[m.AuthorID]["prompt"].(string)
+func (s *Server) momentDraftRequest(ctx context.Context, st State, m Moment, reply ...Comment) (ai.Request, []string, error) {
+	subject := m.AuthorID
+	if len(reply) > 0 {
+		subject = reply[0].AuthorID
+	}
+	q := ai.Request{Kind: "chat", Source: "moment-comment-draft", AccountID: st.Account.ID, AccountEpoch: st.AccountEpoch, Target: subject, NoTools: true, System: momentDraftRules}
+	persona, _ := st.Overrides[subject]["prompt"].(string)
 	if persona == "" && len(st.Prompts) > 0 {
 		persona = st.Prompts[0].Content
 	}
@@ -146,8 +166,17 @@ func (s *Server) momentDraftRequest(ctx context.Context, st State, m Moment) (ai
 		Text     string    `json:"动态正文"`
 		Title    string    `json:"分享标题,omitempty"`
 		Comments []Comment `json:"已有评论"`
+		Reply    *Comment  `json:"本次指定回复的评论,omitempty"`
 		Memories []string  `json:"已确认的相关记忆,omitempty"`
-	}{Self: st.Account.Name, Author: m.Author, Text: m.Content, Title: m.Title, Comments: m.Comments}
+	}{Self: st.Account.Name, Author: m.Author, Text: m.Content, Title: m.Title, Comments: []Comment{}}
+	if len(reply) > 0 {
+		data.Reply = &Comment{Author: reply[0].Author, Content: reply[0].Content, ReplyTo: reply[0].ReplyTo}
+		q.System += "\n本次是回复选中的那条评论，请以本人身份回应该评论作者及其内容；朋友圈正文和其他评论仅作背景，不把动态作者与本次回复对象混淆。不输出‘本人回复某人：’前缀，平台按实际评论编号展示回复关系。"
+	}
+	for _, comment := range m.Comments {
+		// 草稿需要评论的回复关系，无需传联系人微信 ID。
+		data.Comments = append(data.Comments, Comment{Author: comment.Author, ReplyTo: comment.ReplyTo, Content: comment.Content})
+	}
 	if data.Author == "" || data.Author == m.AuthorID {
 		for _, c := range st.Contacts {
 			if c.ID == m.AuthorID && c.Name != "" {
@@ -160,13 +189,17 @@ func (s *Server) momentDraftRequest(ctx context.Context, st State, m Moment) (ai
 	if m.Content == "[暂无法解析的朋友圈动态]" {
 		return q, warnings, fmt.Errorf("动态正文尚未正常读取，请刷新后重试")
 	}
-	if settingFlag(st, "memory.enabled") && st.Overrides[m.AuthorID]["memory_enabled"] == true {
-		items, err := s.replyMemories(st.Account.ID, Message{Target: m.AuthorID, SenderID: m.AuthorID, Content: m.Content + " " + m.Title}, 8)
+	if settingFlag(st, "memory.enabled") && st.Overrides[subject]["memory_enabled"] == true {
+		query := m.Content + " " + m.Title
+		if data.Reply != nil {
+			query += " " + data.Reply.Content
+		}
+		items, err := s.replyMemories(st.Account.ID, Message{Target: subject, SenderID: subject, Content: query}, 8)
 		if err != nil {
 			return q, warnings, err
 		}
 		for _, item := range items {
-			if item.Scope == "person" && item.Subject == m.AuthorID && item.Sensitivity != "sensitive" {
+			if item.Scope == "person" && item.Subject == subject && item.Sensitivity != "sensitive" {
 				data.Memories = append(data.Memories, item.Content)
 			}
 		}

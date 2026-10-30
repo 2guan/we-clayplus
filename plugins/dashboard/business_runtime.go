@@ -6,10 +6,8 @@ package dashboard
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"github.com/we-clay/we-clay/plugins/toolbox"
-	"github.com/we-clay/we-clay/sdk/control"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -299,78 +297,6 @@ func (s *Server) dispatchBusiness(m Message) bool {
 		s.finishBusiness(marker, "skipped", "事件队列已满或服务关闭")
 	}
 	return true
-}
-
-// FriendRequest 来自 gateway 对类型 37 消息的严格 XML 解码，凭据不能由网页提交。
-type FriendRequest struct {
-	ID, Applicant, Comment, V1, V2 string
-	Created                        string
-	Scene                          int
-}
-
-func (s *Server) HandleFriend(q FriendRequest) error {
-	if q.V1 == "" || q.V2 == "" || q.Scene < 0 || q.Scene > 1000 || q.ID == "" || q.Applicant == "" {
-		return fmt.Errorf("好友申请参数不完整")
-	}
-	st := s.store.snapshot()
-	if q.Created == "" {
-		q.Created = time.Now().Format(time.RFC3339)
-	}
-	raw, err := json.Marshal(q)
-	if err != nil {
-		return err
-	}
-	if err = s.store.putSecret("ai-friend:"+st.Account.ID+":"+fmt.Sprintf("%x", sha256.Sum256([]byte(q.V1+"\x00"+q.V2))), string(raw)); err != nil {
-		return err
-	}
-	id := "auto_accept"
-	if friendMatchReason(st, q) != "" {
-		return nil
-	}
-	s.businessMu.Lock()
-	defer s.businessMu.Unlock()
-	if !s.businessCooldown(st.Account.ID, id, q.Applicant) {
-		return nil
-	}
-	claimed, e := s.claimBusiness(st.Account.ID, "friend:"+q.V1+":"+q.V2)
-	if e != nil || !claimed {
-		return e
-	}
-	run, e := s.beginBusiness(st.Account.ID, businessRequest{Plugin: id, Target: q.Applicant}, "running")
-	if e != nil {
-		return e
-	}
-	if !s.launchBusiness(func() {
-		timer := time.NewTimer(time.Duration(businessNumber(st, id, "delay_seconds")) * time.Second)
-		defer timer.Stop()
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-timer.C:
-		}
-		current := s.store.snapshot()
-		if current.Account.ID != st.Account.ID || friendMatchReason(current, q) != "" {
-			s.finishBusiness(run, "skipped", "账号或生效范围变化")
-			return
-		}
-		var err error
-		if !s.cfg.Mock {
-			if s.host == nil {
-				err = fmt.Errorf("微信尚未就绪")
-			} else {
-				raw, _ := json.Marshal(map[string]any{"v1": q.V1, "v2": q.V2, "scene": q.Scene})
-				_, err = s.host.Execute(s.ctx, control.Command{Operation: "friend-verify", Params: raw})
-			}
-		}
-		if err != nil {
-			s.finishBusiness(run, "unknown", "好友验证未确认成功，不自动重试")
-		} else {
-			s.finishBusiness(run, "completed", "好友验证已通过")
-		}
-	}) {
-		s.finishBusiness(run, "skipped", "事件队列已满或服务关闭")
-	}
-	return nil
 }
 
 // 同一规则用于网页预览和真实事件，延迟结束后也必须重新检查。

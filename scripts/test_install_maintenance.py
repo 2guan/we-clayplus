@@ -189,7 +189,7 @@ else:
         self.events.write_text("")
         self.install(VERSION_NEW, "--key-file", str(self.key_old),
                      "--core-data-dir", str(self.account_dir), "--no-run", success=True)
-        self.assertEqual(self.saved("core-version.txt"), "v0.5.0")
+        self.assertEqual(self.saved("core-version.txt"), "v0.5.2")
         self.assertEqual(self.saved("core-data-dir.txt"), str(self.account_dir))
         self.assertEqual(self.events.read_text(), "")
         self.assertEqual(self.saved("device-type.txt"), "mac")
@@ -435,7 +435,7 @@ class PowerShellMaintenanceTests(unittest.TestCase):
         self.assertIn("$needStop = $existingInstall -and ($pathOverride -or", script)
         self.assertIn("Join-Path $oldCoreDataDir 'gateway-core.json'", script)
         self.assertIn("Read-Setting (Join-Path $DataDir 'device-type.txt') 'mac'", script)
-        self.assertIn("$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.5.0' }", script)
+        self.assertIn("$coreVersionFallback = if ($existingInstall) { 'v0.4.5' } else { 'v0.5.2' }", script)
         self.assertIn("'--device-type', $DeviceType", script)
         self.assertIn("'--device-type', $oldDeviceType", script)
         self.assertIn("@('core-version', 'device-type',", script)

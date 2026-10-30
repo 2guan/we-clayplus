@@ -5,9 +5,12 @@ package console
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	contactapi "github.com/we-clay/we-clay/gateway/internal/api/contact"
+	userapi "github.com/we-clay/we-clay/gateway/internal/api/user"
 	"github.com/we-clay/we-clay/sdk/contact"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -187,65 +190,219 @@ func mapMomentItems(objects []*moments.Moment) []dashboard.Moment {
 			}
 			item.LikeUsers = append(item.LikeUsers, dashboard.MomentLike{ID: id, Name: name})
 		}
+		commentNames := map[string]string{item.AuthorID: item.Author}
+		commentIDs, commentIDs2 := map[int32]string{}, map[uint64]string{}
 		for _, c := range object.GetCommentUserList() {
-			item.Comments = append(item.Comments, dashboard.Comment{Author: c.GetNickname(), Content: c.GetContent()})
+			if c.GetUsername() != "" && c.GetNickname() != "" {
+				commentNames[c.GetUsername()] = c.GetNickname()
+			}
+			if c.GetCommentId() != 0 {
+				commentIDs[c.GetCommentId()] = c.GetUsername()
+			}
+			if c.GetCommentId2() != 0 {
+				commentIDs2[c.GetCommentId2()] = c.GetUsername()
+			}
+		}
+		personName := func(id string) string {
+			if contact.Instance != nil {
+				if self := contact.Instance.GetSelf(); self != nil && self.Username == id && self.Nickname != "" {
+					return self.Nickname
+				}
+				if c := contact.Instance.Get(id); id != "" && c != nil {
+					if c.Remark != "" {
+						return c.Remark
+					}
+					if c.Nickname != "" {
+						return c.Nickname
+					}
+				}
+			}
+			if name := commentNames[id]; name != "" {
+				return name
+			}
+			return "未知用户"
+		}
+		for _, c := range object.GetCommentUserList() {
+			if c == nil || c.GetDeleteFlag() != 0 {
+				continue
+			}
+			replyID := c.GetReplyUsername()
+			if replyID == "" && c.GetReplyCommentId2() != 0 {
+				replyID = commentIDs2[c.GetReplyCommentId2()]
+			}
+			if replyID == "" && c.GetReplyCommentId() != 0 {
+				replyID = commentIDs[c.GetReplyCommentId()]
+			}
+			comment := dashboard.Comment{AuthorID: c.GetUsername(), Author: c.GetNickname(), ReplyToID: replyID, Content: c.GetContent()}
+			if c.GetCommentId() > 0 {
+				comment.ID = strconv.FormatInt(int64(c.GetCommentId()), 10)
+			}
+			if comment.Author == "" {
+				comment.Author = personName(comment.AuthorID)
+			}
+			if replyID != "" || c.GetReplyCommentId() != 0 || c.GetReplyCommentId2() != 0 {
+				comment.ReplyTo = personName(replyID)
+			}
+			item.Comments = append(item.Comments, comment)
 		}
 		items = append(items, item)
 	}
 	return items
 }
 
-// momentCover 同时兼容旧相册字段、新版 SNS 字段及背景对象引用。
-func momentCover(username string) string {
+// momentCover 保留联系人三种来源，再读取自己的 profile 和主页元信息。
+// 没有背景与读取失败不同：前者返回空值，后者交给调用方诊断。
+func momentCover(username string) (string, error) {
 	if username == "" {
-		return ""
+		return "", nil
 	}
-	detail, err := contactapi.Get().Detail([]string{username})
-	if err == nil && detail != nil {
-		for _, c := range detail.GetContactList() {
-			if c.GetUsername().GetValue() != username {
-				continue
-			}
-			if cover := safeWebURL(c.GetAlbumBgImageId()); cover != "" {
-				return cover
-			}
-			if cover := momentBackground(c.GetSnsUserInfo().GetBgImageId(), c.GetSnsUserInfo().GetBgObjectId()); cover != "" {
-				return cover
-			}
+	cover, contactErr := contactMomentCover(username)
+	if cover != "" {
+		return cover, nil
+	}
+	var profileErr error
+	if contact.Instance != nil && contact.Instance.GetSelf().GetUsername() == username {
+		cover, profileErr = selfProfileMomentCover(username)
+		if cover != "" {
+			return cover, nil
 		}
 	}
-	// 自己的联系人详情可能不含 SNS 信息；使用个人页返回的明确封面字段。
-	if contact.Instance != nil && moments.Instance != nil {
-		if self := contact.Instance.GetSelf(); self != nil && self.Username == username {
-			page, err := moments.Instance.UserPage(username, "", 0)
-			if err == nil && page != nil && page.GetBaseResult() != nil && (page.GetBaseResult().GetCode() == 0 || page.GetBaseResult().GetCode() == 207) {
-				return momentBackground(page.GetBgImageId(), page.GetBgObjectId())
-			}
-		}
+	cover, pageErr := userPageMomentCover(username)
+	if cover != "" {
+		return cover, nil
 	}
-	return ""
+	return cover, errors.Join(contactErr, profileErr, pageErr)
 }
 
-func momentBackground(image string, id uint64) string {
-	if cover := safeWebURL(image); cover != "" {
-		return cover
+func selfProfileMomentCover(username string) (string, error) {
+	profile, err := userapi.Get().GetProfile()
+	if err != nil {
+		return "", fmt.Errorf("读取自己的朋友圈封面资料失败: %w", err)
 	}
-	if id != 0 && moments.Instance != nil {
-		r, e := moments.Instance.Detail(id)
-		if e == nil && r != nil && r.GetBaseResult() != nil && r.GetBaseResult().GetCode() == 0 && r.GetObject().GetId() == id {
-			items := mapMomentItems([]*moments.Moment{r.GetObject()})
-			if len(items[0].Images) > 0 {
-				return items[0].Images[0]
+	if profile == nil || profile.GetUserInfo() == nil || profile.GetUserInfo().GetUserName().GetValue() != username || contact.Instance == nil || contact.Instance.GetSelf().GetUsername() != username {
+		return "", errors.New("自己的朋友圈封面资料缺失或账号不匹配")
+	}
+	if raw := profile.GetUserInfo().GetAlbumBgImageId(); strings.TrimSpace(raw) != "" {
+		if cover := safeWebURL(raw); cover != "" {
+			return cover, nil
+		}
+		return "", errors.New("自己的朋友圈资料未返回有效封面地址")
+	}
+	return "", nil
+}
+
+func contactMomentCover(username string) (string, error) {
+	detail, err := contactapi.Get().Detail([]string{username})
+	if err != nil {
+		return "", fmt.Errorf("读取朋友圈联系人资料失败: %w", err)
+	}
+	if detail == nil {
+		return "", errors.New("朋友圈联系人资料回执缺失")
+	}
+	var invalidAddress bool
+	for _, c := range detail.GetContactList() {
+		if c.GetUsername().GetValue() != username {
+			continue
+		}
+		for _, raw := range []string{c.GetAlbumBgImageId(), c.GetSnsUserInfo().GetBgImageId()} {
+			if cover := safeWebURL(raw); cover != "" {
+				return cover, nil
 			}
+			invalidAddress = invalidAddress || strings.TrimSpace(raw) != ""
+		}
+		if id := c.GetSnsUserInfo().GetBgObjectId(); id != 0 {
+			return momentObjectCover(id)
 		}
 	}
-	return ""
+	if invalidAddress {
+		return "", errors.New("朋友圈联系人资料未返回有效封面地址")
+	}
+	return "", nil
 }
+
+func userPageMomentCover(username string) (string, error) {
+	if moments.Instance == nil {
+		return "", errors.New("朋友圈主页服务尚未就绪")
+	}
+	page, err := moments.Instance.UserPage(username, "", 0)
+	if err != nil {
+		return "", fmt.Errorf("读取朋友圈主页封面失败: %w", err)
+	}
+	if page == nil || page.GetBaseResult() == nil || (page.GetBaseResult().GetCode() != 0 && page.GetBaseResult().GetCode() != 207) {
+		return "", errors.New("朋友圈主页封面回执不完整")
+	}
+	var failures []error
+	// 元信息与 object_list 独立：没有任何动态、或分页结束 207 时仍可能有封面。
+	for _, info := range page.GetSnsUserInfo() {
+		if raw := info.GetBgImageId(); strings.TrimSpace(raw) != "" {
+			if cover := safeWebURL(raw); cover != "" {
+				return cover, nil
+			}
+			failures = append(failures, errors.New("朋友圈主页未返回有效封面地址"))
+		}
+		if id := info.GetBgObjectId(); id != 0 {
+			cover, err := momentObjectCover(id)
+			if cover != "" {
+				return cover, nil
+			}
+			failures = append(failures, err)
+		}
+	}
+	return "", errors.Join(failures...)
+}
+
+func momentObjectCover(id uint64) (string, error) {
+	if moments.Instance == nil {
+		return "", errors.New("朋友圈封面背景动态服务尚未就绪")
+	}
+	r, err := moments.Instance.Detail(id)
+	if err != nil {
+		return "", fmt.Errorf("读取朋友圈封面背景动态失败: %w", err)
+	}
+	if r == nil || r.GetBaseResult() == nil || r.GetBaseResult().GetCode() != 0 || r.GetObject() == nil || r.GetObject().GetId() != id {
+		return "", errors.New("朋友圈封面背景动态回执不完整或不匹配")
+	}
+	var description momentDescription
+	if xml.Unmarshal([]byte(r.GetObject().GetObjectDescription()), &description) != nil {
+		return "", errors.New("朋友圈封面背景动态内容无法解析")
+	}
+	for _, cover := range mapMomentItems([]*moments.Moment{r.GetObject()})[0].Images {
+		if cover != "" {
+			return cover, nil
+		}
+	}
+	return "", errors.New("朋友圈封面背景动态未返回可用图片")
+}
+
+// loadMomentCover 在网络前记住账号代次，拒绝迟到的旧账号结果（包括 A→B→A）。
+func (b *Bridge) loadMomentCover(username string) (string, error) {
+	var account string
+	var epoch uint64
+	if b.Dashboard != nil && contact.Instance != nil && contact.Instance.GetSelf().GetUsername() == username {
+		account, epoch = b.Dashboard.AccountIdentity()
+		if account == "" || account != username {
+			return "", errors.New("朋友圈封面读取已过期：控制台账号与当前资料不匹配")
+		}
+	}
+	cover, err := momentCover(username)
+	if err != nil {
+		return "", err
+	}
+	if account != "" {
+		if err := b.Dashboard.SetMomentCoverForAccount(account, epoch, cover); err != nil {
+			return "", err
+		}
+	}
+	return cover, nil
+}
+
 func (b *Bridge) syncMomentCover() {
 	if b.Dashboard != nil && contact.Instance != nil {
 		if self := contact.Instance.GetSelf(); self != nil {
-			if cover := momentCover(self.Username); cover != "" {
-				_ = b.Dashboard.SetMomentCover(cover)
+			_, err := b.loadMomentCover(self.Username)
+			if err != nil {
+				slog.Warn("朋友圈封面读取未完成", "error_type", fmt.Sprintf("%T", err))
+				return
 			}
 		}
 	}

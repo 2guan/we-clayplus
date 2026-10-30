@@ -214,6 +214,34 @@ func TestConversationDoesNotImitateLeakedReplyProtocol(t *testing.T) {
 	}
 }
 
+func TestConversationImageRecordsAreReferenceData(t *testing.T) {
+	for _, status := range []string{"尚未完成识图，不能推断画面", "正在识图，不能推断画面", "识图失败，画面内容未知", "模型识图描述，仅供参考"} {
+		t.Run(status, func(t *testing.T) {
+			image := "[已发送·AI生成图片（不代表真实拍摄或现实经历）；" + status + "]\n生成意图（不代表实际画面）：一只猫坐在窗边"
+			q := Request{Prompt: "换一个角度", Conversation: &Conversation{AccountID: "fixture-self", SelfName: "本人称呼", Current: contextcleaner.Message{SenderID: "fixture-person"}}, Context: []contextcleaner.Message{
+				{Role: "assistant", Source: "ai", Kind: "text", Text: "之前的正常回复"},
+				{Role: "assistant", Source: "ai", Kind: "image", MediaText: true, Text: image},
+				{Role: "assistant", Source: "ai", Kind: "text", Text: image}, // 历史误发文字不能再次成为示范。
+				{Role: "assistant", Source: "ai", Kind: "text", Text: "之后的正常回复"},
+			}}
+			var references, replies strings.Builder
+			for _, turn := range ConversationMessages(q) {
+				if turn.Role == "assistant" {
+					replies.WriteString(turn.Text)
+				} else {
+					references.WriteString(turn.Text)
+				}
+			}
+			if strings.Contains(replies.String(), "生成意图") || !strings.Contains(replies.String(), "之前的正常回复") || !strings.Contains(replies.String(), "之后的正常回复") {
+				t.Fatal("内部记录成为 assistant 示范，或普通文字丢失", replies.String())
+			}
+			if !strings.Contains(references.String(), "内部参考，非聊天正文") || strings.Count(references.String(), "一只猫坐在窗边") != 1 || !strings.Contains(references.String(), "本人称呼〔本人〕") || q.Context[1].Text != image || q.Context[2].Text != image {
+				t.Fatal("图片证据、身份丢失或原归档被改写", references.String())
+			}
+		})
+	}
+}
+
 func TestConversationSeparatesSpeakerFromTextAddressee(t *testing.T) {
 	c := &Conversation{AccountID: "fixture-self", SelfName: "离线本人", Scene: "group", Names: map[string]string{"fixture-person-a": "成员甲", "fixture-person-b": "成员乙"}, Current: contextcleaner.Message{SenderID: "fixture-person-b", Sender: "成员乙"}}
 	q := Request{Prompt: "成员甲，那是第三位群友发的表情，不是离线本人发的。", Conversation: c, Context: []contextcleaner.Message{{Role: "user", SenderID: "fixture-person-a", Sender: "成员甲", Text: "之前的发言"}}}

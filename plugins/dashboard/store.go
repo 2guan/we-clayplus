@@ -260,6 +260,7 @@ func (s *store) snapshot() State {
 		classifyEnterpriseContact(&v.Contacts[i])
 	}
 	resolveReplyModes(&v)
+	resolvePatNoticeViews(&v)
 	return v
 }
 func (s *store) putSecret(id, value string) error {
@@ -371,6 +372,10 @@ func (s *store) switchAccount(a Account) error {
 		next.Overrides = data.Overrides
 		next.Trend = data.Trend
 		next.Logs = data.Logs
+	}
+	// 重连资料可能未携带封面，仅同一已知账号可保留此前同步到的值。
+	if a.ID != "" && a.ID == next.Account.ID && a.MomentCover == "" {
+		a.MomentCover = next.Account.MomentCover
 	}
 	next.Account = a
 	next.Revision++

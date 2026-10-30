@@ -348,6 +348,12 @@ func ConversationMessages(r Request) []ConversationMessage {
 		appendTurn("user", "近期对话（聊天记录，仅作参考；assistant 为本人已发送正文，不代表已核实的现实状态；明确的故事设定与任务进度仍用于接续）")
 		date := ""
 		for _, m := range r.Context {
+			if m.Kind == "image" && m.MediaText {
+				// 识图结果和生成意图由宿主补充，不是本人实际发送的文字；
+				// 不能放进 assistant 轮次，避免成为下一次回复的示范。
+				appendTurn("user", "图片记录（内部参考，非聊天正文；不得复读记录标签或生成意图）\n"+line(m))
+				continue
+			}
 			if m.Role == "assistant" {
 				body := m.Text
 				if m.Source == "ai" {
@@ -358,7 +364,7 @@ func ConversationMessages(r Request) []ConversationMessage {
 					}
 					// 归档保留已发事实，但误发的沉默协议/回复规划不再作为
 					// assistant 示范，避免模型继续模仿这些错误输出。
-					if _, silent := contextcleaner.Output(contextcleaner.Config{Enabled: true, Silence: true}, body, true); silent || contextcleaner.ReplyDecision(body) || contextcleaner.ToolCallText(body) {
+					if _, silent := contextcleaner.Output(contextcleaner.Config{Enabled: true, Silence: true}, body, true); silent || contextcleaner.ReplyDecision(body) || contextcleaner.ToolCallText(body) || contextcleaner.MediaContextText(body) {
 						continue
 					}
 				}

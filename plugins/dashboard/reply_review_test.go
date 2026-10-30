@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -213,5 +214,86 @@ func TestSupplementDuringReviewInvalidatesReviewedDraft(t *testing.T) {
 	task := waitModelTask(t, s, id)
 	if task.Status != "completed" || task.ReplyTo != m.ID || generation.Load() != 2 || sends.Load() != 1 {
 		t.Fatal(task, generation.Load(), sends.Load())
+	}
+}
+
+func TestImagePromiseReviewAndRecovery(t *testing.T) {
+	for _, scenario := range []string{"recover", "exhausted", "review-failed", "decline", "ordinary"} {
+		t.Run(scenario, func(t *testing.T) {
+			var generation, reviews, images atomic.Int32
+			s, m, sends := retryFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/images/edits" {
+					images.Add(1)
+					fmt.Fprintf(w, `{"data":[{"b64_json":%q}]}`, protocolImage)
+					return
+				}
+				var body struct {
+					Messages []struct{ Role, Content string }
+				}
+				replyRegressionCheck(t, json.NewDecoder(r.Body).Decode(&body))
+				if strings.Contains(body.Messages[0].Content, replyReviewRules) {
+					reviews.Add(1)
+					if scenario == "review-failed" {
+						w.WriteHeader(http.StatusServiceUnavailable)
+						return
+					}
+					input := body.Messages[len(body.Messages)-1].Content
+					if !strings.Contains(input, "换一个角度") || !strings.Contains(input, "本轮允许生图：true；草稿包含图片操作：false") {
+						t.Error("图片复核未包含实际来信和服务端计划")
+					}
+					if scenario == "decline" || scenario == "ordinary" {
+						reviewResponse(w, `{"accept":true,"reason":"没有承诺本轮提供图片，无需强制生图。"}`)
+					} else {
+						reviewResponse(w, `{"accept":false,"reason":"对方要求换角度，草稿答应给一张，却没有图片操作。","retry_image":true}`)
+					}
+					return
+				}
+				n := generation.Add(1)
+				answer := "行，换个角度再给你一张。"
+				if scenario == "recover" && n > 1 {
+					if !strings.Contains(body.Messages[0].Content, "本轮可用生图") || !strings.Contains(body.Messages[0].Content, "缺少实际图片计划") || strings.Contains(body.Messages[0].Content, "本轮只用文字回复") {
+						t.Error("纠正请求丢失图片能力或具体原因")
+					}
+					answer = `<image ref="selfie" prompt="参考图中的人物坐在窗边，侧面视角"/>`
+				} else if scenario == "decline" {
+					answer = "这张暂时没法提供。"
+				} else if scenario == "ordinary" {
+					answer = "换个角度想想，这个话题确实有意思。"
+				}
+				captionResult(w, answer)
+			})
+			m.Content = "换一个角度"
+			data, _ := base64.StdEncoding.DecodeString(protocolImage)
+			path, err := s.saveMedia(data, "image/png")
+			replyRegressionCheck(t, err)
+			replyRegressionCheck(t, s.store.change(func(st *State) error {
+				st.Messages = []Message{m}
+				st.Settings["reply.image_enabled"], st.Settings["image.reference"] = true, path
+				model := st.Models[0]
+				model.ID, model.Capabilities = "fixture-image-plan-model", []string{"image"}
+				st.Models = append(st.Models, model)
+				st.Pipelines = map[string][]string{"image": {model.ID}}
+				return nil
+			}))
+			s.host = replyRegressionHost(func(_ context.Context, c control.Command) (any, error) {
+				if scenario == "recover" && (images.Load() != 1 || !strings.Contains(c.Content, "AI生成图片")) {
+					t.Error("图片生成之前就发出了口头承诺", c.Content)
+				}
+				sends.Add(1)
+				return map[string]string{"id": "fixture-image-plan-receipt"}, nil
+			})
+			task := retrySubmit(t, s, m)
+			if scenario == "exhausted" || scenario == "review-failed" {
+				if task.Status != "failed" || !task.ReplyRetryable || generation.Load() != 2 || reviews.Load() != 2 || sends.Load() != 0 || images.Load() != 0 {
+					t.Fatal("空承诺被发送或没有留下重试入口", task, generation.Load(), reviews.Load(), sends.Load(), images.Load())
+				}
+			} else if scenario == "recover" {
+				if task.Status != "completed" || task.AutoRetries != 1 || generation.Load() != 2 || reviews.Load() != 1 || sends.Load() != 1 || images.Load() != 1 {
+					t.Fatal("没有纠正为真实图片操作", task, generation.Load(), reviews.Load(), sends.Load(), images.Load())
+				}
+			} else if task.Status != "completed" || generation.Load() != 1 || reviews.Load() != 1 || sends.Load() != 1 || images.Load() != 0 {
+				t.Fatal("正常文字或拒绝被强制生图", task, generation.Load(), reviews.Load(), sends.Load(), images.Load())
+			}
+		})
 	}
 }

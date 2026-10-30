@@ -53,9 +53,13 @@ func TestMomentDraftReadsOwnValidMemoriesAndThumbnail(t *testing.T) {
 	for i := 0; i < 24; i++ {
 		m.Comments = append(m.Comments, Comment{Author: fmt.Sprintf("评论者%d", i), Content: fmt.Sprintf("已有讨论%d", i)})
 	}
+	m.Comments[23].AuthorID, m.Comments[23].ReplyToID, m.Comments[23].ReplyTo = "fixture-private-author", "fixture-private-reply", "被回复者"
 	q, warnings, err := s.momentDraftRequest(context.Background(), s.store.snapshot(), m)
 	if !strings.Contains(q.Prompt, "评论者23") || !strings.Contains(q.Prompt, "已有讨论23") {
 		t.Fatal("遗漏末尾已有评论")
+	}
+	if !strings.Contains(q.Prompt, "被回复者") || strings.Contains(q.Prompt, "fixture-private-author") || strings.Contains(q.Prompt, "fixture-private-reply") {
+		t.Fatal("草稿遗漏回复关系或带入不必要的微信ID")
 	}
 	if err != nil || len(warnings) > 0 || len(q.Images) != 1 || q.Images[0].MIME != "image/jpeg" || !q.NoTools || q.AccountID != account || !strings.Contains(q.Prompt, confirmed.Content) || !strings.Contains(q.Prompt, m.Author) || !strings.Contains(q.Prompt, m.Content) || strings.Contains(q.Prompt, pending.Content) || strings.Contains(q.Prompt, expired.Content) {
 		t.Fatal("草稿资料或记忆范围不正确", err)
@@ -64,6 +68,10 @@ func TestMomentDraftReadsOwnValidMemoriesAndThumbnail(t *testing.T) {
 	q, _, err = s.momentDraftRequest(context.Background(), s.store.snapshot(), m)
 	if err != nil || strings.Contains(q.Prompt, confirmed.Content) {
 		t.Fatal("他人动态带入原作者记忆", err)
+	}
+	q, _, err = s.momentDraftRequest(context.Background(), s.store.snapshot(), m, Comment{ID: "7", AuthorID: source.SenderID, Author: "本次回复对象", Content: "原评论的具体问题"})
+	if err != nil || q.Target != source.SenderID || !strings.Contains(q.Prompt, "本次指定回复的评论") || !strings.Contains(q.Prompt, "原评论的具体问题") || !strings.Contains(q.Prompt, confirmed.Content) || strings.Contains(q.Prompt, source.SenderID) {
+		t.Fatal("选中评论的草稿对象、原文或记忆范围错误", err)
 	}
 	m.Content = ""
 	m.Images = []string{"/media/missing.png"}

@@ -58,6 +58,14 @@ message ServerConfig {
   int32 copy_and_paste_word_limit = 2; // 复制粘贴字数限制
 }
 
+// SnsUserInfo 朋友圈主页元信息；即使没有动态，也可能返回封面。
+message SnsUserInfo {
+  uint32 flag = 1;
+  string bg_image_id = 2;
+  uint64 bg_object_id = 3;
+  uint32 flag_extend = 4;
+}
+
 // Moment 朋友圈对象摘要
 message Moment {
   uint64 id = 1; // 朋友圈 ID
@@ -139,8 +147,7 @@ message UserPage {
     uint64 limited_id = 9; // 限制 ID
     uint64 continue_id = 10; // 继续 ID
     string return_tips = 11; // 返回提示
-    string bg_image_id = 12; // 微信返回的朋友圈封面地址或标识
-    uint64 bg_object_id = 13; // 封面关联动态 ID
+    repeated SnsUserInfo sns_user_info = 12; // 主页元信息；保留已有字段编号
   }
 }
 

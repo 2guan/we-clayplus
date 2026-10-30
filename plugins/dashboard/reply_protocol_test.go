@@ -18,9 +18,9 @@ import (
 
 const protocolImage = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jDe8AAAAASUVORK5CYII="
 
-func TestPseudoOrUnofferedImageToolRecoversToOneImage(t *testing.T) {
-	for _, native := range []bool{false, true} {
-		t.Run(fmt.Sprint(native), func(t *testing.T) {
+func TestImageProtocolErrorsRecoverToOneImage(t *testing.T) {
+	for _, mode := range []string{"pseudo", "native", "malformed"} {
+		t.Run(mode, func(t *testing.T) {
 			var chat, imageCalls atomic.Int32
 			s, m, sends := retryFixture(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/images/edits" {
@@ -43,8 +43,10 @@ func TestPseudoOrUnofferedImageToolRecoversToOneImage(t *testing.T) {
 					if len(body.Tools) == 0 {
 						t.Error("未提供已授权行为工具，测试未覆盖两类协议并存")
 					}
-					if native {
+					if mode == "native" {
 						fmt.Fprint(w, `{"choices":[{"message":{"tool_calls":[{"id":"fixture-image-call","function":{"name":"image_gen","arguments":"{\"prompt\":\"离线场景\",\"selfie\":true}"}}]}}]}`)
+					} else if mode == "malformed" {
+						captionResult(w, `<image ref="selfie" prompt="窗边&阳光"/>`)
 					} else {
 						fmt.Fprint(w, `{"choices":[{"message":{"content":"行，发你<tool_call><function=image_gen><parameter=prompt>离线场景</parameter></function></tool_call>"}}]}`)
 					}

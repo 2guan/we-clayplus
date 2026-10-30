@@ -5,7 +5,9 @@ package dashboard
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/we-clay/we-clay/plugins/ai"
+	"github.com/we-clay/we-clay/plugins/contextcleaner"
 	"github.com/we-clay/we-clay/sdk/control"
 )
 
@@ -180,6 +183,9 @@ func (a *actionSession) previewReferenceIDs(args map[string]any) map[string][]st
 
 // 写入声明和审批由 SQLite 唯一约束/CAS 仲裁，不在微信网络请求期间持有全局锁。
 func (a *actionSession) write(ctx context.Context, op string, cmd control.Command, args map[string]any) (any, error) {
+	if op == "message.Send" && contextcleaner.MediaContextText(cmd.Content) {
+		return nil, replyQualityError(cmd.Content, a.q.Conversation)
+	}
 	if e := a.authorize(op, cmd.Target); e != nil {
 		return nil, e
 	}
@@ -251,7 +257,28 @@ func (a *actionSession) runWrite(ctx context.Context, r *aiActionRecord, cmd con
 	if r.Operation == "contact.VerifyFriend" {
 		var p control.ActionParams
 		_ = json.Unmarshal(cmd.Params, &p)
-		claimed, err := a.s.claimBusiness(st.Account.ID, "friend:"+p.V1+":"+p.V2)
+		a.s.friendMu.Lock()
+		id := friendRequestID(FriendRequest{V1: p.V1, V2: p.V2})
+		stored, readErr := a.s.loadFriend(st.Account.ID, id)
+		blocked := readErr != nil && !errors.Is(readErr, sql.ErrNoRows) || readErr == nil && (stored.Dismissed || stored.Status != "" && stored.Status != "pending" && stored.Status != "scheduled")
+		claimed := false
+		var err error
+		if !blocked {
+			claimed, err = a.s.claimBusiness(st.Account.ID, "friend:"+p.V1+":"+p.V2)
+		}
+		if claimed && err == nil && readErr == nil {
+			stored.Status, stored.Due = "processing", ""
+			err = a.s.saveFriend(st.Account.ID, st.AccountEpoch, id, stored)
+			if err == nil {
+				if a.s.friendProcessing == nil {
+					a.s.friendProcessing = map[string]bool{}
+				}
+				key := friendRequestKey(st.Account.ID, id)
+				a.s.friendProcessing[key] = true
+				defer func() { a.s.friendMu.Lock(); delete(a.s.friendProcessing, key); a.s.friendMu.Unlock() }()
+			}
+		}
+		a.s.friendMu.Unlock()
 		if err != nil || !claimed {
 			r.Status = "failed"
 			r.Error = "此申请正在或已经处理"
@@ -302,6 +329,11 @@ func (a *actionSession) runWrite(ctx context.Context, r *aiActionRecord, cmd con
 	}
 	if e == nil {
 		e = a.project(r.Operation, cmd, v)
+	}
+	if r.Operation == "contact.VerifyFriend" && e != nil {
+		var p control.ActionParams
+		_ = json.Unmarshal(cmd.Params, &p)
+		_ = a.s.markFriendResult(st.Account.ID, st.AccountEpoch, p.V1, p.V2, "unknown")
 	}
 	if e != nil {
 		r.Status = "unknown"
@@ -396,10 +428,12 @@ func (a *actionSession) project(op string, c control.Command, result any) error 
 		}
 		a.sentCurrent = a.sentCurrent || c.Target == a.q.Target
 	}
-	if op == "contact.VerifyFriend" { // 已受理申请不再显示为待确认。
+	if op == "contact.VerifyFriend" {
 		var p control.ActionParams
 		_ = json.Unmarshal(c.Params, &p)
-		_, _ = a.s.store.db.Exec("DELETE FROM secrets WHERE id=?", "ai-friend:"+st.Account.ID+":"+fmt.Sprintf("%x", sha256.Sum256([]byte(p.V1+"\x00"+p.V2))))
+		if err := a.s.markFriendResult(st.Account.ID, st.AccountEpoch, p.V1, p.V2, "accepted"); err != nil {
+			return err
+		}
 	}
 	return a.s.store.change(func(s *State) error {
 		if s.Account.ID != st.Account.ID {

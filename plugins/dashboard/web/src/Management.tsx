@@ -2,6 +2,7 @@
 // 主要功能：实现通讯录、插件管理、洞察、日志和系统设置等控制台管理页面。
 // 作者：2guan
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FriendRequests } from "./FriendRequests";
 import { messageLogs } from "./messageLogs";
 import { PluginConfiguration } from "./PluginConfiguration";
 import { BusinessWorkbench, businessIDs } from "./BusinessWorkbench";
@@ -36,7 +37,17 @@ import { TurtleSoupWorkbench } from "./TurtleSoupWorkbench";
 // 联系人详情复用微信会话策略表单，避免两处编辑逻辑不一致。
 export function Contacts(props: PageProps) {
   const { state, act, notify } = props;
-  const [tab, setTab] = useState("friend");
+  const readTab = () => {
+    const id = new URLSearchParams(location.hash.split("?")[1]).get("tab") || "friend";
+    return ["friend", "group", "official", "system", "enterprise", "requests"].includes(id) ? id : "friend";
+  };
+  const [tab, setTab] = useState(readTab);
+  const changeTab = (id: string) => { setTab(id); history.replaceState(null, "", `#contacts?tab=${id}`); };
+  useEffect(() => {
+    const change = () => setTab(readTab());
+    window.addEventListener("hashchange", change);
+    return () => window.removeEventListener("hashchange", change);
+  }, []);
   const kindLabels: Record<string, string> = {
     enterprise: "企业微信",
     friend: "好友",
@@ -85,8 +96,9 @@ export function Contacts(props: PageProps) {
       </div>
       <Tabs
         value={tab}
-        onChange={setTab}
+        onChange={changeTab}
         items={[
+          ...(props.user.role === "admin" ? [["requests", "好友申请"] as [string,string]] : []),
           [
             "friend",
             `微信好友 (${state.contacts.filter((c) => c.kind === "friend").length})`,
@@ -109,7 +121,7 @@ export function Contacts(props: PageProps) {
           ],
         ]}
       />
-      <section className="panel">
+      {tab === "requests" ? (props.user.role === "admin" ? <FriendRequests key={state.account.id} {...props}/> : <Empty title="仅管理员可以查看好友申请"/>) : <section className="panel">
         <div className="table-toolbar">
           <label className="search">
             <MagnifyingGlass size={17} />
@@ -306,7 +318,7 @@ export function Contacts(props: PageProps) {
             text="试试其他关键词，或等待通讯录同步。"
           />
         )}
-      </section>
+      </section>}
       <Modal
         open={!!selected}
         onClose={() => setSelected(null)}

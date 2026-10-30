@@ -125,7 +125,7 @@ message UserPageResponse {
   optional uint32 object_count = 3;
   repeated .api.message.MomentsObject object_list = 4;
   optional uint32 object_total_count = 5;
-  optional .api.message.SnsUserInfo sns_user_info = 6; // 本人的封面可能仅在个人页回执返回
+  repeated .api.message.SnsUserInfo sns_user_info = 6;
   optional uint32 new_request_time = 7;
   optional uint32 object_count_for_same_md5 = 8;
   optional ServerConfig server_config = 9;

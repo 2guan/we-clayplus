@@ -59,7 +59,16 @@ func (b *Bridge) momentPage(target, cursor string) (dashboard.MomentPage, error)
 		}
 		out.Items = mapMomentItems(r.GetObjectList())
 		if cursor == "" {
-			out.Cover = momentBackground(r.GetBgImageId(), r.GetBgObjectId())
+			for _, info := range r.GetSnsUserInfo() {
+				cover := safeWebURL(info.GetBgImageId())
+				if cover == "" && info.GetBgObjectId() != 0 {
+					cover, _ = momentObjectCover(info.GetBgObjectId())
+				}
+				if cover != "" {
+					out.Cover = cover
+					break
+				}
+			}
 		}
 		if r.GetBaseResult().GetCode() != 207 {
 			out.NextCursor = momentCursor(r.GetObjectList(), r.GetContinueId(), id)
@@ -70,40 +79,6 @@ func (b *Bridge) momentPage(target, cursor string) (dashboard.MomentPage, error)
 		if out.Notice == "" {
 			out.Notice = "微信未返回更早的可见动态"
 		}
-	}
-	return out, nil
-}
-
-func (b *Bridge) momentNotifications() (dashboard.MomentPage, error) {
-	out := dashboard.MomentPage{Items: []dashboard.Moment{}, Notice: "展示未读提醒关联动态的现有点赞和评论；微信暂未提供独立标记已读接口。"}
-	r, err := moments.Instance.Timeline("", 0)
-	if err != nil {
-		return out, err
-	}
-	if r == nil || r.GetBaseResult() == nil || r.GetBaseResult().GetCode() != 0 {
-		return out, fmt.Errorf("互动提醒读取失败")
-	}
-	out.Unread = r.GetUnreadCount()
-	seen := map[uint64]bool{}
-	// 有限逐条读取，避免一次提醒请求拖垮微信接口；部分失败明确显示，不能当成无提醒。
-	for _, id := range r.GetUnreadList() {
-		if id == 0 || seen[id] {
-			continue
-		}
-		seen[id] = true
-		if len(seen) > 30 {
-			out.Notice += " 本次最多展示 30 条关联动态。"
-			break
-		}
-		detail, e := moments.Instance.Detail(id)
-		if e != nil || detail == nil || detail.GetBaseResult() == nil || detail.GetBaseResult().GetCode() != 0 || detail.GetObject() == nil {
-			out.Notice += " 部分动态暂无法读取。"
-			continue
-		}
-		out.Items = append(out.Items, mapMomentItems([]*moments.Moment{detail.GetObject()})...)
-	}
-	if out.Unread > 0 && len(r.GetUnreadList()) == 0 {
-		out.Notice += " 微信返回了未读数量，但未提供关联动态。"
 	}
 	return out, nil
 }
@@ -286,7 +261,37 @@ func (b *Bridge) interactMoment(c control.Command) (dashboard.Moment, error) {
 	if c.Target != "" && obj.GetUsername() != c.Target {
 		return empty, fmt.Errorf("动态与当前个人主页不匹配")
 	}
+	var guard struct {
+		dashboard.MomentReply
+		OnlyIfMissing bool   `json:"only_if_missing"`
+		Account       string `json:"account"`
+	}
+	if len(c.Params) > 0 && json.Unmarshal(c.Params, &guard) != nil {
+		return empty, fmt.Errorf("互动参数无效")
+	}
+	if guard.OnlyIfMissing {
+		if guard.Account == "" || contact.Instance == nil || contact.Instance.GetSelf() == nil || contact.Instance.GetSelf().Username != guard.Account {
+			return empty, fmt.Errorf("微信账号不匹配，已停止随机互动")
+		}
+		if c.Operation == "moments-like" {
+			liked := obj.GetLikeFlag() != 0
+			for _, person := range obj.GetLikeUserList() {
+				liked = liked || person.GetUsername() == guard.Account
+			}
+			if liked {
+				return empty, fmt.Errorf("已点赞，跳过")
+			}
+		}
+		if c.Operation == "moments-comment" {
+			for _, comment := range obj.GetCommentUserList() {
+				if comment.GetUsername() == guard.Account && comment.GetDeleteFlag() == 0 && (guard.CommentID == 0 || comment.GetReplyCommentId() == guard.CommentID) {
+					return empty, fmt.Errorf("本人已评论，跳过")
+				}
+			}
+		}
+	}
 	var result *moments.Moment
+	var replyTargetID, replyTargetName string
 	switch c.Operation {
 	case "moments-like":
 		if obj.GetLikeFlag() != 0 {
@@ -327,7 +332,30 @@ func (b *Bridge) interactMoment(c control.Command) (dashboard.Moment, error) {
 		if strings.TrimSpace(c.Content) == "" || len(c.Content) > 6000 {
 			return empty, fmt.Errorf("评论不能为空且不超过 6000 字节")
 		}
-		r, e := moments.Instance.Comment(id, c.Content, 2, 0)
+		var reply dashboard.MomentReply
+		if len(c.Params) > 0 && json.Unmarshal(c.Params, &reply) != nil {
+			return empty, fmt.Errorf("回复参数无效")
+		}
+		if reply.CommentID < 0 || (reply.CommentID == 0) != (reply.AuthorID == "") {
+			return empty, fmt.Errorf("回复评论编号或作者无效")
+		}
+		if reply.CommentID > 0 {
+			if contact.Instance == nil || contact.Instance.GetSelf() == nil || contact.Instance.GetSelf().Username == "" {
+				return empty, fmt.Errorf("无法核实当前微信账号，未发送回复")
+			}
+			found := false
+			for _, comment := range obj.GetCommentUserList() {
+				if comment.GetCommentId() == reply.CommentID && comment.GetUsername() == reply.AuthorID && comment.GetDeleteFlag() == 0 {
+					found = true
+					replyTargetID, replyTargetName = comment.GetUsername(), comment.GetNickname()
+					break
+				}
+			}
+			if !found {
+				return empty, fmt.Errorf("所选评论已不可用或作者不匹配，请刷新后重新选择；未改为普通留言")
+			}
+		}
+		r, e := moments.Instance.Comment(id, c.Content, 2, reply.CommentID)
 		if e != nil {
 			return empty, e
 		}
@@ -335,8 +363,62 @@ func (b *Bridge) interactMoment(c control.Command) (dashboard.Moment, error) {
 			return empty, fmt.Errorf("评论结果未确认，请刷新核对")
 		}
 		result = r.GetObject()
+		if reply.CommentID > 0 {
+			// 不把成功 ACK 或普通留言冒充定向回复；回执缺失关系时只读核验一次。
+			confirmed := func(item *moments.Moment) bool {
+				if item.GetId() != id || contact.Instance == nil || contact.Instance.GetSelf() == nil {
+					return false
+				}
+				for _, comment := range item.GetCommentUserList() {
+					if comment.GetUsername() != contact.Instance.GetSelf().Username || comment.GetContent() != c.Content || comment.GetReplyCommentId() != reply.CommentID || comment.GetDeleteFlag() != 0 || comment.GetReplyUsername() != "" && comment.GetReplyUsername() != reply.AuthorID {
+						continue
+					}
+					old := false
+					for _, previous := range obj.GetCommentUserList() {
+						old = old || previous.GetCommentId() == comment.GetCommentId() && previous.GetCommentId2() == comment.GetCommentId2()
+					}
+					if !old && (comment.GetCommentId() > 0 || comment.GetCommentId2() > 0) {
+						if comment.GetReplyUsername() == "" {
+							comment.ReplyUsername = reply.AuthorID // 已用真实回复编号与原评论核实，不靠昵称推测。
+						}
+						return true
+					}
+				}
+				return false
+			}
+			if !confirmed(result) {
+				readback, err := moments.Instance.Detail(id)
+				if err != nil || readback == nil || readback.GetBaseResult() == nil || readback.GetBaseResult().GetCode() != 0 || !confirmed(readback.GetObject()) {
+					return empty, fmt.Errorf("回复已提交，但对应原评论的回复关系尚未确认，请刷新核对；不会自动重试")
+				}
+				result = readback.GetObject()
+			}
+		}
 	default:
 		return empty, fmt.Errorf("不支持的互动操作")
+	}
+	if guard.OnlyIfMissing {
+		confirmed := func(m *moments.Moment) bool {
+			if m.GetId() != id {
+				return false
+			}
+			if c.Operation == "moments-like" {
+				return m.GetLikeFlag() != 0
+			}
+			for _, comment := range m.GetCommentUserList() {
+				if comment.GetUsername() == guard.Account && comment.GetContent() == c.Content && comment.GetDeleteFlag() == 0 && (comment.GetCommentId() > 0 || comment.GetCommentId2() > 0) {
+					return true
+				}
+			}
+			return false
+		}
+		if !confirmed(result) {
+			r, e := moments.Instance.Detail(id)
+			if e != nil || r == nil || r.GetBaseResult() == nil || r.GetBaseResult().GetCode() != 0 || !confirmed(r.GetObject()) {
+				return empty, fmt.Errorf("互动已提交但结果未确认，不自动重复，请刷新核对")
+			}
+			result = r.GetObject()
+		}
 	}
 	// 点赞和评论不会修改正文。操作回执可能只含互动字段（Windows 回执也可能缺失正文），
 	// 沿用本次已校验的详情，避免用部分回执清空文字、配图、作者和发布时间。
@@ -344,5 +426,11 @@ func (b *Bridge) interactMoment(c control.Command) (dashboard.Moment, error) {
 	result.Username = obj.GetUsername()
 	result.Nickname = obj.GetNickname()
 	result.CreateTime = obj.GetCreateTime()
-	return mapMomentItems([]*moments.Moment{result})[0], nil
+	item := mapMomentItems([]*moments.Moment{result})[0]
+	for i := range item.Comments {
+		if item.Comments[i].ReplyToID == replyTargetID && replyTargetName != "" && item.Comments[i].ReplyTo == "未知用户" {
+			item.Comments[i].ReplyTo = replyTargetName
+		}
+	}
+	return item, nil
 }

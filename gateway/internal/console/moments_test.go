@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"github.com/we-clay/we-clay/plugins/dashboard"
+	"github.com/we-clay/we-clay/sdk/contact"
 	"github.com/we-clay/we-clay/sdk/control"
 	"github.com/we-clay/we-clay/sdk/moments"
 	"net/http/httptest"
@@ -19,6 +20,37 @@ import (
 type momentFixture struct {
 	moments.Ability
 	cursor uint64
+}
+
+type momentCommentContacts struct{ contact.Ability }
+
+func (momentCommentContacts) GetSelf() *contact.SelfInfo {
+	return &contact.SelfInfo{Username: "fixture-self", Nickname: "本人昵称"}
+}
+func (momentCommentContacts) Get(id string) *contact.Contact {
+	if id == "fixture-peer" {
+		return &contact.Contact{Username: id, Nickname: "好友昵称", Remark: "好友备注"}
+	}
+	return nil
+}
+
+func TestMomentCommentReplyIdentity(t *testing.T) {
+	previous := contact.Instance
+	contact.Instance = momentCommentContacts{}
+	defer func() { contact.Instance = previous }()
+	items := mapMomentItems([]*moments.Moment{{Username: "fixture-author", Nickname: "动态作者", ObjectDescription: "<TimelineObject/>", CommentUserList: []*moments.CommentInfo{
+		{Username: "fixture-self", Nickname: "旧昵称", CommentId: 7, CommentId2: 18446744073709551610, Content: "原评论"},
+		{Username: "fixture-peer", Nickname: "回复者", ReplyUsername: "fixture-self", ReplyCommentId: 7, Content: "直接回复"},
+		{Username: "fixture-self", Nickname: "本人昵称", ReplyCommentId: 9, Content: "按评论编号回复"},
+		{Username: "fixture-peer", Nickname: "回复者", CommentId: 9, ReplyCommentId2: 18446744073709551610, Content: "按64位编号回复"},
+		{Nickname: "第三位", ReplyUsername: "fixture-author", Content: "回复作者"},
+		{Nickname: "第三位", ReplyCommentId: 12345, Content: "原评论已不可见"},
+		nil,
+	}}})
+	cs := items[0].Comments
+	if len(cs) != 6 || cs[0].ReplyTo != "" || cs[1].ReplyTo != "本人昵称" || cs[1].ReplyToID != "fixture-self" || cs[1].AuthorID != "fixture-peer" || cs[2].ReplyTo != "好友备注" || cs[3].ReplyTo != "本人昵称" || cs[4].ReplyTo != "动态作者" || cs[5].ReplyTo != "未知用户" {
+		t.Fatalf("回复关系错误：%+v", cs)
+	}
 }
 
 func (m *momentFixture) Timeline(_ string, id uint64) (*moments.Timeline_Response, error) {

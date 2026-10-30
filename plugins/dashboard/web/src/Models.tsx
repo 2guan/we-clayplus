@@ -268,7 +268,7 @@ export default function Models(props: PageProps) {
       {tab === "global" && (
             <div className="model-global">
               {props.schema
-                .filter((g) => ["reply", "memory", "routing"].includes(g.id))
+                .filter((g) => ["reply", "memory", "routing", "moments"].includes(g.id))
                 .map((g) => (
                   <SettingsForm
                     key={g.id}

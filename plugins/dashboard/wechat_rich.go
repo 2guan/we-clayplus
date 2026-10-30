@@ -90,7 +90,8 @@ func parseRichMessage(m Message, raw string) (Message, bool) {
 	}
 	switch {
 	case m.Kind == "system" && v.Type == "pat":
-		m.Interaction = &contextcleaner.Interaction{Kind: "pat", ActorID: strings.TrimSpace(v.PatActor), TargetID: strings.TrimSpace(v.PatTarget), Verified: v.PatActor != "" && v.PatTarget != ""}
+		actor, target := strings.TrimSpace(v.PatActor), strings.TrimSpace(v.PatTarget)
+		m.Interaction = &contextcleaner.Interaction{Kind: "pat", Template: v.Pat, ActorID: actor, TargetID: target, Verified: actor != "" && target != ""}
 		m.Content = v.Pat
 		if m.Content == "" {
 			m.Content = "[拍一拍]"
@@ -225,6 +226,9 @@ func quotePreview(kind int, content string) string {
 var noticeName = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 func resolveNotice(st State, m Message) Message {
+	if m.Kind == "system" && m.Interaction != nil && m.Interaction.Kind == "pat" {
+		return resolvePatNotice(m, patNoticeNames(st, []Message{m}))
+	}
 	if m.Kind != "system" {
 		return m
 	}
